@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0a1628" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SOLITFIFPRO225" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="SOLITFIFPRO225" />
+    <meta name="msapplication-TileColor" content="#050508" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>SOLITFIFPRO225</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/denicheur-enhanced.css" />
+    <link rel="stylesheet" href="/unified-system.css" />
+    <link rel="stylesheet" href="/mobile-optimizations.css" />
+    <link rel="stylesheet" href="/global-theme-system.css" />
+    <link rel="stylesheet" href="/mobile-ultra-premium.css" />
+    <link rel="stylesheet" href="/signature.css" />
+    <link rel="stylesheet" href="/chat-widget.css" />
+    <link rel="stylesheet" href="/mobile-hard-fix.css" />
+    <link rel="stylesheet" href="/power-ui.css" />
+    <link rel="stylesheet" href="/revolution-theme.css" />
+  </head>
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <header class="hero">
+      <p class="tag">Live Feed 1xBet</p>
+      <h1>SOLITFIFPRO225</h1>
+      <p id="subTitle">Hub FIFA Virtuel - matchs live, details et exports.</p>
+      <div class="hero-metric-strip" aria-hidden="true">
+        <article class="hero-metric-card">
+          <span>Direction</span>
+          <strong>Live Command</strong>
+          <em>Accueil pilote, denicheur, alertes et lecture rapide.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Experience</span>
+          <strong>Touch Native</strong>
+          <em>Rendu fluide et dense pour iPhone, Android et desktop.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Puissance</span>
+          <strong>Neural Visuals</strong>
+          <em>Logos, scores, heatmap et filtres dans une meme ligne visuelle.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Objectif</span>
+          <strong>Fast Decision</strong>
+          <em>Voir vite, ouvrir vite, valider vite sans perdre en lisibilite.</em>
+        </article>
+      </div>
+      <div class="denicheur-hero-row">
+        <div class="denicheur-hero-actions">
+          <button type="button" class="denicheur-cta" id="denicheurLaunchBtn">
+            Lancer le denicheur (match ~10 min)
+          </button>
+          <label class="denicheur-full-option">
+            <input id="denicheurFullOption" type="checkbox" />
+            <span>Option complete — choisir au mieux (ultra strict, peut ne rien proposer)</span>
+          </label>
+        </div>
+        <p class="denicheur-hero-hint">
+          Sans l'option: recherche prudente avec assouplissements. Avec l'option: uniquement les matchs les plus propres
+          (fiabilite, liquidite, cotes stables).
+        </p>
+      </div>
+      <div class="controls">
+        <button id="refreshBtn" type="button">Actualiser</button>
+        <label class="league-filter" for="leagueSelect">
+          <span>Ligue</span>
+          <select id="leagueSelect">
+            <option value="all">Toutes les ligues</option>
+          </select>
+        </label>
+        <label class="league-filter" for="lowDataToggle">
+          <span>Low-data</span>
+          <input id="lowDataToggle" type="checkbox" />
+        </label>
+        <a class="coupon-page-link" href="/coupon.html">Page Coupon</a>
+        <a class="coupon-page-link" href="/mode-emploi.html">Mode d'emploi</a>
+        <a class="coupon-page-link" href="/about.html">A propos du createur</a>
+        <a class="coupon-page-link" href="/developpeur.html">Page Developpeur</a>
+      </div>
+      <div class="mode-spotlight" aria-hidden="true">
+        <article class="mode-spotlight-card">
+          <span>Lecture d'ensemble</span>
+          <strong>Un accueil qui respire comme un tableau de bord premium</strong>
+          <p>Les blocs principaux remontent maintenant comme une console de pilotage au lieu d'une simple liste.</p>
+        </article>
+        <article class="mode-spotlight-card">
+          <span>Mobile iOS / Android</span>
+          <strong>Touch zones plus nettes et cartes plus stables</strong>
+          <p>La structure reste claire meme sur petit ecran, sans perdre le caractere visuel du site.</p>
+        </article>
+      </div>
+    </header>
+
+    <main>
+      <section class="stats" id="stats"></section>
+      <section class="site-command-center" id="siteCommandCenter"></section>
+      <section class="frontline-update" id="frontlineUpdateStatus" aria-live="polite"></section>
+      <section class="watchlist-panel" id="watchlistPanel" aria-live="polite"></section>
+      <section class="league-heatmap" id="leagueHeatmap"></section>
+      <section class="match-finder" id="matchFinder" aria-labelledby="matchFinderTitle">
+        <div class="finder-head">
+          <div>
+            <h2 id="matchFinderTitle">Denicheur de match</h2>
+            <p class="finder-sub">
+              Pepites classees par valeur de marche, fiabilite, liquidite et fenetre avant coup d'envoi.
+            </p>
+          </div>
+          <span class="finder-badge" id="finderBadge" aria-hidden="true"></span>
+        </div>
+        <div class="finder-grid" id="finderGrid"></div>
+      </section>
+      <section class="match-modes" id="matchModes">
+        <button class="match-mode active" type="button" data-mode="upcoming">A venir</button>
+        <button class="match-mode" type="button" data-mode="turbo">Turbo Top 10</button>
+        <button class="match-mode" type="button" data-mode="finder">Denicheur</button>
+        <button class="match-mode" type="button" data-mode="live">En cours</button>
+        <button class="match-mode" type="button" data-mode="finished">Termines</button>
+      </section>
+      <section class="matches" id="matches"></section>
+      <div class="odd-alerts" id="oddAlerts" aria-live="polite"></div>
+      <p class="empty hidden" id="emptyState">
+        Aucun match FIFA penalty detecte pour le moment.
+      </p>
+    </main>
+
+    <div class="welcome-modal denicheur-modal hidden" id="denicheurModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="denicheurModalTitle">
+      <div class="denicheur-card welcome-card">
+        <button type="button" class="welcome-close" id="denicheurModalClose" aria-label="Fermer">×</button>
+        <p class="welcome-tag">Denicheur</p>
+        <h2 id="denicheurModalTitle">Choix du denicheur</h2>
+        <div id="denicheurModalBody" class="denicheur-modal-body"></div>
+      </div>
+    </div>
+
+    <div class="welcome-modal hidden" id="welcomeModal" role="dialog" aria-modal="true">
+      <div class="welcome-card">
+        <button class="welcome-close" id="welcomeClose" type="button" aria-label="Fermer">×</button>
+        <p class="welcome-tag">SOLITFIFPRO225</p>
+        <h2>Bienvenue sur le hub FIFA Virtuel</h2>
+        <p>Rejoins la communaute et garde le contact direct pour les alertes, coupons et aides.</p>
+        <div class="welcome-actions">
+          <a class="welcome-btn primary" href="https://t.me/SOLITAIREHACKGENIUS" target="_blank" rel="noreferrer">
+            Rejoindre le groupe Telegram
+          </a>
+          <a class="welcome-btn" href="https://wa.me/2250576459875" target="_blank" rel="noreferrer">
+            WhatsApp Principal
+          </a>
+          <a class="welcome-btn" href="https://wa.me/2250150588136" target="_blank" rel="noreferrer">
+            WhatsApp Support
+          </a>
+          <a class="welcome-btn" href="https://t.me/Solitaire666" target="_blank" rel="noreferrer">
+            Contact prive
+          </a>
+        </div>
+        <label class="welcome-optout">
+          <input id="welcomeHide" type="checkbox" />
+          <span>Ne plus afficher cette fenetre</span>
+        </label>
+      </div>
+    </div>
+
+    <footer>
+      <small id="updatedAt"></small>
+      <small id="appVersionTag"></small>
+      <p class="legal-foot">
+        Informations et scores a titre indicatif. Paris interdits aux mineurs. Joue avec moderation.
+        <a href="/mode-emploi.html">Mode d'emploi</a>
+      </p>
+      <div class="site-signature">Signe par <strong>SOLITAIRE HACK</strong></div>
+    </footer>
+
+    <script src="/mobile-viewport-fix.js"></script>
+    <script src="/mobile-enhancements.js"></script>
+    <script src="/denicheur-interactive.js"></script>
+    <script src="/unified-system.js"></script>
+    <script src="/solitaire-ai-client.js"></script>
+    <script src="/global-theme-switcher.js"></script>
+    <script src="/mobile-ultra-interactions.js"></script>
+    <script src="/database-api.js"></script>
+    <script src="/global-ui-shell.js" defer></script>
+    <script src="/app.js" defer></script>
+    <script src="/chat-widget.js" defer></script>
+    <script src="/site-reliability.js" defer></script>
+    <script src="/browser-sync.js" defer></script>
+  </body>
+  </html>

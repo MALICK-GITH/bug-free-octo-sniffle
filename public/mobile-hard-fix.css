@@ -1,0 +1,80 @@
+/* Final mobile framing fixes for all phones */
+
+@media (max-width: 768px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    padding-left: max(0.55rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.55rem, env(safe-area-inset-right, 0px));
+  }
+
+  .page,
+  main,
+  .hero,
+  footer,
+  .controls,
+  .panel,
+  .primary-grid,
+  .secondary-grid,
+  .actions {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .controls,
+  .actions,
+  .primary-grid,
+  .secondary-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .hero {
+    margin-top: 0.5rem;
+  }
+
+  .back,
+  #refreshBtn,
+  .coupon-page-link,
+  .actions button {
+    min-width: 0;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .global-theme-switcher,
+  .settings-panel,
+  .theme-manager-panel {
+    left: max(6px, env(safe-area-inset-left, 0px));
+    right: max(6px, env(safe-area-inset-right, 0px));
+    max-width: none;
+    width: auto;
+  }
+
+  .chat-panel {
+    width: auto;
+    left: max(6px, env(safe-area-inset-left, 0px));
+    right: max(6px, env(safe-area-inset-right, 0px));
+    max-width: none;
+  }
+
+  .chat-fab {
+    right: max(10px, env(safe-area-inset-right, 0px));
+  }
+}
+
+@media (max-width: 380px) {
+  .match-mode {
+    font-size: 0.72rem;
+    padding: 0.35rem 0.62rem;
+  }
+
+  .odd-box strong {
+    font-size: 1rem;
+  }
+}

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a1628" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>Detail Predictions Match</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/pages-luxe.css" />
+    <link rel="stylesheet" href="/match.css" />
+    <link rel="stylesheet" href="/match-features-enhanced.css" />
+    <link rel="stylesheet" href="/mobile-optimizations.css" />
+    <link rel="stylesheet" href="/global-theme-system.css" />
+    <link rel="stylesheet" href="/mobile-ultra-premium.css" />
+    <link rel="stylesheet" href="/signature.css" />
+    <link rel="stylesheet" href="/chat-widget.css" />
+    <link rel="stylesheet" href="/mobile-hard-fix.css" />
+    <link rel="stylesheet" href="/match-detail-premium.css" />
+    <link rel="stylesheet" href="/revolution-theme.css" />
+  </head>
+  <body class="match-detail-body" data-page="match-detail">
+    <div class="bg-grid" aria-hidden="true"></div>
+    <main class="page match-detail-page">
+      <header class="match-detail-bar" role="banner">
+        <a href="/" class="match-escape-btn" id="matchEscapeBtn" aria-label="Retour a la liste des matchs">
+          <span class="match-escape-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="match-escape-text">
+            <span class="match-escape-kicker">Quitter</span>
+            <span class="match-escape-title">Liste des matchs</span>
+          </span>
+        </a>
+        <nav class="match-detail-aux" aria-label="Navigation secondaire">
+          <a href="/coupon.html" class="match-aux-link">Coupon</a>
+          <a href="/mode-emploi.html" class="match-aux-link">Aide</a>
+          <a href="/about.html" class="match-aux-link">A propos</a>
+          <a href="/developpeur.html" class="match-aux-link">Dev</a>
+        </nav>
+      </header>
+      <section class="hero" aria-labelledby="title">
+        <p class="tag">Predictions Unifiees</p>
+        <h1 id="title">Chargement...</h1>
+        <p id="sub">Analyse complete en cours</p>
+        <div class="hero-metric-strip" aria-hidden="true">
+          <article class="hero-metric-card">
+            <span>Analyse</span>
+            <strong>Coach + Engine</strong>
+            <em>Lecture du match, recommandations et synthese visuelle dans le meme flux.</em>
+          </article>
+          <article class="hero-metric-card">
+            <span>Clarte</span>
+            <strong>Focus Match</strong>
+            <em>Moins de bruit, plus de hierarchie et de lisibilite tactique.</em>
+          </article>
+          <article class="hero-metric-card">
+            <span>Export</span>
+            <strong>One Tap Share</strong>
+            <em>Telegram, image et PDF accessibles comme un cockpit premium.</em>
+          </article>
+          <article class="hero-metric-card">
+            <span>Mobile</span>
+            <strong>Handheld Power</strong>
+            <em>Desktop dense, smartphone propre et ergonomie plus nette.</em>
+          </article>
+        </div>
+        <div class="hero-tools">
+          <span class="refresh-badge" id="refreshBadge">Auto-refresh dans 60s</span>
+          <label class="mini-control">
+            <span>Refresh page (min)</span>
+            <input id="refreshMinutesInput" type="number" min="1" max="60" step="1" value="5" />
+          </label>
+          <label class="mini-toggle">
+            <input id="coachModeToggle" type="checkbox" checked />
+            <span>Mode Coach IA</span>
+          </label>
+          <label class="mini-toggle">
+            <input id="lowDataToggle" type="checkbox" />
+            <span>Low-data</span>
+          </label>
+          <button class="telegram-match-btn" id="sendMatchTelegramBtn" type="button" disabled>Envoyer Telegram</button>
+          <button class="telegram-match-btn" id="sendMatchTelegramImageBtn" type="button" disabled>Telegram Image</button>
+          <button class="pdf-match-btn" id="downloadMatchImageBtn" type="button" disabled>Image Match</button>
+          <button class="pdf-match-btn" id="downloadMatchPdfBtn" type="button" disabled>PDF Match</button>
+          <button class="pdf-match-btn" id="exportAllMatchBtn" type="button" disabled>Export 1-Clic</button>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="driftAlert"></section>
+      <section class="panel" id="master"></section>
+      <section class="panel" id="coachPanel">
+        <h2>Mode Coach IA</h2>
+        <div id="coachContent">Analyse coach en attente...</div>
+      </section>
+      <section class="panel analytics-panel">
+        <h2>Neural Match Engine</h2>
+        <div class="kpi-grid" id="kpiGrid"></div>
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h3>Radar Tactique 360</h3>
+            <canvas id="chartRadar"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Flux Dynamique 0-90 min</h3>
+            <canvas id="chartFlow"></canvas>
+          </div>
+        </div>
+      </section>
+      <section class="panel insight-panel">
+        <h2>Brief Intelligent</h2>
+        <div class="insight-grid" id="insightGrid">
+          <article class="insight-card">
+            <strong>Analyse</strong>
+            <p>Chargement du resume intelligent...</p>
+          </article>
+        </div>
+      </section>
+      <section class="panel exact-score-panel">
+        <h2>Projection Score Exact Imperial</h2>
+        <div id="exactScorePanel">
+          <p>Calcul du score exact en cours...</p>
+        </div>
+      </section>
+      <section class="panel" id="bots"></section>
+      <section class="panel" id="top3"></section>
+      <section class="panel" id="markets"></section>
+      <footer class="site-signature">Signe par <strong>SOLITAIRE HACK</strong></footer>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/mobile-viewport-fix.js"></script>
+    <script src="/solitaire-ai-client.js"></script>
+    <script src="/match.js" defer></script>
+    <script src="/match-interactive-charts.js" defer></script>
+    <script src="/match-ai-coach.js" defer></script>
+    <script src="/match-ai-master-picks.js" defer></script>
+    <script src="/match-mobile-gestures.js" defer></script>
+    <script src="/match-pdf-export.js" defer></script>
+    <script src="/match-advanced-search.js" defer></script>
+    <script src="/global-theme-switcher.js"></script>
+    <script src="/mobile-ultra-interactions.js"></script>
+    <script src="/global-ui-shell.js" defer></script>
+    <script src="/chat-widget.js" defer></script>
+    <script src="/browser-sync.js" defer></script>
+  </body>
+  </html>

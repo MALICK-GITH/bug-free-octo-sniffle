@@ -1,0 +1,19 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "commonjs": true,
+    "node": true
+  },
+  "globals": {
+    "Chart": "readonly"
+  },
+  "parserOptions": {
+    "ecmaVersion": "latest"
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "args": "none", "varsIgnorePattern": "^_" }],
+    "no-undef": "error"
+  },
+  "ignorePatterns": ["node_modules/**"]
+}

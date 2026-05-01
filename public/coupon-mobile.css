@@ -1,0 +1,351 @@
+/* Coupon Page Mobile Optimizations */
+
+/* Enhanced mobile layout */
+@media (max-width: 768px) {
+  body {
+    padding: calc(0.5rem + env(safe-area-inset-top)) 0.5rem calc(0.5rem + env(safe-area-inset-bottom));
+  }
+
+  .page {
+    width: 100%;
+    margin: 0;
+  }
+
+  /* Navigation improvements */
+  .back {
+    display: inline-block;
+    margin: 0 0.25rem 0.5rem 0;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.75rem;
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  /* Hero section mobile */
+  .hero {
+    padding: 0.8rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.3rem, 5vw, 1.6rem);
+  }
+
+  .hero p {
+    font-size: 0.85rem;
+  }
+
+  /* Controls grid optimization */
+  .controls {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 0.8rem;
+  }
+
+  .controls label {
+    padding: 0.6rem;
+    border-radius: 12px;
+  }
+
+  .controls span {
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .controls input,
+  .controls select {
+    padding: 0.6rem;
+    font-size: 16px; /* Prevents zoom on iOS */
+    border-radius: 8px;
+    min-height: 44px;
+  }
+
+  .switch-line {
+    padding: 0.5rem 0.6rem;
+    border-radius: 12px;
+  }
+
+  /* Action buttons mobile */
+  .actions {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.4rem;
+    padding: 0.8rem;
+  }
+
+  .actions button {
+    padding: 0.7rem 0.5rem;
+    font-size: 0.75rem;
+    min-height: 44px;
+    border-radius: 12px;
+  }
+
+  /* Panel grids mobile */
+  .primary-grid {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+
+  .secondary-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .panel {
+    padding: 0.8rem;
+    border-radius: 12px;
+    min-height: 200px;
+  }
+
+  .panel-main {
+    min-height: 250px;
+  }
+
+  /* Sticky bar mobile */
+  .sticky-ticket-bar {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.2rem;
+    padding: 0.5rem;
+    background: rgba(15, 25, 49, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(59, 231, 255, 0.3);
+  }
+
+  .sticky-ticket-bar button {
+    padding: 0.5rem 0.3rem;
+    font-size: 0.7rem;
+    min-height: 40px;
+    border-radius: 8px;
+  }
+}
+
+/* Ultra-mobile optimization */
+@media (max-width: 480px) {
+  .back {
+    display: block;
+    width: 100%;
+    margin: 0 0 0.4rem 0;
+    text-align: center;
+  }
+
+  .actions {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+
+  .secondary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sticky-ticket-bar {
+    grid-template-columns: repeat(3, 1fr);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sticky-ticket-bar button {
+    min-width: 80px;
+    white-space: nowrap;
+  }
+}
+
+/* Touch optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .panel:hover,
+  .controls:hover {
+    transform: none;
+    border-color: var(--line);
+  }
+
+  .actions button:active {
+    transform: scale(0.95);
+  }
+
+  .sticky-ticket-bar button:active {
+    transform: scale(0.95);
+  }
+}
+
+/* iOS specific optimizations */
+@supports (-webkit-touch-callout: none) {
+  .controls input,
+  .controls select {
+    background: rgba(10, 18, 34, 0.95);
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .switch-line input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 48px;
+    height: 28px;
+    background: rgba(59, 231, 255, 0.3);
+    border-radius: 14px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+
+  .switch-line input[type="checkbox"]:checked {
+    background: rgba(66, 245, 108, 0.8);
+  }
+
+  .switch-line input[type="checkbox"]::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.3s ease;
+  }
+
+  .switch-line input[type="checkbox"]:checked::after {
+    transform: translateX(20px);
+  }
+}
+
+/* Android specific optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .actions button {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .panel {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Landscape orientation */
+@media (max-width: 768px) and (orientation: landscape) {
+  .controls {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .primary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .secondary-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .sticky-ticket-bar {
+    padding: 0.3rem;
+  }
+
+  .sticky-ticket-bar button {
+    min-height: 36px;
+    font-size: 0.65rem;
+  }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .actions button {
+    font-weight: 800;
+  }
+
+  .panel h3 {
+    font-weight: 700;
+  }
+}
+
+/* Performance optimizations */
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .controls,
+  .actions button {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Network-aware loading */
+@media (prefers-reduced-data: reduce) {
+  .panel {
+    background: var(--panel);
+    background-image: none;
+  }
+
+  .sticky-ticket-bar {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* Dark mode enhancements */
+@media (prefers-color-scheme: dark) {
+  .panel {
+    background: rgba(8, 16, 32, 0.92);
+    border-color: rgba(59, 231, 255, 0.2);
+  }
+
+  .controls {
+    background: rgba(8, 16, 32, 0.92);
+  }
+}
+
+/* Mobile loading states */
+.mobile-loading-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.mobile-loading-panel::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(59, 231, 255, 0.2), transparent);
+  animation: mobileShimmer 1.5s infinite;
+}
+
+@keyframes mobileShimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* Mobile error states */
+.mobile-error-panel {
+  border: 1px solid rgba(255, 95, 121, 0.5);
+  background: rgba(255, 95, 121, 0.1);
+  color: #ffc5cf;
+  padding: 1rem;
+  border-radius: 12px;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+/* Mobile success states */
+.mobile-success-panel {
+  border: 1px solid rgba(66, 245, 108, 0.5);
+  background: rgba(66, 245, 108, 0.1);
+  color: #c7ffd7;
+  padding: 1rem;
+  border-radius: 12px;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+/* Accessibility improvements */
+@media (max-width: 768px) {
+  .actions button:focus-visible,
+  .sticky-ticket-bar button:focus-visible {
+    outline: 2px solid rgba(59, 231, 255, 0.8);
+    outline-offset: 2px;
+  }
+
+  .panel:focus-within {
+    border-color: rgba(59, 231, 255, 0.6);
+    box-shadow: 0 0 0 2px rgba(59, 231, 255, 0.2);
+  }
+}

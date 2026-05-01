@@ -1,0 +1,17 @@
+<!-- Theme Injection Script - Inject into ALL pages -->
+<script>
+(function() {
+  // Inject global theme system into all pages
+  const globalThemeCSS = document.createElement('link');
+  globalThemeCSS.rel = 'stylesheet';
+  globalThemeCSS.href = '/global-theme-system.css';
+  document.head.appendChild(globalThemeCSS);
+
+  // Inject global theme switcher
+  const globalThemeJS = document.createElement('script');
+  globalThemeJS.src = '/global-theme-switcher.js';
+  document.head.appendChild(globalThemeJS);
+
+  console.log('🎨 Global theme system injected into page');
+})();
+</script>
