@@ -94,6 +94,7 @@ footer {
 }
 
 @media (min-width: 1280px) {
+
   .hero,
   main,
   footer {
@@ -122,12 +123,10 @@ footer {
   content: "";
   display: block;
   height: 86px;
-  background: linear-gradient(
-    115deg,
-    rgba(66, 245, 108, 0.92) 0%,
-    rgba(36, 215, 255, 0.88) 48%,
-    rgba(255, 209, 102, 0.9) 100%
-  );
+  background: linear-gradient(115deg,
+      rgba(66, 245, 108, 0.92) 0%,
+      rgba(36, 215, 255, 0.88) 48%,
+      rgba(255, 209, 102, 0.9) 100%);
   filter: saturate(125%) brightness(1.02);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset;
 }
@@ -519,9 +518,17 @@ h1 {
   margin: 0.22rem 0;
 }
 
-.command-good strong { color: var(--brand); }
-.command-mid strong { color: var(--brand-3); }
-.command-low strong { color: var(--danger); }
+.command-good strong {
+  color: var(--brand);
+}
+
+.command-mid strong {
+  color: var(--brand-3);
+}
+
+.command-low strong {
+  color: var(--danger);
+}
 
 .command-grid {
   margin-top: 1rem;
@@ -1756,7 +1763,7 @@ body.low-data .odd-alerts {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 footer {
@@ -1813,15 +1820,15 @@ footer {
   html {
     font-size: 14px;
   }
-  
+
   .hero h1 {
     font-size: clamp(1.2rem, 5vw, 1.8rem);
   }
-  
+
   .team-name {
     font-size: clamp(0.75rem, 3vw, 0.9rem);
   }
-  
+
   .odd-box strong {
     font-size: clamp(1rem, 4vw, 1.3rem);
   }
@@ -1845,16 +1852,16 @@ footer {
   .visual-score-strip {
     grid-template-columns: 1fr 1fr;
   }
-  
+
   .heatmap-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .finder-row {
     grid-template-columns: auto 1fr;
     gap: 0.4rem;
   }
-  
+
   .finder-pill,
   .finder-link {
     display: none;
@@ -1867,15 +1874,16 @@ footer {
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
   }
-  
+
   .matches {
     scroll-snap-type: y mandatory;
   }
-  
+
   .match-card {
     scroll-snap-align: start;
   }
 }
+
 @media (max-width: 820px) {
   body {
     padding: calc(0.68rem + env(safe-area-inset-top)) 0.68rem calc(0.68rem + env(safe-area-inset-bottom));
@@ -1916,7 +1924,7 @@ footer {
     .team-logo {
       border: 1.5px solid rgba(255, 255, 255, 0.14);
     }
-    
+
     .match-card {
       border-radius: 16px;
     }
@@ -1925,6 +1933,7 @@ footer {
 
 /* Enhanced mobile experience */
 @media (max-width: 560px) {
+
   .hero h1,
   .hero .tag,
   .hero #subTitle,
@@ -1994,11 +2003,11 @@ footer {
       -webkit-user-select: none;
       user-select: none;
     }
-    
+
     .odd-box {
       -webkit-tap-highlight-color: rgba(66, 245, 108, 0.2);
     }
-    
+
     #refreshBtn,
     .coupon-page-link {
       -webkit-tap-highlight-color: rgba(66, 245, 108, 0.3);
@@ -2010,7 +2019,7 @@ footer {
     .controls {
       gap: 0.5rem;
     }
-    
+
     #refreshBtn,
     .coupon-page-link {
       min-height: 44px;
@@ -2027,22 +2036,44 @@ footer {
 }
 
 @keyframes btnShine {
-  0% { left: -45%; }
-  35%, 100% { left: 125%; }
+  0% {
+    left: -45%;
+  }
+
+  35%,
+  100% {
+    left: 125%;
+  }
 }
 
 @keyframes oddPulse {
-  0% { transform: scale(1); }
-  45% { transform: scale(1.03); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+
+  45% {
+    transform: scale(1.03);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 @keyframes oddAlertIn {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   #refreshBtn::after,
   .coupon-page-link::after,
   .odd-box.odd-live,
@@ -2066,36 +2097,36 @@ footer {
   .hero h1 {
     font-size: 1.4rem;
   }
-  
+
   .controls {
     grid-template-columns: 1fr;
     gap: 0.4rem;
   }
-  
+
   #refreshBtn,
   .coupon-page-link {
     padding: 0.7rem 0.9rem;
     font-size: 0.85rem;
   }
-  
+
   .match-modes {
     justify-content: center;
   }
-  
+
   .match-mode {
     font-size: 0.75rem;
     padding: 0.35rem 0.7rem;
   }
-  
+
   .team-name {
     font-size: 0.8rem;
     line-height: 1.2;
   }
-  
+
   .odd-box {
     padding: 0.5rem 0.3rem;
   }
-  
+
   .odd-box strong {
     font-size: 1.05rem;
   }
@@ -2110,23 +2141,24 @@ footer {
   .controls {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .match-modes {
     justify-content: center;
   }
-  
+
   .stats {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 /* High DPI displays optimization */
-@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+@media (-webkit-min-device-pixel-ratio: 2),
+(min-resolution: 192dpi) {
   .team-logo-img {
     image-rendering: -webkit-optimize-contrast;
     image-rendering: crisp-edges;
   }
-  
+
   .odd-box strong {
     font-weight: 800;
   }
@@ -2137,7 +2169,7 @@ footer {
   .match-card {
     background: linear-gradient(160deg, rgba(10, 18, 36, 0.96), rgba(6, 12, 24, 0.98));
   }
-  
+
   .odd-box {
     background: linear-gradient(170deg, rgba(12, 22, 44, 0.98), rgba(8, 16, 32, 0.96));
   }
