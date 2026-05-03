@@ -1,7 +1,19 @@
 /* Mobile Layout Fixes - Better spacing and readability */
 
+/* ===== FIX RIDEAU NOIR - Cacher modals quand hidden ===== */
+@media (max-width: 768px) {
+
+  .welcome-modal.hidden,
+  .denicheur-modal.hidden,
+  .modal.hidden,
+  [role="dialog"].hidden {
+    display: none !important;
+  }
+}
+
 /* Fix cramped controls buttons on mobile */
 @media (max-width: 768px) {
+
   /* Controls section - better spacing */
   .controls {
     display: flex !important;
@@ -128,7 +140,9 @@
   }
 
   /* Better touch targets */
-  button, a, [role="button"] {
+  button,
+  a,
+  [role="button"] {
     min-height: 44px !important;
     min-width: 44px !important;
   }
