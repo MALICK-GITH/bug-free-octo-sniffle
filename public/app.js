@@ -1680,10 +1680,15 @@ document.querySelectorAll(".match-mode").forEach((btn) => {
   });
 });
 loadMatches();
-setInterval(() => {
+const ambientPulseIntervalId = setInterval(() => {
   const wrap = document.getElementById("matches");
   if (wrap) activateAmbientOddsPulse(wrap);
 }, 2300);
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+  clearInterval(ambientPulseIntervalId);
+});
 initWelcomeModal();
 initDenicheurModal();
 initDenicheurFullOption();

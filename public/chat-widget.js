@@ -4,6 +4,7 @@
   const GLOBAL_REFRESH_KEY_COUPON = "fc25_coupon_refresh_minutes_v1";
   const GLOBAL_REFRESH_DEFAULT_MIN = 5;
   const AUTO_REFRESH_ENABLED = false;
+  let globalRefreshIntervalId = null;
 
   function getGlobalRefreshMinutes() {
     const fromMatch = Number(localStorage.getItem(GLOBAL_REFRESH_KEY_MATCH));
@@ -27,7 +28,8 @@
     if (hasDedicatedTimer) return;
 
     const ms = getGlobalRefreshMinutes() * 60 * 1000;
-    setInterval(() => {
+    if (globalRefreshIntervalId) clearInterval(globalRefreshIntervalId);
+    globalRefreshIntervalId = setInterval(() => {
       if (document.visibilityState === "visible") {
         window.location.reload();
       }
