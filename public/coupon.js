@@ -75,10 +75,34 @@ let serverHistoryIntervalId = null;
 let autoCouponRunning = false;
 let autoHealRunning = false;
 let couponCountdownIntervalId = null;
-const stabilityCache = new Map();
+// Cache désactivé pour garantir des données fraîches
+const stabilityCache = {
+  get: () => null,
+  set: () => { },
+  has: () => false,
+  delete: () => { },
+  clear: () => { }
+};
 let ticketSnapshotA = null;
 let ticketSnapshotB = null;
 let lastAntiChaosReport = null;
+
+// Vider tous les caches localStorage liés au coupon au chargement
+(function clearCouponCache() {
+  const keysToClear = [
+    'fifapro_cache_data',
+    'fifapro_cache_metadata',
+    'fifapro_cache_stats',
+    'fc25_stability_cache',
+    'fc25_coupon_cache'
+  ];
+  keysToClear.forEach(key => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) { }
+  });
+  console.log('[Coupon] Cache système vidé');
+})();
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -279,7 +303,7 @@ function pushAlert({ severity = "low", title = "Info", detail = "", type = "info
     if (Notification.permission === "granted") {
       try {
         new Notification(title, { body: detail || "Alerte coupon" });
-      } catch {}
+      } catch { }
     }
   }
 }
@@ -289,7 +313,7 @@ function notifyEvent(title, detail = "") {
   if ("Notification" in window && Notification.permission === "granted") {
     try {
       new Notification(title, { body: detail || "Action terminee" });
-    } catch {}
+    } catch { }
   }
 }
 
@@ -743,26 +767,24 @@ function renderHistory() {
     .map(
       (x, i) => `
       <li class="history-card">
-        <strong>${i + 1}. ${
-          x.type === "validation"
-            ? "Validation"
-            : x.type === "telegram"
+        <strong>${i + 1}. ${x.type === "validation"
+          ? "Validation"
+          : x.type === "telegram"
             ? "Telegram"
             : x.type === "pdf"
-            ? "PDF"
-            : "Coupon"
+              ? "PDF"
+              : "Coupon"
         } - ${new Date(x.at).toLocaleString("fr-FR")}</strong>
         <span>${x.note}</span>
         ${x.story ? `<small>${x.story}</small>` : ""}
-        ${
-          x.metrics
-            ? `<div class="history-metrics">
+        ${x.metrics
+          ? `<div class="history-metrics">
                 <span>Qualite ${Number(x.metrics.qualityScore || 0)}/100</span>
                 <span>Fiabilite ${Number(x.metrics.reliabilityIndex || 0)}/100</span>
                 <span>${Number(x.metrics.selections || 0)} selections</span>
                 <span>Cote ${Number(x.metrics.combinedOdd || 0) ? formatOdd(x.metrics.combinedOdd) : "-"}</span>
               </div>`
-            : ""
+          : ""
         }
       </li>
     `
@@ -824,7 +846,7 @@ async function generateCouponFallback(size, league, profile = "balanced") {
         confiance: Number(opt.confiance.toFixed(1)),
         safetyScore,
       });
-    } catch {}
+    } catch { }
   }
 
   candidates.sort((a, b) => b.safetyScore - a.safetyScore);
@@ -1380,9 +1402,8 @@ async function refreshLiveSimulation() {
     : null;
   const panel = document.getElementById("validation");
   if (panel) {
-    panel.innerHTML = `<p>Simulation live: EV ${ev >= 0 ? "+" : ""}${ev.toFixed(3)} | Stabilite moyenne ${
-      avgStability == null ? "-" : `${avgStability}/100`
-    } | ${formatDateTime(new Date())}</p>`;
+    panel.innerHTML = `<p>Simulation live: EV ${ev >= 0 ? "+" : ""}${ev.toFixed(3)} | Stabilite moyenne ${avgStability == null ? "-" : `${avgStability}/100`
+      } | ${formatDateTime(new Date())}</p>`;
   }
 }
 
@@ -1441,7 +1462,7 @@ async function autoHealCouponByDrift() {
             driftPercent: Number(drift.toFixed(2)),
           });
         }
-      } catch {}
+      } catch { }
     }
     if (events.length > 0) {
       const before = lastCouponData.coupon.map((x) => ({ matchId: x.matchId, pari: x.pari, cote: x.cote }));
@@ -1687,11 +1708,10 @@ function renderPostTicketReport(report) {
     </div>
     <p><strong>Causes dominantes</strong></p>
     <ul class="validation-list">
-      ${
-        reasons.length
-          ? reasons.map((x) => `<li>${x[0]}: ${x[1]}</li>`).join("")
-          : "<li>Aucune cause critique</li>"
-      }
+      ${reasons.length
+      ? reasons.map((x) => `<li>${x[0]}: ${x[1]}</li>`).join("")
+      : "<li>Aucune cause critique</li>"
+    }
     </ul>
   `;
 }
@@ -1946,9 +1966,9 @@ async function applyAntiChaosFilter(coupon = [], { league = "all", risk = "balan
           }
           const chaos = computeChaosScore({ pick, stabilityData: st, allPicks: out });
           if (chaos <= 55) out.push({ ...pick, stabilityScore: st.stability });
-        } catch {}
+        } catch { }
       }
-    } catch {}
+    } catch { }
   }
 
   const report = {
@@ -2167,8 +2187,8 @@ function renderCoupon(data) {
         <span>Cote ${formatOdd(p.cote)} | Confiance ${p.confiance}%</span>
         <span>EV ${computePickEV(p) >= 0 ? "+" : ""}${computePickEV(p).toFixed(3)}</span>
         <div class="confidence-track"><i style="width:${Math.max(4, Math.min(100, Number(p.confiance) || 0))}%"></i><em>${Number(
-          p.confiance || 0
-        ).toFixed(0)}%</em></div>
+        p.confiance || 0
+      ).toFixed(0)}%</em></div>
         <span class="stability-badge" id="stability-${String(p.matchId)}">Stabilite: calcul...</span>
         <span class="quality-badge" id="quality-${String(p.matchId)}">Qualite donnees: ${q.score}/100</span>
         <div class="coach-pick-line">${explainPickSimple(p, data.riskProfile || "balanced")}</div>
@@ -2191,11 +2211,11 @@ function renderCoupon(data) {
           <h4>Pourquoi exclu ? (anti-chaos)</h4>
           <ul>
             ${(data.antiChaosReport.excluded || [])
-              .map(
-                (x) =>
-                  `<li><strong>${x.teams}</strong> - Chaos ${x.chaos}/100 - ${(x.reasons || []).join(", ") || "Risque eleve"}</li>`
-              )
-              .join("")}
+        .map(
+          (x) =>
+            `<li><strong>${x.teams}</strong> - Chaos ${x.chaos}/100 - ${(x.reasons || []).join(", ") || "Risque eleve"}</li>`
+        )
+        .join("")}
           </ul>
         </div>`
       : "";
@@ -2217,10 +2237,9 @@ function renderCoupon(data) {
       <span>Freeze ticket: ${freeze ? "ACTIF" : "OFF"} (${getFreezeMinutes()} min)</span>
     </div>
     <ol>${items}</ol>
-    ${
-      insights.correlationRisk >= 55
-        ? `<p class="correlation-alert">Alerte correlation: ${insights.correlationRisk}% (plusieurs picks proches). Utilise "Remplacer Pick Faible" avant validation.</p>`
-        : ""
+    ${insights.correlationRisk >= 55
+      ? `<p class="correlation-alert">Alerte correlation: ${insights.correlationRisk}% (plusieurs picks proches). Utilise "Remplacer Pick Faible" avant validation.</p>`
+      : ""
     }
     <p class="warning">${data.warning || ""}</p>
     ${antiChaosHtml}
@@ -2283,7 +2302,7 @@ async function buildBackupPlan(coupon = [], profile = "balanced") {
         confidence: Math.max(48, Number(pick.confiance || 55) - 3),
         source: `PLAN_B_${profile.toUpperCase()}`,
       });
-    } catch {}
+    } catch { }
   }
   return backups;
 }
@@ -2341,10 +2360,9 @@ async function renderMultiStrategy() {
 
   panel.innerHTML = `
     <h3>Coupon Multi-Strategie</h3>
-    ${
-      top
-        ? `<p>Comparateur: meilleur compromis actuel <strong>${top.profile.toUpperCase()}</strong> (qualite ${top.quality}/100, risque ${top.riskIndex}/100).</p>`
-        : ""
+    ${top
+      ? `<p>Comparateur: meilleur compromis actuel <strong>${top.profile.toUpperCase()}</strong> (qualite ${top.quality}/100, risque ${top.riskIndex}/100).</p>`
+      : ""
     }
     <div class="risk-grid">${cards.join("")}</div>
   `;
@@ -2800,8 +2818,8 @@ async function fetchCouponPdfBlob(mode = "summary") {
     mode === "detailed"
       ? ["/api/coupon/pdf/detailed", "/api/coupon/pdf", "/api/pdf/coupon", "/api/download/coupon"]
       : mode === "quick"
-      ? ["/api/coupon/pdf/quick", "/api/coupon/pdf/summary", "/api/coupon/pdf", "/api/pdf/coupon", "/api/download/coupon"]
-      : ["/api/coupon/pdf/summary", "/api/coupon/pdf", "/api/pdf/coupon", "/api/download/coupon"];
+        ? ["/api/coupon/pdf/quick", "/api/coupon/pdf/summary", "/api/coupon/pdf", "/api/pdf/coupon", "/api/download/coupon"]
+        : ["/api/coupon/pdf/summary", "/api/coupon/pdf", "/api/pdf/coupon", "/api/download/coupon"];
   let blob = null;
   let lastErr = "Erreur PDF";
   for (const endpoint of endpoints) {
@@ -2927,21 +2945,18 @@ async function downloadCouponImage(mode = "default", forcedFormat) {
     a.click();
     a.remove();
     if (panel) {
-      panel.innerHTML = `<p>${
-        mode === "story" ? "Snap Story" : mode === "premium" ? "Image premium" : "Image coupon"
-      } telecharge${mode === "story" ? "" : "e"}.</p><div class="coupon-image-preview"><img src="${url}" alt="Apercu coupon image"/></div>`;
+      panel.innerHTML = `<p>${mode === "story" ? "Snap Story" : mode === "premium" ? "Image premium" : "Image coupon"
+        } telecharge${mode === "story" ? "" : "e"}.</p><div class="coupon-image-preview"><img src="${url}" alt="Apercu coupon image"/></div>`;
     }
     addHistoryEntry({
       type: "pdf",
       at: new Date().toISOString(),
-      note: `Export ${
-        mode === "story" ? "snap story" : mode === "premium" ? "image premium" : "image coupon"
-      } | ${lastCouponData.summary?.totalSelections ?? 0} selections`,
+      note: `Export ${mode === "story" ? "snap story" : mode === "premium" ? "image premium" : "image coupon"
+        } | ${lastCouponData.summary?.totalSelections ?? 0} selections`,
     });
     notifyEvent(
       "Coupon envoye",
-      `${mode === "story" ? "Snap story" : mode === "premium" ? "Image premium" : "Image coupon"} telecharge${
-        mode === "story" ? "" : "e"
+      `${mode === "story" ? "Snap story" : mode === "premium" ? "Image premium" : "Image coupon"} telecharge${mode === "story" ? "" : "e"
       }.`
     );
     setTimeout(() => URL.revokeObjectURL(url), 30000);
@@ -3011,16 +3026,16 @@ async function generateCoupon() {
   sizeInput.value = String(size);
   setResultHtml("<p>Generation du coupon en cours...</p>");
 
-    try {
-      const league = leagueSelect.value || "all";
-      const risk = normalizeRiskProfile(document.getElementById("riskSelect")?.value || "balanced");
-      if (risk === "ultra_safe") {
-        const driftInput = document.getElementById("driftInput");
-        if (driftInput) driftInput.value = "4";
-      }
-      const apiRisk = risk === "ultra_safe" ? "safe" : risk;
-      const requestedSize = risk === "ultra_safe" ? Math.min(3, size) : size;
-      let data;
+  try {
+    const league = leagueSelect.value || "all";
+    const risk = normalizeRiskProfile(document.getElementById("riskSelect")?.value || "balanced");
+    if (risk === "ultra_safe") {
+      const driftInput = document.getElementById("driftInput");
+      if (driftInput) driftInput.value = "4";
+    }
+    const apiRisk = risk === "ultra_safe" ? "safe" : risk;
+    const requestedSize = risk === "ultra_safe" ? Math.min(3, size) : size;
+    let data;
     try {
       const res = await fetch(
         `/api/coupon?size=${requestedSize}&league=${encodeURIComponent(league)}&risk=${encodeURIComponent(apiRisk)}`,
@@ -3028,46 +3043,46 @@ async function generateCoupon() {
       );
       data = await readJsonSafe(res);
       if (!res.ok || !data.success) throw new Error(data.error || data.message || "Erreur /api/coupon");
-      } catch (primaryErr) {
-        data = await generateCouponFallback(requestedSize, league, risk);
-        if (!data?.success) throw primaryErr;
-      }
-      let baseCoupon = Array.isArray(data?.coupon) ? data.coupon : [];
-      if (risk === "ultra_safe") {
-        baseCoupon = enforceUltraSafePolicy(baseCoupon);
-      }
-      const anti = applyAntiCorrelation(baseCoupon, requestedSize);
-      const antiChaos = await applyAntiChaosFilter(anti.coupon, {
-        league,
-        risk,
-        targetSize: requestedSize,
-      });
-      data = {
-        ...data,
-        riskProfile: risk,
-        coupon: antiChaos.coupon,
-        summary: createCouponSummary(antiChaos.coupon),
-        antiChaosReport: antiChaos.report || null,
-        warning: anti.removed > 0
-          ? `Anti-correlation actif: ${anti.removed} pick(s) retire(s), max ${anti.maxPerLeague} par ligue. ${data?.warning || ""}`
-          : data?.warning,
-      };
-      if (antiChaos.note) {
-        data.warning = `${antiChaos.note} ${data.warning || ""}`;
-      }
-      if (risk === "ultra_safe") {
-        data.warning = `Mode Ultra-Safe: max 3 matchs, cote 1.30-1.95, confiance >=72%, pre-match uniquement. ${data.warning || ""}`;
-      }
-      renderCoupon(data);
-      lastCouponBackups = await buildBackupPlan(Array.isArray(data?.coupon) ? data.coupon : [], risk);
-      renderServerHistoryPanel();
-      pushAlert({
-        severity: "low",
-        title: "Coupon genere",
-        detail: `${data?.summary?.totalSelections || 0} selections | qualite ${computeCouponInsights(data?.coupon || [], risk).qualityScore}/100`,
-        type: "coupon_generated",
-      });
-    } catch (error) {
+    } catch (primaryErr) {
+      data = await generateCouponFallback(requestedSize, league, risk);
+      if (!data?.success) throw primaryErr;
+    }
+    let baseCoupon = Array.isArray(data?.coupon) ? data.coupon : [];
+    if (risk === "ultra_safe") {
+      baseCoupon = enforceUltraSafePolicy(baseCoupon);
+    }
+    const anti = applyAntiCorrelation(baseCoupon, requestedSize);
+    const antiChaos = await applyAntiChaosFilter(anti.coupon, {
+      league,
+      risk,
+      targetSize: requestedSize,
+    });
+    data = {
+      ...data,
+      riskProfile: risk,
+      coupon: antiChaos.coupon,
+      summary: createCouponSummary(antiChaos.coupon),
+      antiChaosReport: antiChaos.report || null,
+      warning: anti.removed > 0
+        ? `Anti-correlation actif: ${anti.removed} pick(s) retire(s), max ${anti.maxPerLeague} par ligue. ${data?.warning || ""}`
+        : data?.warning,
+    };
+    if (antiChaos.note) {
+      data.warning = `${antiChaos.note} ${data.warning || ""}`;
+    }
+    if (risk === "ultra_safe") {
+      data.warning = `Mode Ultra-Safe: max 3 matchs, cote 1.30-1.95, confiance >=72%, pre-match uniquement. ${data.warning || ""}`;
+    }
+    renderCoupon(data);
+    lastCouponBackups = await buildBackupPlan(Array.isArray(data?.coupon) ? data.coupon : [], risk);
+    renderServerHistoryPanel();
+    pushAlert({
+      severity: "low",
+      title: "Coupon genere",
+      detail: `${data?.summary?.totalSelections || 0} selections | qualite ${computeCouponInsights(data?.coupon || [], risk).qualityScore}/100`,
+      type: "coupon_generated",
+    });
+  } catch (error) {
     setResultHtml(`<p>Erreur: ${error.message}</p>`);
     pushAlert({ severity: "high", title: "Echec generation coupon", detail: error.message, type: "coupon_error" });
   }
@@ -3261,11 +3276,11 @@ async function validateTicketFallback(payload) {
         reasonCodes,
         recommendation: recommendation
           ? {
-              pari: recommendation.pari,
-              odd: toNumber(recommendation.cote, 0),
-              confidence: Number(toNumber(recommendation.confiance, 0).toFixed(1)),
-              source: recommendation.source,
-            }
+            pari: recommendation.pari,
+            odd: toNumber(recommendation.cote, 0),
+            confidence: Number(toNumber(recommendation.confiance, 0).toFixed(1)),
+            source: recommendation.source,
+          }
           : null,
       });
 
@@ -3375,7 +3390,7 @@ async function replaceWeakSelection() {
           replacement = { pari: rec.pari, cote: Number(rec.cote), confiance: Number(rec.confiance || target.confiance), source: rec.source };
         }
       }
-    } catch {}
+    } catch { }
 
     if (!replacement) {
       const b = lastCouponBackups.get(String(target.matchId));
@@ -3829,7 +3844,7 @@ async function initCouponPage() {
   if ("Notification" in window && Notification.permission === "default") {
     try {
       Notification.requestPermission();
-    } catch {}
+    } catch { }
   }
 
   if (isAutoCouponEnabled()) {

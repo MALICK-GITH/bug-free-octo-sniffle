@@ -366,12 +366,12 @@ function buildMatchVisualScores(match) {
     mins < 0
       ? 52
       : mins <= 12
-      ? 96
-      : mins <= 45
-      ? 88
-      : mins <= 120
-      ? 72
-      : 58;
+        ? 96
+        : mins <= 45
+          ? 88
+          : mins <= 120
+            ? 72
+            : 58;
   return {
     quality,
     stability,
@@ -398,15 +398,15 @@ function renderVisualScoreStrip(match) {
   return `
     <div class="visual-score-strip" aria-label="Lecture rapide du match">
       ${rows
-        .map(
-          ([label, value]) => `
+      .map(
+        ([label, value]) => `
             <article class="visual-score-card tone-${metricTone(value)}">
               <span>${label}</span>
               <strong>${value}</strong>
             </article>
           `
-        )
-        .join("")}
+      )
+      .join("")}
     </div>
   `;
 }
@@ -493,9 +493,9 @@ function renderWatchlistPanel(matches = []) {
       </div>
       <div class="watchlist-grid">
         ${rows
-          .map((match) => {
-            const metrics = buildMatchVisualScores(match);
-            return `
+      .map((match) => {
+        const metrics = buildMatchVisualScores(match);
+        return `
               <article class="watchlist-card">
                 <div class="watchlist-card-head">
                   <strong>${escapeHtml(match.teamHome)} vs ${escapeHtml(match.teamAway)}</strong>
@@ -512,8 +512,8 @@ function renderWatchlistPanel(matches = []) {
                 </div>
               </article>
             `;
-          })
-          .join("")}
+      })
+      .join("")}
       </div>
     </div>
   `;
@@ -892,7 +892,7 @@ function pushDenicheurHistory(entry) {
       at: Date.now(),
     });
     localStorage.setItem(DENICHEUR_HISTORY_KEY, JSON.stringify(list.slice(0, 3)));
-  } catch {}
+  } catch { }
 }
 
 function renderDenicheurHistoryHtml() {
@@ -949,7 +949,7 @@ function closeDenicheurModal() {
   if (prev && typeof prev.focus === "function" && document.body.contains(prev)) {
     try {
       prev.focus();
-    } catch {}
+    } catch { }
   } else {
     document.getElementById("denicheurLaunchBtn")?.focus();
   }
@@ -1369,8 +1369,8 @@ function renderLeagueHeatmap(matches) {
     </div>
     <div class="heatmap-grid">
       ${rows
-        .map(
-          (r) => `
+      .map(
+        (r) => `
           <article class="heat-row">
             <div class="heat-line">
               <strong>${escapeHtml(r.league)}</strong>
@@ -1380,8 +1380,8 @@ function renderLeagueHeatmap(matches) {
             <small>${r.count} matchs a venir | Fiabilite moyenne ${r.avgReliability}%</small>
           </article>
         `
-        )
-        .join("")}
+      )
+      .join("")}
     </div>
   `;
 }
@@ -1455,9 +1455,9 @@ function renderSiteCommandCenter(matches = []) {
   const metrics = buildSiteCommandMetrics(matches);
   const topRows = metrics.top.length
     ? metrics.top
-        .map((match, index) => {
-          const finder = prudentDenicheurScore(match);
-          return `
+      .map((match, index) => {
+        const finder = prudentDenicheurScore(match);
+        return `
             <article class="command-pick-card">
               <div class="command-pick-rank">#${index + 1}</div>
               <div class="command-pick-main">
@@ -1471,8 +1471,8 @@ function renderSiteCommandCenter(matches = []) {
               <a class="command-pick-link" href="/match.html?id=${encodeURIComponent(match.id)}">Ouvrir</a>
             </article>
           `;
-        })
-        .join("")
+      })
+      .join("")
     : `<p class="command-empty">Aucun pick fort detecte pour le moment.</p>`;
 
   const statusTone =
@@ -1566,12 +1566,12 @@ function renderMatches() {
     effectiveMode === "upcoming"
       ? "A venir"
       : effectiveMode === "turbo"
-      ? "Turbo Top 10"
-      : effectiveMode === "finder"
-      ? "Denicheur"
-      : effectiveMode === "live"
-      ? "En cours"
-      : "Termines";
+        ? "Turbo Top 10"
+        : effectiveMode === "finder"
+          ? "Denicheur"
+          : effectiveMode === "live"
+            ? "En cours"
+            : "Termines";
   subTitle.textContent = `${filtered.length} match(s) (${leagueLabel}, ${modeLabel}) - ${currentModeLabel}`;
   renderSiteCommandCenter(byLeague);
   renderWatchlistPanel(allMatches);
@@ -1778,3 +1778,32 @@ function registerHomeSiteControl() {
 
 registerHomeSiteControl();
 renderFrontlineStatus();
+
+// Écoute les mises à jour du cache intelligent
+window.addEventListener('fc25:matches-refreshed', (e) => {
+  const { matches, changes } = e.detail;
+  if (matches && Array.isArray(matches)) {
+    allMatches = matches;
+    renderWatchlistPanel(allMatches);
+    renderLeagueHeatmap(allMatches);
+    renderMatchFinder(allMatches);
+    renderMatches();
+
+    // Log les changements détectés
+    if (changes && changes.length > 0) {
+      const oddChanges = changes.filter(c => c.type === 'odd');
+      const scoreChanges = changes.filter(c => c.type === 'score');
+      if (oddChanges.length) {
+        console.log(`[IntelligentCache] ${oddChanges.length} côte(s) modifiée(s)`);
+      }
+      if (scoreChanges.length) {
+        console.log(`[IntelligentCache] ${scoreChanges.length} score(s) modifié(s)`);
+      }
+    }
+  }
+});
+
+// Écoute le refresh manuel (pull-to-refresh)
+window.addEventListener('fc25:manual-refresh', () => {
+  loadMatches();
+});
