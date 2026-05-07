@@ -1,14 +1,18 @@
 {
-  "name": "SOLITFIFPRO225",
-  "short_name": "FIFA PRO",
-  "description": "SOLITFIFPRO225 - plateforme live FIFA virtuel: matchs, details, coupons, exports.",
-  "start_url": "/",
+  "name": "SOLITFIFPRO225 - COUP SUBLIME",
+  "short_name": "COUP SUBLIME",
+  "description": "Prediction Engine avance avec visualisation 3D, blockchain trace et communaute.",
+  "start_url": "/coupon-sublime.html",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#050508",
-  "theme_color": "#0f1931",
-  "categories": ["sports", "entertainment"],
+  "orientation": "any",
+  "background_color": "#0a0a0f",
+  "theme_color": "#00f5ff",
+  "categories": [
+    "sports",
+    "entertainment",
+    "utilities"
+  ],
   "lang": "fr",
   "dir": "ltr",
   "icons": [
@@ -27,10 +31,10 @@
   ],
   "shortcuts": [
     {
-      "name": "Matchs Live",
-      "short_name": "Live",
-      "description": "Voir les matchs en direct",
-      "url": "/",
+      "name": "Coup Sublime",
+      "short_name": "Sublime",
+      "description": "Generer un coupon sublime",
+      "url": "/coupon-sublime.html",
       "icons": [
         {
           "src": "/icon-192.svg",
@@ -39,16 +43,42 @@
       ]
     },
     {
-      "name": "Coupon Builder",
-      "short_name": "Coupon",
-      "description": "Créer un coupon de paris",
-      "url": "/coupon.html",
+      "name": "Predictor 3D",
+      "short_name": "3D View",
+      "description": "Visualisation 3D des predictions",
+      "url": "/coupon-sublime.html#predictor",
       "icons": [
         {
           "src": "/icon-192.svg",
           "sizes": "192x192"
         }
       ]
+    },
+    {
+      "name": "Communaute",
+      "short_name": "Social",
+      "description": "Leaderboard et strategies",
+      "url": "/coupon-sublime.html#social",
+      "icons": [
+        {
+          "src": "/icon-192.svg",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/sublime-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "/screenshots/sublime-narrow.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow"
     }
   ]
 }

@@ -2,6 +2,185 @@ function formatOdd(value) {
   return typeof value === "number" ? value.toFixed(3) : "-";
 }
 
+// ============================================
+// SYSTÈME DE NOTIFICATIONS TOAST - SOLITAIRE HACK
+// ============================================
+const ToastSystem = {
+  container: null,
+  init() {
+    if (this.container) return;
+    this.container = document.createElement('div');
+    this.container.id = 'toast-container';
+    this.container.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    `;
+    document.body.appendChild(this.container);
+  },
+  show(message, type = 'info', duration = 3000) {
+    this.init();
+    const toast = document.createElement('div');
+    const colors = {
+      success: '#22c55e',
+      error: '#ef4444',
+      warning: '#f59e0b',
+      info: '#3b82f6'
+    };
+    toast.style.cssText = `
+      background: ${colors[type] || colors.info};
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      font-size: 14px;
+      font-weight: 500;
+      max-width: 300px;
+      word-wrap: break-word;
+      animation: slideIn 0.3s ease;
+      pointer-events: auto;
+    `;
+    toast.textContent = message;
+
+    // Animation CSS
+    if (!document.getElementById('toast-animations')) {
+      const style = document.createElement('style');
+      style.id = 'toast-animations';
+      style.textContent = `
+        @keyframes slideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+          from { transform: translateX(0); opacity: 1; }
+          to { transform: translateX(100%); opacity: 0; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    this.container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.animation = 'slideOut 0.3s ease forwards';
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  }
+};
+
+// ============================================
+// SYSTÈME DE LOADING OVERLAY - SOLITAIRE HACK
+// ============================================
+const LoadingSystem = {
+  overlay: null,
+  activeOperations: new Set(),
+  init() {
+    if (this.overlay) return;
+    this.overlay = document.createElement('div');
+    this.overlay.id = 'loading-overlay';
+    this.overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 22, 40, 0.85);
+      backdrop-filter: blur(4px);
+      z-index: 9998;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      gap: 20px;
+    `;
+    this.overlay.innerHTML = `
+      <div style="
+        width: 60px;
+        height: 60px;
+        border: 4px solid rgba(59, 130, 246, 0.3);
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      "></div>
+      <p id="loading-text" style="
+        color: white;
+        font-size: 16px;
+        font-weight: 500;
+        margin: 0;
+      ">Chargement...</p>
+    `;
+
+    if (!document.getElementById('loading-animations')) {
+      const style = document.createElement('style');
+      style.id = 'loading-animations';
+      style.textContent = `
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    document.body.appendChild(this.overlay);
+  },
+  show(text = 'Chargement...') {
+    this.init();
+    const textEl = this.overlay.querySelector('#loading-text');
+    if (textEl) textEl.textContent = text;
+    this.overlay.style.display = 'flex';
+  },
+  hide() {
+    if (this.overlay) this.overlay.style.display = 'none';
+  },
+  async wrap(fn, text = 'Chargement...') {
+    const opId = Date.now() + Math.random();
+    this.activeOperations.add(opId);
+    this.show(text);
+    try {
+      return await fn();
+    } finally {
+      this.activeOperations.delete(opId);
+      if (this.activeOperations.size === 0) {
+        this.hide();
+      }
+    }
+  }
+};
+
+// ============================================
+// SYSTÈME DE DEBOUNCE - SOLITAIRE HACK
+// ============================================
+const DebounceSystem = {
+  timers: new Map(),
+  fn(fn, delay = 300) {
+    const key = fn.toString();
+    return (...args) => {
+      clearTimeout(this.timers.get(key));
+      this.timers.set(key, setTimeout(() => {
+        fn.apply(this, args);
+        this.timers.delete(key);
+      }, delay));
+    };
+  },
+  once(fn, cooldown = 2000) {
+    let lastCall = 0;
+    return (...args) => {
+      const now = Date.now();
+      if (now - lastCall < cooldown) {
+        ToastSystem.show('Veuillez patienter avant de réessayer', 'warning', 2000);
+        return;
+      }
+      lastCall = now;
+      return fn.apply(this, args);
+    };
+  }
+};
+
 let lastCouponData = null;
 let lastCouponBackups = new Map();
 let lastLadderData = null;

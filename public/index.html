@@ -15,27 +15,47 @@
   <meta name="msapplication-TileColor" content="#050508" />
   <meta name="format-detection" content="telephone=no" />
   <meta name="robots" content="noindex,nofollow" />
+
+  <!-- Content Security Policy -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://api.the-odds-api.com https://www.thesportsdb.com; manifest-src 'self';">
+
+  <!-- Open Graph / Social -->
+  <meta property="og:title" content="SOLITFIFPRO225 - Predictions FIFA">
+  <meta property="og:description" content="Engine de predictions avance avec visualisation 3D, communaute et analytics">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="/">
+  <meta property="og:image" content="/icon-512.svg">
+
   <link rel="manifest" href="/manifest.webmanifest" />
   <title>SOLITFIFPRO225</title>
+
+  <!-- Preconnect for performance -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="dns-prefetch" href="https://api.the-odds-api.com">
+  <link rel="dns-prefetch" href="https://www.thesportsdb.com">
+
   <link
     href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap"
     rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/denicheur-enhanced.css" />
   <link rel="stylesheet" href="/unified-system.css" />
-  <link rel="stylesheet" href="/mobile-optimizations.css" />
-  <link rel="stylesheet" href="/mobile-ultra-premium.css" />
+  <link rel="stylesheet" href="/mobile.css" />
   <link rel="stylesheet" href="/signature.css" />
   <link rel="stylesheet" href="/chat-widget.css" />
-  <link rel="stylesheet" href="/mobile-hard-fix.css" />
   <link rel="stylesheet" href="/power-ui.css" />
-  <link rel="stylesheet" href="/mobile-layout-fix.css" />
   <link rel="stylesheet" href="/site-embellishment.css" />
+  <link rel="stylesheet" href="/skeleton.css" />
+  <link rel="stylesheet" href="/page-transitions.css" />
+  <link rel="stylesheet" href="/theme-system.css" />
 </head>
 
 <body>
+  <!-- Skip Link for Accessibility -->
+  <a href="#main-content" class="skip-link">Aller au contenu principal</a>
+
   <div class="bg-grid" aria-hidden="true"></div>
   <header class="hero">
     <p class="tag">Live Feed 1xBet</p>
@@ -109,7 +129,7 @@
     </div>
   </header>
 
-  <main>
+  <main id="main-content">
     <section class="stats" id="stats"></section>
     <section class="site-command-center" id="siteCommandCenter"></section>
     <section class="frontline-update" id="frontlineUpdateStatus" aria-live="polite"></section>
@@ -188,21 +208,24 @@
     <div class="site-signature">Signe par <strong>SOLITAIRE HACK</strong></div>
   </footer>
 
-  <script src="/mobile-viewport-fix.js"></script>
-  <script src="/mobile-enhancements.js"></script>
-  <script src="/cache-intelligent.js"></script>
+  <!-- System Scripts -->
+  <script src="/theme-system.js"></script>
+  <script src="/web-vitals.js"></script>
+  <script src="/toast-system.js"></script>
   <script src="/lazy-loading-pagination.js"></script>
-  <script src="/mobile-gestures.js"></script>
   <script src="/denicheur-interactive.js"></script>
-  <script src="/unified-system.js"></script>
-  <script src="/solitaire-ai-client.js"></script>
-  <script src="/mobile-ultra-interactions.js"></script>
   <script src="/database-api.js"></script>
-  <script src="/global-ui-shell.js" defer></script>
-  <script src="/app.js" defer></script>
   <script src="/chat-widget.js" defer></script>
-  <script src="/site-reliability.js" defer></script>
-  <script src="/browser-sync.js" defer></script>
+  <script src="/app.js" defer></script>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw-global.js')
+        .then(reg => console.log('[SW] Registered:', reg.scope))
+        .catch(err => console.log('[SW] Failed:', err));
+    }
+  </script>
 </body>
 
 </html>
