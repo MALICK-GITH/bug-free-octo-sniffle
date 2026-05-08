@@ -9,7 +9,7 @@ class MatchMobileGestures {
     this.longPressThreshold = 500;
     this.longPressTimer = null;
     this.isLongPress = false;
-    
+
     this.init();
   }
 
@@ -110,7 +110,7 @@ class MatchMobileGestures {
   handleSwipeRight() {
     console.log('👉 Swipe right detected');
     this.showNavigationHint('Précédent');
-    
+
     // Navigate to previous section or page
     const currentSection = this.getCurrentSection();
     if (currentSection) {
@@ -124,7 +124,7 @@ class MatchMobileGestures {
   handleSwipeLeft() {
     console.log('👈 Swipe left detected');
     this.showNavigationHint('Suivant');
-    
+
     // Navigate to next section
     const currentSection = this.getCurrentSection();
     if (currentSection) {
@@ -133,25 +133,26 @@ class MatchMobileGestures {
   }
 
   handleSwipeUp() {
-    console.log('👆 Swipe up detected');
-    this.showNavigationHint('Défiler vers le haut');
-    
-    // Scroll to top or show more details
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // NOTE: Scroll vers le haut désactivé - comportement intrusif pour l'UX
+    // L'utilisateur peut utiliser le bouton back ou scroller manuellement
+    console.log('👆 Swipe up detected (no action)');
   }
 
   handleSwipeDown() {
-    console.log('👇 Swipe down detected');
-    this.showNavigationHint('Actualiser');
-    
-    // Trigger pull-to-refresh
-    this.triggerPullToRefresh();
+    // NOTE: Pull-to-refresh désactivé sur les pages de détail
+    // Seulement actif en haut de page (window.scrollY === 0)
+    if (window.scrollY === 0) {
+      console.log('👇 Pull to refresh triggered');
+      this.triggerPullToRefresh();
+    } else {
+      console.log('👇 Swipe down ignored - not at top');
+    }
   }
 
   getCurrentSection() {
     const sections = document.querySelectorAll('.panel');
     const viewportCenter = window.innerHeight / 2;
-    
+
     for (let section of sections) {
       const rect = section.getBoundingClientRect();
       if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
@@ -164,18 +165,18 @@ class MatchMobileGestures {
   navigateToSection(direction) {
     const sections = Array.from(document.querySelectorAll('.panel'));
     const currentSection = this.getCurrentSection();
-    
+
     if (!currentSection) return;
-    
+
     const currentIndex = sections.indexOf(currentSection);
     let targetIndex;
-    
+
     if (direction === 'next') {
       targetIndex = Math.min(currentIndex + 1, sections.length - 1);
     } else {
       targetIndex = Math.max(currentIndex - 1, 0);
     }
-    
+
     const targetSection = sections[targetIndex];
     if (targetSection) {
       targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -205,10 +206,10 @@ class MatchMobileGestures {
 
     document.addEventListener('touchmove', (e) => {
       if (!isPulling) return;
-      
+
       const currentY = e.touches[0].clientY;
       pullDistance = currentY - startY;
-      
+
       if (pullDistance > 0 && pullDistance < maxPull) {
         e.preventDefault();
         this.showPullIndicator(pullDistance);
@@ -217,13 +218,13 @@ class MatchMobileGestures {
 
     document.addEventListener('touchend', (e) => {
       if (!isPulling) return;
-      
+
       isPulling = false;
-      
+
       if (pullDistance > 80) {
         this.triggerPullToRefresh();
       }
-      
+
       this.hidePullIndicator();
       pullDistance = 0;
     });
@@ -231,7 +232,7 @@ class MatchMobileGestures {
 
   showPullIndicator(distance) {
     let indicator = document.getElementById('pullIndicator');
-    
+
     if (!indicator) {
       indicator = document.createElement('div');
       indicator.id = 'pullIndicator';
@@ -241,7 +242,7 @@ class MatchMobileGestures {
       `;
       document.body.appendChild(indicator);
     }
-    
+
     const progress = Math.min(distance / 120, 1);
     indicator.style.transform = `translateY(${Math.min(distance, 120)}px) scale(${0.8 + progress * 0.2})`;
     indicator.style.opacity = progress;
@@ -259,7 +260,7 @@ class MatchMobileGestures {
   triggerPullToRefresh() {
     console.log('🔄 Pull to refresh triggered');
     this.showRefreshIndicator();
-    
+
     // Trigger page reload or data refresh
     setTimeout(() => {
       window.location.reload();
@@ -274,7 +275,7 @@ class MatchMobileGestures {
       <div class="refresh-text">Actualisation...</div>
     `;
     document.body.appendChild(indicator);
-    
+
     setTimeout(() => {
       indicator.remove();
     }, 2000);
@@ -283,7 +284,7 @@ class MatchMobileGestures {
   setupSwipeNavigation() {
     // Add swipe hints to interactive elements
     const interactiveElements = document.querySelectorAll('.panel, .recommendation-card, .bot-card');
-    
+
     interactiveElements.forEach(element => {
       element.classList.add('swipeable');
       element.addEventListener('mouseenter', () => this.showSwipeHint(element));
@@ -293,12 +294,12 @@ class MatchMobileGestures {
 
   showSwipeHint(element) {
     if (!this.isMobile()) return;
-    
+
     const hint = document.createElement('div');
     hint.className = 'swipe-hint';
     hint.innerHTML = '↔️ Swipe pour naviguer';
     element.appendChild(hint);
-    
+
     setTimeout(() => {
       hint.remove();
     }, 2000);
@@ -312,7 +313,7 @@ class MatchMobileGestures {
   setupLongPress() {
     // Add long press functionality to cards
     const cards = document.querySelectorAll('.recommendation-card, .bot-card, .market-card');
-    
+
     cards.forEach(card => {
       card.addEventListener('touchstart', (e) => this.handleCardTouchStart(e, card), { passive: false });
       card.addEventListener('touchend', (e) => this.handleCardTouchEnd(e, card), { passive: false });
@@ -387,7 +388,7 @@ class MatchMobileGestures {
 
   handleContextMenuAction(action, card) {
     console.log(`📱 Context menu action: ${action}`);
-    
+
     switch (action) {
       case 'share':
         this.shareCard(card);
@@ -419,7 +420,7 @@ class MatchMobileGestures {
   bookmarkCard(card) {
     const cardId = card.dataset.id || 'unknown';
     const bookmarks = JSON.parse(localStorage.getItem('match_bookmarks') || '[]');
-    
+
     if (!bookmarks.includes(cardId)) {
       bookmarks.push(cardId);
       localStorage.setItem('match_bookmarks', JSON.stringify(bookmarks));
@@ -433,7 +434,7 @@ class MatchMobileGestures {
     // Highlight card and scroll to details
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     card.classList.add('card-details-highlighted');
-    
+
     setTimeout(() => {
       card.classList.remove('card-details-highlighted');
     }, 2000);
@@ -455,28 +456,28 @@ class MatchMobileGestures {
   setupPinchZoom() {
     let scale = 1;
     let initialDistance = 0;
-    
+
     const charts = document.querySelectorAll('.chart-wrapper canvas');
-    
+
     charts.forEach(chart => {
       chart.addEventListener('touchstart', (e) => {
         if (e.touches.length === 2) {
           initialDistance = this.getDistance(e.touches[0], e.touches[1]);
         }
       });
-      
+
       chart.addEventListener('touchmove', (e) => {
         if (e.touches.length === 2) {
           e.preventDefault();
           const currentDistance = this.getDistance(e.touches[0], e.touches[1]);
           const scaleChange = currentDistance / initialDistance;
           scale = Math.min(Math.max(0.5, scale * scaleChange), 3);
-          
+
           chart.style.transform = `scale(${scale})`;
           initialDistance = currentDistance;
         }
       });
-      
+
       chart.addEventListener('touchend', () => {
         if (scale !== 1) {
           setTimeout(() => {
@@ -501,13 +502,13 @@ class MatchMobileGestures {
       <div class="hint-icon">${direction === 'Précédent' ? '👉' : '👈'}</div>
       <div class="hint-text">${direction}</div>
     `;
-    
+
     document.body.appendChild(hint);
-    
+
     setTimeout(() => {
       hint.classList.add('hint-show');
     }, 10);
-    
+
     setTimeout(() => {
       hint.classList.remove('hint-show');
       setTimeout(() => hint.remove(), 300);
@@ -518,13 +519,13 @@ class MatchMobileGestures {
     const toast = document.createElement('div');
     toast.className = 'mobile-toast';
     toast.textContent = message;
-    
+
     document.body.appendChild(toast);
-    
+
     setTimeout(() => {
       toast.classList.add('toast-show');
     }, 10);
-    
+
     setTimeout(() => {
       toast.classList.remove('toast-show');
       setTimeout(() => toast.remove(), 300);

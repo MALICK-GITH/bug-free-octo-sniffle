@@ -9,11 +9,20 @@
     "Chart": "readonly"
   },
   "parserOptions": {
-    "ecmaVersion": "latest"
+    "ecmaVersion": "latest",
+    "sourceType": "module"
   },
   "rules": {
-    "no-unused-vars": ["warn", { "args": "none", "varsIgnorePattern": "^_" }],
+    "no-unused-vars": [
+      "warn",
+      {
+        "args": "none",
+        "varsIgnorePattern": "^_"
+      }
+    ],
     "no-undef": "error"
   },
-  "ignorePatterns": ["node_modules/**"]
+  "ignorePatterns": [
+    "node_modules/**"
+  ]
 }

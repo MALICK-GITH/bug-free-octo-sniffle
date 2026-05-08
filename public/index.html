@@ -50,6 +50,7 @@
   <link rel="stylesheet" href="/skeleton.css" />
   <link rel="stylesheet" href="/page-transitions.css" />
   <link rel="stylesheet" href="/theme-system.css" />
+  <link rel="stylesheet" href="/global-enhancements.css" />
 </head>
 
 <body>
@@ -208,24 +209,19 @@
     <div class="site-signature">Signe par <strong>SOLITAIRE HACK</strong></div>
   </footer>
 
-  <!-- System Scripts -->
-  <script src="/theme-system.js"></script>
-  <script src="/web-vitals.js"></script>
-  <script src="/toast-system.js"></script>
-  <script src="/lazy-loading-pagination.js"></script>
-  <script src="/denicheur-interactive.js"></script>
-  <script src="/database-api.js"></script>
+  <!-- Global Enhancement Scripts -->
+  <script src="/performance-optimizations.js" defer></script>
+  <script src="/accessibility-enhancements.js" defer></script>
+  <script src="/image-optimizer.js" defer></script>
+
+  <!-- Main Application Module -->
+  <script type="module" src="/main.js"></script>
+
+  <!-- Legacy Scripts (à migrer progressivement) -->
+  <script src="/denicheur-interactive.js" defer></script>
+  <script src="/database-api.js" defer></script>
   <script src="/chat-widget.js" defer></script>
   <script src="/app.js" defer></script>
-
-  <!-- Service Worker Registration -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw-global.js')
-        .then(reg => console.log('[SW] Registered:', reg.scope))
-        .catch(err => console.log('[SW] Failed:', err));
-    }
-  </script>
 </body>
 
 </html>
