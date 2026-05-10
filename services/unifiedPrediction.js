@@ -1,3 +1,5 @@
+const { getLeagueProfile, getLeagueProfileSummary, scoreMarketAgainstProfile } = require("./leagueProfiles");
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -36,11 +38,12 @@ function scoreFromContext(ctx) {
   return parseNumber(ctx?.score1, 0) + parseNumber(ctx?.score2, 0);
 }
 
-function analyserPariUnifie(pari, team1, team2, _league, score1, score2, minute) {
+function analyserPariUnifie(pari, team1, team2, league, score1, score2, minute) {
   let confiance = 50;
   const nom = normalizeText(pari.nom);
   const cote = parseNumber(pari.cote, 2);
   const total = score1 + score2;
+  const leagueProfile = getLeagueProfile(league);
 
   if (isOffensiveTeam(team1)) confiance += 8;
   if (isOffensiveTeam(team2)) confiance += 8;
@@ -56,14 +59,17 @@ function analyserPariUnifie(pari, team1, team2, _league, score1, score2, minute)
     if (minute >= 70) confiance += 6;
   }
 
+  confiance += scoreMarketAgainstProfile(leagueProfile, nom) * 0.35;
   if (cote >= 1.8 && cote <= 2.5) confiance += 10;
+  if (leagueProfile?.exactScoreAllowed === false && nom.includes("score exact")) confiance -= 18;
   return clamp(confiance, 5, 95);
 }
 
-function analyserPariIA(pari, team1, team2, _league, score1, score2, minute) {
+function analyserPariIA(pari, team1, team2, league, score1, score2, minute) {
   let confiance = 55;
   const nom = normalizeText(pari.nom);
   const total = score1 + score2;
+  const leagueProfile = getLeagueProfile(league);
 
   if (nom.includes("total")) {
     if (nom.includes("plus")) {
@@ -85,16 +91,19 @@ function analyserPariIA(pari, team1, team2, _league, score1, score2, minute) {
   if ((normalizeText(team1).includes("arsenal") || normalizeText(team2).includes("arsenal")) && nom.includes("plus")) {
     confiance += 12;
   }
+  confiance += scoreMarketAgainstProfile(leagueProfile, nom) * 0.3;
+  if (leagueProfile?.exactScoreAllowed === false && nom.includes("score exact")) confiance -= 18;
   return clamp(confiance, 5, 95);
 }
 
-function analyserPariProbabilites(pari, score1, score2, _minute) {
+function analyserPariProbabilites(pari, team1, team2, league, score1, score2, minute) {
   let confiance = 50;
   const nom = normalizeText(pari.nom);
   const cote = parseNumber(pari.cote, 2);
   const probImplicite = (1 / Math.max(cote, 0.01)) * 100;
   let probEstimee = 50;
   const total = score1 + score2;
+  const leagueProfile = getLeagueProfile(league);
 
   if (nom.includes("total")) {
     if (nom.includes("plus")) {
@@ -115,6 +124,8 @@ function analyserPariProbabilites(pari, score1, score2, _minute) {
   if (probEstimee > probImplicite) {
     confiance += (probEstimee - probImplicite) * 0.5;
   }
+  confiance += scoreMarketAgainstProfile(leagueProfile, nom) * 0.25;
+  if (leagueProfile?.exactScoreAllowed === false && nom.includes("score exact")) confiance -= 18;
   return clamp(confiance, 5, 95);
 }
 
@@ -131,10 +142,11 @@ function calculerValue(pari) {
   return Math.max(((probEstimee - probImplicite) / probImplicite) * 100, -50);
 }
 
-function analyserPariStat(pari, team1, team2, _league, score1, score2, minute) {
+function analyserPariStat(pari, team1, team2, league, score1, score2, minute) {
   let confiance = 52;
   const nom = normalizeText(pari.nom);
   const total = score1 + score2;
+  const leagueProfile = getLeagueProfile(league);
 
   if (nom.includes("total")) {
     if (minute <= 30) {
@@ -153,6 +165,8 @@ function analyserPariStat(pari, team1, team2, _league, score1, score2, minute) {
 
   const hash = Array.from(`${team1}${team2}`).reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 100;
   if (hash > 60) confiance += 8;
+  confiance += scoreMarketAgainstProfile(leagueProfile, nom) * 0.25;
+  if (leagueProfile?.exactScoreAllowed === false && nom.includes("score exact")) confiance -= 18;
   return clamp(confiance, 5, 95);
 }
 
@@ -177,7 +191,7 @@ function runBots({ team1, team2, league, paris, score1, score2, minute }) {
     .map((p) => ({ nom: p.nom, cote: p.cote, confiance: p.confiance, type: detectBetType(p.nom), source: "BOT_IA" }));
 
   const botProbaRows = valid
-    .map((p) => ({ ...p, confiance: analyserPariProbabilites(p, score1, score2, minute) }))
+    .map((p) => ({ ...p, confiance: analyserPariProbabilites(p, team1, team2, league, score1, score2, minute) }))
     .filter((p) => p.confiance >= 55)
     .map((p) => ({ nom: p.nom, cote: p.cote, confiance: p.confiance, type: detectBetType(p.nom), source: "BOT_PROBABILITES" }));
 
@@ -223,6 +237,7 @@ function detectTypeFromName(nomPari) {
 
 function maitrePronostics(decisionsBots, team1, team2, league) {
   const decisionsValides = [];
+  const leagueProfile = getLeagueProfile(league);
 
   for (const [botName, decision] of Object.entries(decisionsBots)) {
     if (!decision || !Array.isArray(decision.paris_recommandes)) continue;
@@ -280,7 +295,11 @@ function maitrePronostics(decisionsBots, team1, team2, league) {
   const nbBotsTotal = decisionsValides.length;
   const confianceConsensus = clamp((votes.length / nbBotsTotal) * 100, 0, 90);
   const confianceMoyenneBots = decisionsValides.reduce((a, x) => a + x.confiance_bot, 0) / nbBotsTotal;
-  const confianceGlobale = confianceConsensus * 0.6 + confianceMoyenneBots * 0.4;
+  const confianceGlobale = clamp(
+    confianceConsensus * 0.6 + confianceMoyenneBots * 0.4 + Number(leagueProfile?.reliabilityBoost || 0),
+    0,
+    100
+  );
   const confiancePari = votes.reduce((a, x) => a + x.confiance, 0) / votes.length;
   const meilleurVote = votes.reduce((best, v) => (v.confiance > best.confiance ? v : best), votes[0]);
 
@@ -318,6 +337,7 @@ function maitrePronostics(decisionsBots, team1, team2, league) {
       bots_supporters: votes.map((v) => v.bot),
       types_paris_analyses: new Set(decisionsValides.flatMap((d) => d.paris.map((p) => detectTypeFromName(p.nom)))).size,
       confiance_pari: Number(confiancePari.toFixed(1)),
+      profil_ligue: getLeagueProfileSummary(leagueProfile),
     },
     meta: {
       timestamp: new Date().toISOString(),
@@ -329,10 +349,12 @@ function maitrePronostics(decisionsBots, team1, team2, league) {
 }
 
 function analyseAvancee(team1, team2, league, paris, score1, score2, minute) {
+  const leagueProfile = getLeagueProfile(league);
   const analyses = paris.map((pari) => {
     const cote = parseNumber(pari.cote, 2);
     const nom = String(pari.nom || "Pari inconnu");
     const total = score1 + score2;
+    const profileScore = scoreMarketAgainstProfile(leagueProfile, nom);
 
     let contexte = 50;
     if (normalizeText(nom).includes("plus") && normalizeText(nom).includes("2.5")) {
@@ -347,6 +369,7 @@ function analyseAvancee(team1, team2, league, paris, score1, score2, minute) {
     if (isOffensiveTeam(team1) || isOffensiveTeam(team2)) equipe += 12;
     let ligue = 50;
     if (normalizeText(league).includes("bundesliga") && normalizeText(nom).includes("plus")) ligue += 15;
+    ligue += profileScore * 0.45;
     let momentum = 50;
     if (total >= 2 && minute < 60 && normalizeText(nom).includes("plus")) momentum += 20;
     if (total === 0 && minute > 45 && normalizeText(nom).includes("moins")) momentum += 15;
@@ -362,6 +385,7 @@ function analyseAvancee(team1, team2, league, paris, score1, score2, minute) {
     else if (scoreComposite >= 70 && value > 10) recommandation = "MISE RECOMMANDEE";
     else if (scoreComposite >= 60 && value > 5) recommandation = "MISE MODEREE";
     else if (scoreComposite >= 50) recommandation = "MISE PRUDENTE";
+    if (leagueProfile?.exactScoreAllowed === false && normalizeText(nom).includes("score exact")) recommandation = "EVITER";
 
     return {
       pari: nom,
@@ -394,6 +418,7 @@ function genererPredictionUnifiee({ team1, team2, league, context, bets }) {
   const score1 = parseNumber(context?.score1, 0);
   const score2 = parseNumber(context?.score2, 0);
   const minute = parseNumber(context?.minute, 0);
+  const leagueProfile = getLeagueProfile(league);
 
   const bots = runBots({ team1, team2, league, paris: bets, score1, score2, minute });
   const maitre = maitrePronostics(bots, team1, team2, league);
@@ -408,6 +433,7 @@ function genererPredictionUnifiee({ team1, team2, league, context, bets }) {
       context: { score1, score2, minute },
       betsAnalysed: bets.length,
       validOddsRange: "1.399 - 3.0",
+      leagueProfile: getLeagueProfileSummary(leagueProfile),
     },
     bots,
     maitre,

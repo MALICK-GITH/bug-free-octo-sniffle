@@ -17,20 +17,8 @@ class DenicheurEnhanced {
 
   init() {
     console.log('🎯 Denicheur Initializing...');
-    
-    // Setup UI enhancements
+
     this.setupUIEnhancements();
-    
-    // Setup interactive features
-    
-    // Setup real-time updates
-    
-    // Setup filters
-    
-    // Setup animations
-    
-    // Setup mobile optimizations
-    
   }
 
   setupUIEnhancements() {

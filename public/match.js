@@ -28,6 +28,14 @@ function formatOdd(value) {
   return typeof value === "number" ? value.toFixed(3) : "-";
 }
 
+function promptExactScoreImageChoice(label = "cette image") {
+  try {
+    return window.confirm(`Inclure le score exact dans ${label} ?\nOK = avec score exact\nAnnuler = sans score exact`);
+  } catch {
+    return false;
+  }
+}
+
 function toNumber(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -43,6 +51,15 @@ function chartGridColor() {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function isLowDataModeEnabled() {
@@ -479,6 +496,15 @@ function isValidExactScoreEntry(entry) {
   return Number.isFinite(entry.probability);
 }
 
+function normalizeExactScoreProjection(projection) {
+  return {
+    ...projection,
+    alternatives: Array.isArray(projection.alternatives) ? projection.alternatives : [],
+    overLines: Array.isArray(projection.overLines) ? projection.overLines : [],
+    narrative: typeof projection.narrative === "string" ? projection.narrative : "",
+  };
+}
+
 function isValidExactScoreProjection(projection) {
   if (!projection || typeof projection !== "object") return false;
   if (!isValidExactScoreEntry(projection.primary)) return false;
@@ -492,7 +518,6 @@ function isValidExactScoreProjection(projection) {
   if (!Number.isFinite(projection.fitScore)) return false;
   if (!Number.isFinite(projection.marketSupport)) return false;
   if (!Number.isFinite(projection.bttsProb) && projection.bttsProb !== null) return false;
-  if (typeof projection.narrative !== "string" || !projection.narrative.trim()) return false;
   return true;
 }
 
@@ -550,6 +575,9 @@ function findBestExactScoreModel(match, markets = []) {
 }
 
 function buildExactScoreProjection(data) {
+  if (data?.exactScoreAvailable === false || data?.leagueProfile?.exactScoreAllowed === false) {
+    return null;
+  }
   const backendExactScore = data?.exactScore;
   const backendProjection =
     backendExactScore && typeof backendExactScore === "object" && "available" in backendExactScore
@@ -558,7 +586,7 @@ function buildExactScoreProjection(data) {
         : null
       : backendExactScore;
   if (isValidExactScoreProjection(backendProjection)) {
-    return backendProjection;
+    return normalizeExactScoreProjection(backendProjection);
   }
 
   const match = data?.match || {};
@@ -606,7 +634,9 @@ function renderExactScorePanel(data) {
   if (!host) return;
   const projection = buildExactScoreProjection(data);
   if (!projection) {
-    host.innerHTML = "<p>Projection score exact indisponible pour ce match.</p>";
+    host.innerHTML = data?.leagueProfile?.exactScoreAllowed === false
+      ? "<p>Projection score exact desactivee pour cette ligue. Le moteur privilegie alors les recommandations plus robustes.</p>"
+      : "<p>Projection score exact indisponible pour ce match.</p>";
     return;
   }
 
@@ -615,6 +645,8 @@ function renderExactScorePanel(data) {
   const totalLine = projection.totalGoals.toFixed(2);
   const bttsText =
     projection.bttsProb == null ? "BTTS non exploitable" : `BTTS oui estime a ${(projection.bttsProb * 100).toFixed(1)}%`;
+  const leagueProfileLabel = data?.leagueProfile?.title ? `<span class="exact-score-profile">Profil ligue: ${escapeHtml(data.leagueProfile.title)}</span>` : "";
+  const narrative = projection.narrative ? escapeHtml(projection.narrative) : "Lecture analytique complementaire indisponible.";
 
   host.innerHTML = `
     <div class="exact-score-imperial ${reliabilityTone}">
@@ -652,7 +684,7 @@ function renderExactScorePanel(data) {
         </article>
         <article class="exact-score-card">
           <strong>Lecture terrain</strong>
-          <p>${projection.narrative}</p>
+          <p>${narrative}</p>
         </article>
         <article class="exact-score-card">
           <strong>Validation marches</strong>
@@ -662,6 +694,7 @@ function renderExactScorePanel(data) {
       <div class="exact-score-note">
         Projection analytique haute precision, a lire comme scenario dominant et non comme certitude absolue.
       </div>
+      ${leagueProfileLabel ? `<div class="exact-score-note">${leagueProfileLabel}</div>` : ""}
     </div>
   `;
 }
@@ -706,6 +739,7 @@ function pickSingleSelectionFromDetails(data) {
     pari,
     cote,
     confiance: Number.isFinite(confiance) ? Number(confiance.toFixed(1)) : 55,
+    exactScore: data?.exactScoreAvailable === false ? null : data?.exactScore || null,
   };
 }
 
@@ -759,7 +793,7 @@ async function sendCurrentMatchToTelegram() {
   }
 }
 
-async function sendCurrentMatchImageToTelegram() {
+async function sendCurrentMatchImageToTelegram(includeExactScore = null) {
   const btn = document.getElementById("sendMatchTelegramImageBtn");
   if (!lastDetailsData) return;
   const selection = pickSingleSelectionFromDetails(lastDetailsData);
@@ -774,12 +808,15 @@ async function sendCurrentMatchImageToTelegram() {
   }
 
   try {
+    const exactScoreImage =
+      includeExactScore === null ? promptExactScoreImageChoice("l'image du match Telegram") : Boolean(includeExactScore);
     const payload = {
       coupon: [selection],
       summary: couponSummary([selection]),
       riskProfile: "single-match",
       sendImage: true,
       imageFormat: "png",
+      includeExactScore: exactScoreImage,
     };
     const res = await fetch("/api/coupon/send-telegram", {
       method: "POST",
@@ -894,7 +931,7 @@ async function downloadCurrentMatchPdf() {
   }
 }
 
-async function downloadCurrentMatchImage() {
+async function downloadCurrentMatchImage(includeExactScore = null) {
   if (!lastDetailsData) return;
   const selection = pickSingleSelectionFromDetails(lastDetailsData);
   if (!selection) {
@@ -903,11 +940,14 @@ async function downloadCurrentMatchImage() {
   }
 
   try {
+    const exactScoreImage =
+      includeExactScore === null ? promptExactScoreImageChoice("l'image du match") : Boolean(includeExactScore);
     const payload = {
       coupon: [selection],
       summary: couponSummary([selection]),
       riskProfile: "single-match",
       format: "png",
+      includeExactScore: exactScoreImage,
     };
     const endpoints = ["/api/coupon/image"];
     let blob = null;

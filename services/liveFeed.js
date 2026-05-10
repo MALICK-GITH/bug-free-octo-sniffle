@@ -2,6 +2,7 @@ const API_URL =
   "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=40&lng=fr&gr=285&mode=4&country=96&getEmpty=true&virtualSports=true&noFilterBlockEvent=true";
 const { genererPredictionUnifiee, detectBetType } = require("./unifiedPrediction");
 const { evaluateMatch } = require("./extraPowerFilter");
+const { getLeagueProfile, getLeagueProfileSummary, scoreMarketAgainstProfile, weightExactScoreProbability } = require("./leagueProfiles");
 
 const PENALTY_KEYWORDS = [
   "penalty",
@@ -364,6 +365,11 @@ function findBestExactScoreModel(match, markets = []) {
 }
 
 function buildExactScoreProjection(match, bettingMarkets = [], prediction = null) {
+  const leagueProfile = getLeagueProfile(match?.league);
+  if (leagueProfile?.exactScoreAllowed === false) {
+    return null;
+  }
+
   const projection = findBestExactScoreModel(match, bettingMarkets);
   if (!projection) return null;
 
@@ -376,16 +382,36 @@ function buildExactScoreProjection(match, bettingMarkets = [], prediction = null
   const awayLambda = currentAway + projection.awayLambda * remainingFactor;
   const finalModel = computeScoreMatrix(homeLambda, awayLambda);
 
-  const topScores = finalModel.matrix.slice(0, 4).map((item) => ({
-    score: `${item.home}-${item.away}`,
-    probability: item.probability,
-  }));
+  const weightedScores = finalModel.matrix
+    .map((item) => ({
+      home: item.home,
+      away: item.away,
+      probability: weightExactScoreProbability(leagueProfile, item.home + item.away, item.probability),
+    }))
+    .filter((item) => Number.isFinite(item.probability) && item.probability >= 0);
+  const weightedTotal = weightedScores.reduce((sum, item) => sum + item.probability, 0) || 1;
+  const topScores = weightedScores
+    .map((item) => ({
+      score: `${item.home}-${item.away}`,
+      probability: item.probability / weightedTotal,
+    }))
+    .sort((a, b) => b.probability - a.probability)
+    .slice(0, 4);
   const primary = topScores[0];
   const alternatives = topScores.slice(1, 4);
   const confidenceBase = Number(prediction?.maitre?.decision_finale?.confiance_numerique || 60);
-  const marketSupport = Math.min(100, projection.signals.overLines.length * 18 + (projection.signals.bttsProb != null ? 18 : 0) + 36);
+  const marketSupport = clamp(
+    Math.min(100, projection.signals.overLines.length * 18 + (projection.signals.bttsProb != null ? 18 : 0) + 36) +
+      Math.max(-12, Math.min(12, scoreMarketAgainstProfile(leagueProfile, "score exact"))),
+    0,
+    100
+  );
   const fitScore = clamp(Math.round(100 - projection.loss * 260), 18, 96);
-  const reliability = clamp(Math.round(fitScore * 0.44 + confidenceBase * 0.34 + marketSupport * 0.22), 20, 95);
+  const reliability = clamp(
+    Math.round(fitScore * 0.44 + confidenceBase * 0.34 + marketSupport * 0.22 + Number(leagueProfile?.reliabilityBoost || 0)),
+    20,
+    95
+  );
   const totalGoals = homeLambda + awayLambda;
   const intensity =
     totalGoals >= 4.2 ? "match tres ouvert" : totalGoals >= 3 ? "match ouvert" : totalGoals >= 2.2 ? "match equilibre" : "match ferme";
@@ -409,6 +435,7 @@ function buildExactScoreProjection(match, bettingMarkets = [], prediction = null
     bttsProb: projection.signals.bttsProb,
     predictions: topScores,
     method: "poisson-odds-market-v1",
+    leagueProfile: getLeagueProfileSummary(leagueProfile),
     narrative: `${intensity}, ${edge}. Projection issue d'un moteur multi-signaux (1X2${projection.signals.overLines.length ? " + totals" : ""}${projection.signals.bttsProb != null ? " + BTTS" : ""}).`,
   };
 }
@@ -621,6 +648,7 @@ async function getMatchPredictionDetails(matchId) {
 function buildMatchPredictionDetails(event) {
   const match = simplifyEvent(event);
   const bets = extractAllBets(event);
+  const leagueProfile = getLeagueProfile(match.league);
   const prediction = genererPredictionUnifiee({
     team1: match.teamHome,
     team2: match.teamAway,
@@ -635,6 +663,8 @@ function buildMatchPredictionDetails(event) {
     bettingMarkets: bets,
     prediction,
     exactScore,
+    exactScoreAvailable: Boolean(exactScore),
+    leagueProfile: getLeagueProfileSummary(leagueProfile),
   };
 }
 
@@ -654,6 +684,7 @@ function pickCouponOption(details, profile = "balanced") {
   const master = details?.prediction?.maitre?.decision_finale || {};
   const top = details?.prediction?.analyse_avancee?.top_3_recommandations || [];
   const marketByName = new Map((details?.bettingMarkets || []).map((m) => [m.nom, m]));
+  const leagueProfile = getLeagueProfile(details?.match?.league);
 
   const masterMarket = marketByName.get(master.pari_choisi);
   if (
@@ -666,13 +697,17 @@ function pickCouponOption(details, profile = "balanced") {
     return {
       pari: masterMarket.nom,
       cote: masterMarket.cote,
-      confiance: master.confiance_numerique,
+      confiance: clamp(master.confiance_numerique + scoreMarketAgainstProfile(leagueProfile, masterMarket.nom) * 0.35, 0, 100),
       source: "MAITRE",
     };
   }
 
   const bestTop = top
     .filter((x) => Number.isFinite(x?.cote) && x.cote >= cfg.minOdd && x.cote <= cfg.maxOdd)
+    .map((entry) => ({
+      ...entry,
+      score_composite: Number(entry.score_composite || 0) + scoreMarketAgainstProfile(leagueProfile, entry.pari) * 0.3,
+    }))
     .sort((a, b) => b.score_composite - a.score_composite)[0];
   if (bestTop) {
     return {
@@ -685,12 +720,16 @@ function pickCouponOption(details, profile = "balanced") {
 
   const fallback = (details?.bettingMarkets || [])
     .filter((m) => m.cote >= cfg.minOdd && m.cote <= cfg.maxOdd)
-    .sort((a, b) => a.cote - b.cote)[0];
+    .map((market) => ({
+      ...market,
+      score_profile: scoreMarketAgainstProfile(leagueProfile, market.nom),
+    }))
+    .sort((a, b) => (b.score_profile || 0) - (a.score_profile || 0) || a.cote - b.cote)[0];
   if (!fallback) return null;
   return {
     pari: fallback.nom,
     cote: fallback.cote,
-    confiance: 45,
+    confiance: clamp(45 + (fallback.score_profile || 0) * 0.5, 0, 100),
     source: "FALLBACK",
   };
 }
@@ -725,7 +764,12 @@ async function getCouponSelection(size = 3, league = "all", profile = "balanced"
       const extraFilter = evaluateMatch(filterInput, filterMeta, { minMatches: 50 });
       if (filterActive && !extraFilter.playable) return null;
       const anchor = profile === "safe" ? 1.45 : profile === "aggressive" ? 2.2 : 1.7;
-      const safetyScore = option.confiance - Math.abs(option.cote - anchor) * cfg.slope + (extraFilter.score || 0) * 0.22;
+      const leagueProfileScore = scoreMarketAgainstProfile(details?.leagueProfile || getLeagueProfile(details.match.league), option.pari);
+      const safetyScore =
+        option.confiance -
+        Math.abs(option.cote - anchor) * cfg.slope +
+        (extraFilter.score || 0) * 0.22 +
+        leagueProfileScore * 0.5;
       return {
         matchId: details.match.id,
         teamHome: details.match.teamHome,
@@ -740,6 +784,8 @@ async function getCouponSelection(size = 3, league = "all", profile = "balanced"
         cote: option.cote,
         confiance: Number(option.confiance.toFixed(1)),
         source: option.source,
+        exactScore: details.exactScoreAvailable ? details.exactScore : null,
+        exactScoreAvailable: Boolean(details.exactScoreAvailable),
         extraFilter,
         safetyScore: Number(safetyScore.toFixed(2)),
       };
@@ -784,8 +830,9 @@ async function getCouponSelection(size = 3, league = "all", profile = "balanced"
 function computeSelectionConfidence(details, selectionPari) {
   const target = String(selectionPari || "");
   const master = details?.prediction?.maitre?.decision_finale || {};
+  const leagueProfile = getLeagueProfile(details?.match?.league);
   if (master.pari_choisi === target) {
-    return Number(master.confiance_numerique || 0);
+    return clamp(Number(master.confiance_numerique || 0) + scoreMarketAgainstProfile(leagueProfile, target) * 0.4, 0, 100);
   }
 
   let best = 0;
@@ -797,7 +844,7 @@ function computeSelectionConfidence(details, selectionPari) {
       }
     }
   }
-  return Number(best || 0);
+  return clamp(Number(best || 0) + scoreMarketAgainstProfile(leagueProfile, target) * 0.4, 0, 100);
 }
 
 async function validateCouponTicket(ticket, options = {}) {
