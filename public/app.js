@@ -9,7 +9,6 @@ const LOW_DATA_MODE_KEY = "fc25_low_data_mode_v1";
 const WATCHLIST_KEY = "fc25_watchlist_v1";
 const WATCHLIST_SNAPSHOT_KEY = "fc25_watchlist_snapshot_v1";
 const TEAM_LOGO_CACHE_KEY = "fc25_team_logo_cache_v1";
-const TEAM_LOGO_API_URL = "https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=";
 const FRONTEND_VERSION = "2026.03.30-r3";
 let lastFetchedAt = null;
 const WELCOME_MODAL_KEY = "fc25_welcome_modal_v1";
@@ -19,26 +18,6 @@ let denicheurPreviousFocus = null;
 let denicheurBodyScrollY = 0;
 const teamLogoMemoryCache = new Map();
 let lastLoadRequestId = 0;
-
-const TEAM_NAME_ALIASES = {
-  "barcelone": "Barcelona",
-  "manchester city": "Manchester City",
-  "manchester united": "Manchester United",
-  "bayern munich": "Bayern Munich",
-  "bayern munchen": "Bayern Munich",
-  "paris sg": "Paris Saint-Germain",
-  "psg": "Paris Saint-Germain",
-  "inter": "Inter",
-  "milano": "Inter",
-  "milan": "AC Milan",
-  "naples": "Napoli",
-  "atletico madrid": "Atletico Madrid",
-  "real madrid cf": "Real Madrid",
-  "west ham united": "West Ham United",
-  "brighton et hove albion": "Brighton",
-  "wolverhampton wanderers": "Wolverhampton Wanderers",
-  "as monaco": "Monaco",
-};
 
 function siteLog(level, message, meta) {
   if (!window.SiteLogger || typeof window.SiteLogger[level] !== "function") return;
@@ -127,11 +106,6 @@ function normalizeTeamLookupKey(name) {
     .trim();
 }
 
-function getCanonicalTeamName(name) {
-  const key = normalizeTeamLookupKey(name);
-  return TEAM_NAME_ALIASES[key] || String(name || "").trim();
-}
-
 function readTeamLogoCache() {
   try {
     const parsed = JSON.parse(localStorage.getItem(TEAM_LOGO_CACHE_KEY) || "{}");
@@ -139,10 +113,6 @@ function readTeamLogoCache() {
   } catch (_error) {
     return {};
   }
-}
-
-function saveTeamLogoCache(cache) {
-  localStorage.setItem(TEAM_LOGO_CACHE_KEY, JSON.stringify(cache || {}));
 }
 
 function getCachedTeamLogo(name) {
@@ -153,15 +123,6 @@ function getCachedTeamLogo(name) {
   const value = disk[key] || null;
   if (value) teamLogoMemoryCache.set(key, value);
   return value;
-}
-
-function setCachedTeamLogo(name, url) {
-  const key = normalizeTeamLookupKey(name);
-  if (!key || !url) return;
-  teamLogoMemoryCache.set(key, url);
-  const disk = readTeamLogoCache();
-  disk[key] = url;
-  saveTeamLogoCache(disk);
 }
 
 function buildKnownTeamLogoMap(matches = []) {
@@ -195,30 +156,10 @@ async function fetchDirectTeamLogo(teamName) {
   const cached = getCachedTeamLogo(teamName);
   if (cached) return cached;
 
-  const canonicalName = getCanonicalTeamName(teamName);
-  if (!canonicalName) return null;
-
-  try {
-    const response = await fetch(`${TEAM_LOGO_API_URL}${encodeURIComponent(canonicalName)}`, {
-      cache: "force-cache",
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    const teams = Array.isArray(data?.teams) ? data.teams : [];
-    if (!teams.length) return null;
-
-    const exactKey = normalizeTeamLookupKey(canonicalName);
-    const exact = teams.find((team) => normalizeTeamLookupKey(team?.strTeam) === exactKey);
-    const picked = exact || teams[0];
-    const badge = String(picked?.strBadge || picked?.strTeamBadge || "").trim();
-    if (!badge) return null;
-
-    setCachedTeamLogo(teamName, badge);
-    setCachedTeamLogo(canonicalName, badge);
-    return badge;
-  } catch (_error) {
-    return null;
-  }
+  // The browser version avoids direct third-party logo lookups to keep the
+  // page quiet and deterministic. The local badge fallback already gives a
+  // clear visual identity without introducing console noise or CORS failures.
+  return null;
 }
 
 async function hydrateDirectTeamLogos(matches = []) {
@@ -1692,6 +1633,15 @@ window.addEventListener('beforeunload', () => {
 initWelcomeModal();
 initDenicheurModal();
 initDenicheurFullOption();
+
+Object.defineProperty(window, "allMatches", {
+  configurable: true,
+  get: () => allMatches,
+});
+
+window.toggleWatchlist = toggleWatchlist;
+window.renderMatches = renderMatches;
+window.renderWatchlistPanel = renderWatchlistPanel;
 
 function registerHomeSiteControl() {
   window.SiteControl = {

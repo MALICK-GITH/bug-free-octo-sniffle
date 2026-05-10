@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "node server.js",
     "lint": "eslint public --ext .js --max-warnings 200",
-    "check:server": "node --check server.js && node --check services/db.js && node --check services/database.js"
+    "check:server": "node --check server.js && node --check services/db.js && node --check services/database.js",
+    "test": "playwright test"
   },
   "keywords": [
     "node",
@@ -31,6 +32,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "eslint": "^8.57.1"
   }
 }

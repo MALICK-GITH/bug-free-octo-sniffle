@@ -3,6 +3,8 @@
  * Swipe gauche/droite, Pull-to-refresh, Double-tap
  */
 
+/* global toggleWatchlist, renderMatches, renderWatchlistPanel */
+
 class MobileGestures {
   constructor(options = {}) {
     this.swipeThreshold = options.swipeThreshold || 50;

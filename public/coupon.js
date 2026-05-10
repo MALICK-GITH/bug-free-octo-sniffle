@@ -76,7 +76,7 @@ const ToastSystem = {
 // ============================================
 // SYSTÈME DE LOADING OVERLAY - SOLITAIRE HACK
 // ============================================
-const LoadingSystem = {
+const _LoadingSystem = {
   overlay: null,
   activeOperations: new Set(),
   init() {
@@ -155,7 +155,7 @@ const LoadingSystem = {
 // ============================================
 // SYSTÈME DE DEBOUNCE - SOLITAIRE HACK
 // ============================================
-const DebounceSystem = {
+const _DebounceSystem = {
   timers: new Map(),
   fn(fn, delay = 300) {
     const key = fn.toString();
@@ -264,7 +264,7 @@ const stabilityCache = {
 };
 let ticketSnapshotA = null;
 let ticketSnapshotB = null;
-let lastAntiChaosReport = null;
+let _lastAntiChaosReport = null;
 
 // Vider tous les caches localStorage liés au coupon au chargement
 (function clearCouponCache() {
@@ -2155,7 +2155,7 @@ async function applyAntiChaosFilter(coupon = [], { league = "all", risk = "balan
     kept: out.length,
     excluded: excluded.slice(0, 8),
   };
-  lastAntiChaosReport = report;
+  _lastAntiChaosReport = report;
   return {
     coupon: out.slice(0, Math.max(1, targetSize)),
     removed,

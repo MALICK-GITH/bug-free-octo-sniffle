@@ -179,13 +179,10 @@ class MobileUltraInteractions {
 
     let startX = 0;
     let startY = 0;
-    let isSwiping = false;
-
     document.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
-        isSwiping = false;
       }
     }, { passive: true });
 
@@ -195,8 +192,6 @@ class MobileUltraInteractions {
         const diffY = e.touches[0].clientY - startY;
 
         if (Math.abs(diffX) > Math.abs(diffY)) {
-          isSwiping = true;
-          
           // Horizontal swipe
           if (Math.abs(diffX) > 50) {
             if (diffX > 0) {
@@ -210,9 +205,7 @@ class MobileUltraInteractions {
       }
     }, { passive: true });
 
-    document.addEventListener('touchend', () => {
-      isSwiping = false;
-    }, { passive: true });
+    document.addEventListener('touchend', () => {}, { passive: true });
   }
 
   handleSwipeLeft() {
@@ -633,12 +626,9 @@ class MobileUltraInteractions {
   setupIPhoneGestures() {
     // Setup iPhone-specific gestures
     let startY = 0;
-    let isGesturing = false;
-
     document.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) {
         startY = e.touches[0].clientY;
-        isGesturing = false;
       }
     }, { passive: true });
 
@@ -651,7 +641,6 @@ class MobileUltraInteractions {
         if (diff < -50 && currentY > window.innerHeight - 100) {
           e.preventDefault();
           this.handleIPhoneSwipeUp();
-          isGesturing = true;
         }
       }
     }, { passive: false });

@@ -527,6 +527,11 @@ function findBestExactScoreModel(match, markets = []) {
 }
 
 function buildExactScoreProjection(data) {
+  const backendProjection = data?.exactScore;
+  if (backendProjection && backendProjection.primary && Array.isArray(backendProjection.alternatives)) {
+    return backendProjection;
+  }
+
   const match = data?.match || {};
   const markets = Array.isArray(data?.bettingMarkets) ? data.bettingMarkets : [];
   const projection = findBestExactScoreModel(match, markets);

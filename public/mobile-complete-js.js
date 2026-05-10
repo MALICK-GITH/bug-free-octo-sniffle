@@ -68,8 +68,6 @@ class MobileCompleteOptimizer {
   }
 
   addMobileMetaTags() {
-    const head = document.head;
-
     // iOS specific meta tags
     if (this.isIOS) {
       this.addMetaTag('apple-mobile-web-app-capable', 'yes');

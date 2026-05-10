@@ -3617,34 +3617,13 @@ app.get("/api/match/:id/insight", async (req, res) => {
 
 app.get("/api/match/:id/exact-score", async (req, res) => {
   try {
-    const matchId = req.params.id;
-    const data = await getPenaltyMatches();
-    const match = data.matches.find((item) => getMatchId(item) === String(matchId));
-    const teams = match ? getMatchTeams(match) : { home: "Equipe Domicile", away: "Equipe Exterieur" };
-    
-    const homeTeam = match ? match.O1 : "Équipe Domicile";
-    const awayTeam = match ? match.O2 : "Équipe Extérieur";
-    
-    const exactScore = {
-      matchId: matchId,
-      homeTeam: teams.home,
-      awayTeam: teams.away,
-      predictions: [
-        { score: "1-0", probability: 0.35 },
-        { score: "2-1", probability: 0.25 },
-        { score: "1-1", probability: 0.20 },
-        { score: "2-0", probability: 0.15 },
-        { score: "0-0", probability: 0.05 }
-      ],
-      mostLikely: "1-0",
-      confidence: 0.35,
-      timestamp: new Date().toISOString()
-    };
-    
+    const details = await getMatchPredictionDetails(req.params.id);
+    const exactScore = details?.exactScore || null;
+
     res.json({
       success: true,
       data: {
-        exactScore: exactScore
+        exactScore,
       },
       meta: {
         timestamp: new Date().toISOString()

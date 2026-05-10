@@ -8,6 +8,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
+  timeout: 60000,
   
   // Run tests in files in parallel
   fullyParallel: true,
@@ -27,7 +28,9 @@ export default defineConfig({
   // Shared settings for all the projects
   use: {
     // Base URL
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:3029',
+    navigationTimeout: 60000,
+    actionTimeout: 15000,
     
     // Collect trace on retry
     trace: 'on-first-retry',
@@ -68,7 +71,7 @@ export default defineConfig({
   // Run local dev server before starting the tests
   webServer: {
     command: 'npm run start',
-    url: 'http://localhost:3000',
+    url: 'http://localhost:3029',
     reuseExistingServer: !process.env.CI
   }
 });

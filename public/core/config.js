@@ -57,7 +57,7 @@ export const APP_CONFIG = {
 
 export const ENV = {
   isDevelopment: location.hostname === 'localhost' || location.hostname === '127.0.0.1',
-  isProduction: !this.isDevelopment,
+  isProduction: !(location.hostname === 'localhost' || location.hostname === '127.0.0.1'),
   userAgent: navigator.userAgent,
   platform: navigator.platform
 };

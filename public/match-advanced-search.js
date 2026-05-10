@@ -491,7 +491,7 @@ class MatchAdvancedSearch {
 
   matchesFilters(result) {
     // Check if result matches all active filters
-    const { oddsRange, confidenceRange, valueRange, riskLevel, timeRange, matchStatus } = this.filters;
+    const { oddsRange, confidenceRange, valueRange, riskLevel, matchStatus } = this.filters;
     
     // Odds filter
     const avgOdds = (result.odds.home + result.odds.draw + result.odds.away) / 3;

@@ -165,6 +165,254 @@ function extractAllBets(event) {
   return [...map.values()];
 }
 
+function normalizeMarketLabel(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9.+\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function toFairProbability(odd) {
+  const n = Number(odd);
+  if (!Number.isFinite(n) || n <= 1) return null;
+  return 1 / n;
+}
+
+function normalizeBinaryFairProbability(yesOdd, noOdd, fallback = null) {
+  const py = toFairProbability(yesOdd);
+  const pn = toFairProbability(noOdd);
+  if (!(py > 0 && pn > 0)) return fallback;
+  const sum = py + pn;
+  return py / sum;
+}
+
+function extractLineNumber(label) {
+  const match = String(label || "").match(/(\d+(?:[.,]\d+)?)/);
+  if (!match) return null;
+  return Number(match[1].replace(",", "."));
+}
+
+function collectMarketSignals(markets = []) {
+  const overLines = [];
+  const underByLine = new Map();
+  const overByLine = new Map();
+  let bttsYes = null;
+  let bttsNo = null;
+
+  for (const market of markets) {
+    const label = normalizeMarketLabel(market?.nom);
+    const odd = Number(market?.cote);
+    if (!(odd > 1)) continue;
+
+    const line = extractLineNumber(label);
+    const isOver = label.includes("plus de") || label.includes("over ");
+    const isUnder = label.includes("moins de") || label.includes("under ");
+    const isBttsYes =
+      label.includes("les deux equipes marquent oui") ||
+      label.includes("both teams to score yes") ||
+      label.includes("btts yes");
+    const isBttsNo =
+      label.includes("les deux equipes marquent non") ||
+      label.includes("both teams to score no") ||
+      label.includes("btts no");
+
+    if (isBttsYes) bttsYes = odd;
+    if (isBttsNo) bttsNo = odd;
+    if (line == null) continue;
+    if (isOver) overByLine.set(line, odd);
+    if (isUnder) underByLine.set(line, odd);
+  }
+
+  const allLines = [...new Set([...overByLine.keys(), ...underByLine.keys()])].sort((a, b) => a - b);
+  for (const line of allLines) {
+    const overOdd = overByLine.get(line);
+    const underOdd = underByLine.get(line);
+    const fairProb = normalizeBinaryFairProbability(overOdd, underOdd);
+    if (fairProb != null) {
+      overLines.push({ line, prob: fairProb, overOdd: Number(overOdd || 0), underOdd: Number(underOdd || 0) });
+    }
+  }
+
+  return {
+    overLines,
+    bttsProb: normalizeBinaryFairProbability(bttsYes, bttsNo),
+    bttsYesOdd: bttsYes,
+    bttsNoOdd: bttsNo,
+  };
+}
+
+function impliedProbabilitiesFromOdds(odds1x2 = {}) {
+  const home = Number(odds1x2?.home);
+  const draw = Number(odds1x2?.draw);
+  const away = Number(odds1x2?.away);
+  if (!(home > 0 && draw > 0 && away > 0)) {
+    return { home: 33.3, draw: 33.3, away: 33.4 };
+  }
+  const ph = 1 / home;
+  const pd = 1 / draw;
+  const pa = 1 / away;
+  const sum = ph + pd + pa || 1;
+  return {
+    home: (ph / sum) * 100,
+    draw: (pd / sum) * 100,
+    away: (pa / sum) * 100,
+  };
+}
+
+function poissonPmf(lambda, k) {
+  if (!(lambda >= 0) || k < 0) return 0;
+  let acc = Math.exp(-lambda);
+  for (let i = 1; i <= k; i += 1) acc *= lambda / i;
+  return acc;
+}
+
+function buildPoissonTable(lambda, maxGoals = 8) {
+  const values = [];
+  let sum = 0;
+  for (let goals = 0; goals < maxGoals; goals += 1) {
+    const p = poissonPmf(lambda, goals);
+    values.push(p);
+    sum += p;
+  }
+  values.push(Math.max(0, 1 - sum));
+  return values;
+}
+
+function computeScoreMatrix(homeLambda, awayLambda, maxGoals = 8) {
+  const homeTable = buildPoissonTable(homeLambda, maxGoals);
+  const awayTable = buildPoissonTable(awayLambda, maxGoals);
+  const matrix = [];
+  let homeWin = 0;
+  let draw = 0;
+  let awayWin = 0;
+  let btts = 0;
+
+  for (let h = 0; h < homeTable.length; h += 1) {
+    for (let a = 0; a < awayTable.length; a += 1) {
+      const probability = homeTable[h] * awayTable[a];
+      matrix.push({ home: h, away: a, probability });
+      if (h > a) homeWin += probability;
+      else if (h === a) draw += probability;
+      else awayWin += probability;
+      if (h > 0 && a > 0) btts += probability;
+    }
+  }
+
+  matrix.sort((left, right) => right.probability - left.probability);
+  return { matrix, homeWin, draw, awayWin, btts, totalLambda: homeLambda + awayLambda };
+}
+
+function probabilityOverLine(matrix, line) {
+  const threshold = Math.floor(Number(line) || 0) + 1;
+  return matrix.reduce((acc, item) => acc + (item.home + item.away >= threshold ? item.probability : 0), 0);
+}
+
+function evaluateScoreLoss(homeLambda, awayLambda, target, signals) {
+  const model = computeScoreMatrix(homeLambda, awayLambda);
+  let loss =
+    Math.pow(model.homeWin - target.home, 2) * 2.4 +
+    Math.pow(model.draw - target.draw, 2) * 2.2 +
+    Math.pow(model.awayWin - target.away, 2) * 2.4;
+
+  for (const line of signals.overLines) {
+    const predicted = probabilityOverLine(model.matrix, line.line);
+    loss += Math.pow(predicted - line.prob, 2) * (line.line === 2.5 ? 2.3 : 1.5);
+  }
+
+  if (signals.bttsProb != null) {
+    loss += Math.pow(model.btts - signals.bttsProb, 2) * 2;
+  }
+
+  return { loss, model };
+}
+
+function findBestExactScoreModel(match, markets = []) {
+  const target = impliedProbabilitiesFromOdds(match?.odds1x2 || {});
+  const fairTarget = {
+    home: target.home / 100,
+    draw: target.draw / 100,
+    away: target.away / 100,
+  };
+  const signals = collectMarketSignals(markets);
+  let best = null;
+
+  for (let homeLambda = 0.4; homeLambda <= 4.6; homeLambda += 0.16) {
+    for (let awayLambda = 0.3; awayLambda <= 4.2; awayLambda += 0.16) {
+      const candidate = evaluateScoreLoss(homeLambda, awayLambda, fairTarget, signals);
+      if (!best || candidate.loss < best.loss) {
+        best = { ...candidate, homeLambda, awayLambda };
+      }
+    }
+  }
+
+  if (!best) return null;
+
+  let refined = best;
+  for (let homeLambda = Math.max(0.2, best.homeLambda - 0.25); homeLambda <= best.homeLambda + 0.25; homeLambda += 0.04) {
+    for (let awayLambda = Math.max(0.2, best.awayLambda - 0.25); awayLambda <= best.awayLambda + 0.25; awayLambda += 0.04) {
+      const candidate = evaluateScoreLoss(homeLambda, awayLambda, fairTarget, signals);
+      if (candidate.loss < refined.loss) {
+        refined = { ...candidate, homeLambda, awayLambda };
+      }
+    }
+  }
+
+  return { ...refined, signals, fairTarget };
+}
+
+function buildExactScoreProjection(match, bettingMarkets = [], prediction = null) {
+  const projection = findBestExactScoreModel(match, bettingMarkets);
+  if (!projection) return null;
+
+  const context = match?.context && typeof match.context === "object" ? match.context : {};
+  const minute = Number(context.minute || 0);
+  const currentHome = Number(context.score1 || 0);
+  const currentAway = Number(context.score2 || 0);
+  const remainingFactor = minute > 0 ? clamp((90 - minute) / 90, 0.25, 1) : 1;
+  const homeLambda = currentHome + projection.homeLambda * remainingFactor;
+  const awayLambda = currentAway + projection.awayLambda * remainingFactor;
+  const finalModel = computeScoreMatrix(homeLambda, awayLambda);
+
+  const topScores = finalModel.matrix.slice(0, 4).map((item) => ({
+    score: `${item.home}-${item.away}`,
+    probability: item.probability,
+  }));
+  const primary = topScores[0];
+  const alternatives = topScores.slice(1, 4);
+  const confidenceBase = Number(prediction?.maitre?.decision_finale?.confiance_numerique || 60);
+  const marketSupport = Math.min(100, projection.signals.overLines.length * 18 + (projection.signals.bttsProb != null ? 18 : 0) + 36);
+  const fitScore = clamp(Math.round(100 - projection.loss * 260), 18, 96);
+  const reliability = clamp(Math.round(fitScore * 0.44 + confidenceBase * 0.34 + marketSupport * 0.22), 20, 95);
+  const totalGoals = homeLambda + awayLambda;
+  const intensity =
+    totalGoals >= 4.2 ? "match tres ouvert" : totalGoals >= 3 ? "match ouvert" : totalGoals >= 2.2 ? "match equilibre" : "match ferme";
+  const edge =
+    homeLambda - awayLambda >= 0.45
+      ? "avantage domicile"
+      : awayLambda - homeLambda >= 0.45
+        ? "avantage exterieur"
+        : "equilibre entre les deux equipes";
+
+  return {
+    primary,
+    alternatives,
+    reliability,
+    fitScore,
+    marketSupport,
+    totalGoals,
+    homeLambda,
+    awayLambda,
+    overLines: projection.signals.overLines,
+    bttsProb: projection.signals.bttsProb,
+    predictions: topScores,
+    method: "poisson-odds-market-v1",
+    narrative: `${intensity}, ${edge}. Projection issue d'un moteur multi-signaux (1X2${projection.signals.overLines.length ? " + totals" : ""}${projection.signals.bttsProb != null ? " + BTTS" : ""}).`,
+  };
+}
+
 function simplifyEvent(event) {
   const context = parseScoreContext(event);
   const homeLogoFile = Array.isArray(event?.O1IMG) ? event.O1IMG[0] : null;
@@ -380,11 +628,13 @@ function buildMatchPredictionDetails(event) {
     context: match.context,
     bets,
   });
+  const exactScore = buildExactScoreProjection(match, bets, prediction);
 
   return {
     match,
     bettingMarkets: bets,
     prediction,
+    exactScore,
   };
 }
 

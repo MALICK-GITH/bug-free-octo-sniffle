@@ -6,6 +6,32 @@
   const AUTO_REFRESH_ENABLED = false;
   let globalRefreshIntervalId = null;
 
+  function getSolitaireAIClient() {
+    if (window.SolitaireAIClient) return window.SolitaireAIClient;
+    return {
+      escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      },
+      renderRichText(value) {
+        const escaped = String(value || "").trim();
+        return escaped ? `<p>${String(escaped).replace(/\n/g, "<br />")}</p>` : "<p>Aucune reponse.</p>";
+      },
+      async sendMessage() {
+        return {
+          success: true,
+          answer: "Le module IA complet n'est pas charge sur cette page.",
+          actions: [],
+        };
+      },
+      async applyActions() {},
+    };
+  }
+
   function getGlobalRefreshMinutes() {
     const fromMatch = Number(localStorage.getItem(GLOBAL_REFRESH_KEY_MATCH));
     const fromCoupon = Number(localStorage.getItem(GLOBAL_REFRESH_KEY_COUPON));
@@ -101,12 +127,13 @@
     let history = loadHistory();
 
     function render() {
+      const aiClient = getSolitaireAIClient();
       log.innerHTML = history
         .map((item) => {
           const html =
             item.role === "assistant"
-              ? window.SolitaireAIClient.renderRichText(item.text)
-              : `<p>${window.SolitaireAIClient.escapeHtml(item.text)}</p>`;
+              ? aiClient.renderRichText(item.text)
+              : `<p>${aiClient.escapeHtml(item.text)}</p>`;
           return `<div class="chat-msg ${item.role === "user" ? "chat-user" : "chat-ai"}">${html}</div>`;
         })
         .join("");
@@ -155,13 +182,14 @@
       busy = true;
 
       try {
-        const data = await window.SolitaireAIClient.sendMessage({
+        const aiClient = getSolitaireAIClient();
+        const data = await aiClient.sendMessage({
           message,
           history: toHistoryPayload(history),
         });
         push("assistant", data.answer || "Aucune reponse.");
         if (Array.isArray(data.actions) && data.actions.length) {
-          await window.SolitaireAIClient.applyActions(data.actions);
+          await aiClient.applyActions(data.actions);
         }
       } catch (error) {
         push("assistant", `Erreur: ${error.message}`);

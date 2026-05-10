@@ -1200,7 +1200,6 @@ class BankrollOptimizer {
 
   calculateRiskOfRuin(stake, coupon) {
     // Calculate risk of ruin
-    const avgOdds = coupon.reduce((sum, pick) => sum + (pick.cote || 1), 0) / coupon.length;
     const winProbability = coupon.reduce((sum, pick) => sum + (pick.confidence || 50), 0) / coupon.length / 100;
     
     const losingStreakProbability = Math.pow(1 - winProbability, 10); // 10 consecutive losses

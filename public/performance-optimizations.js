@@ -168,6 +168,7 @@
   // INITIALIZE ALL
   // ============================================
   function init() {
+    preloadCriticalResources();
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
         initLazyLoading();

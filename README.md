@@ -29,7 +29,7 @@ Le site est disponible sur:
 
 ## Base de donnees integree
 
-Le projet utilise SQLite (natif Node.js) et cree automatiquement:
+Le projet utilise SQLite par defaut et cree automatiquement:
 
 - `coupon_generations`
 - `coupon_validations`
@@ -38,6 +38,8 @@ Le projet utilise SQLite (natif Node.js) et cree automatiquement:
 Fichier DB par defaut:
 
 - `data/app.sqlite`
+
+Si tu renseignes les variables `DB_HOST`, `DB_NAME`, `DB_USER` et `DB_PASSWORD`, le service peut aussi s'appuyer sur une base MySQL/PostgreSQL selon la configuration serveur.
 
 ## API utiles
 
@@ -54,6 +56,8 @@ Fichier DB par defaut:
 
 - Aucune manipulation SQL manuelle n'est necessaire.
 - Les tables sont creees automatiquement au demarrage.
+- `npm run check:server` valide la syntaxe du serveur et des services.
+- `npm run test` lance la suite Playwright.
 
 ## Android
 

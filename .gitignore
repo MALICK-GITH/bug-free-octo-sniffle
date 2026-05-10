@@ -8,3 +8,5 @@ Thumbs.db
 android-mobile-app/
 *.sqlite-shm
 *.sqlite-wal
+playwright-report/
+test-results/

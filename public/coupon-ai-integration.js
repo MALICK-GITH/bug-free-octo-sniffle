@@ -828,7 +828,6 @@ class CouponAIIntegration {
 
   calculateRealTimeMatchConfidence(match) {
     // Calculate real-time confidence for a specific match
-    const odds = this.extractMatchOdds(match);
     const confidence = this.confidenceCalculator.calculateMatchConfidence(match, {
       useRealTime: true,
       useHistorical: true

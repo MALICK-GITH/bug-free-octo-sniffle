@@ -121,7 +121,7 @@ class CacheManager {
     // Register service worker for cache management
     if ('serviceWorker' in navigator) {
       try {
-        const registration = await navigator.serviceWorker.register('/cache-sw.js');
+        await navigator.serviceWorker.register('/cache-sw.js');
         console.log('💾 Service Worker registered for cache management');
         
         // Listen for cache updates from service worker

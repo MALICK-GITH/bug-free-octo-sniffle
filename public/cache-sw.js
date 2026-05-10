@@ -1,7 +1,5 @@
 // Service Worker for Advanced Cache Management
 const CACHE_NAME = 'fifapro_cache_v1';
-const CACHE_VERSION = '1.0.0';
-const MAX_CACHE_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 
 // Cache management

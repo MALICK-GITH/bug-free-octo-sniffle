@@ -194,7 +194,6 @@ class LazyLoadingPagination {
     
     // Garde la sentinelle et le loader
     const sentinel = container.querySelector(this.selectors.sentinel);
-    const loader = container.querySelector(this.selectors.loader);
     
     // Vide le conteneur sauf sentinelle et loader
     Array.from(container.children).forEach(child => {
@@ -348,7 +347,7 @@ class LazyLoadingPagination {
 }
 
 // CSS associé (à ajouter dans le fichier CSS)
-const lazyLoadingStyles = `
+const _lazyLoadingStyles = `
   .lazy-img {
     opacity: 0;
     transition: opacity 0.3s ease;

@@ -4,6 +4,8 @@
  * SOLITAIRE HACK SIGNATURE
  */
 
+/* global THREE */
+
 class Sublime3DEngine {
   constructor() {
     this.scene = null;

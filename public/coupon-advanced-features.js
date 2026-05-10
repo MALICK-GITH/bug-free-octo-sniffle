@@ -129,7 +129,7 @@ class CouponAdvancedFeatures {
     });
     
     // Auto-save coupon data
-    const saveInterval = setInterval(() => {
+    this.saveInterval = setInterval(() => {
       if (this.currentCoupon) {
         this.saveCurrentCoupon();
       }
