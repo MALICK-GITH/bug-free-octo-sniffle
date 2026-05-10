@@ -18,13 +18,13 @@
           .replace(/'/g, "&#39;");
       },
       renderRichText(value) {
-        const escaped = String(value || "").trim();
-        return escaped ? `<p>${String(escaped).replace(/\n/g, "<br />")}</p>` : "<p>Aucune reponse.</p>";
+        const escaped = this.escapeHtml(String(value || "").trim());
+        return escaped ? `<p>${escaped.replace(/\n/g, "<br />")}</p>` : "<p>Aucune réponse.</p>";
       },
       async sendMessage() {
         return {
           success: true,
-          answer: "Le module IA complet n'est pas charge sur cette page.",
+          answer: "Le module IA complet n'est pas chargé sur cette page.",
           actions: [],
         };
       },
@@ -187,7 +187,7 @@
           message,
           history: toHistoryPayload(history),
         });
-        push("assistant", data.answer || "Aucune reponse.");
+        push("assistant", data.answer || "Aucune réponse.");
         if (Array.isArray(data.actions) && data.actions.length) {
           await aiClient.applyActions(data.actions);
         }

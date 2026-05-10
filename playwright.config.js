@@ -8,7 +8,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 60000,
+  // Leave headroom for setup, interactions, and assertions beyond navigation timing.
+  timeout: 120000,
   
   // Run tests in files in parallel
   fullyParallel: true,

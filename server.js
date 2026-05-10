@@ -3617,19 +3617,60 @@ app.get("/api/match/:id/insight", async (req, res) => {
 
 app.get("/api/match/:id/exact-score", async (req, res) => {
   try {
-    const details = await getMatchPredictionDetails(req.params.id);
-    const exactScore = details?.exactScore || null;
+    const matchId = String(req.params.id || "").trim();
+    if (!/^\d+$/.test(matchId)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_MATCH_ID",
+          message: "Identifiant de match invalide.",
+        },
+      });
+    }
+
+    const data = await getPenaltyMatches();
+    const match = Array.isArray(data?.matches) ? data.matches.find((item) => getMatchId(item) === matchId) : null;
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: "MATCH_NOT_FOUND",
+          message: "Match introuvable.",
+        },
+      });
+    }
+
+    const details = await getMatchPredictionDetails(matchId);
+    const resolvedMatch = details?.match || match;
+    const teams = getMatchTeams(resolvedMatch);
+    const exactScoreValue = details?.exactScore || null;
 
     res.json({
       success: true,
       data: {
-        exactScore,
+        matchId: getMatchId(resolvedMatch) || matchId,
+        homeTeam: teams.home,
+        awayTeam: teams.away,
+        timestamp: new Date().toISOString(),
+        exactScore: {
+          available: Boolean(exactScoreValue),
+          value: exactScoreValue,
+        },
       },
       meta: {
         timestamp: new Date().toISOString()
       }
     });
   } catch (error) {
+    if (String(error?.message || "").toLowerCase().includes("introuvable")) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: "MATCH_NOT_FOUND",
+          message: "Match introuvable.",
+        },
+      });
+    }
     res.status(500).json({
       success: false,
       error: {

@@ -8,20 +8,20 @@ import { test, expect } from '@playwright/test';
 
 async function dismissWelcomeModal(page) {
   const modal = page.locator('#welcomeModal');
-  if (!(await modal.isVisible().catch(() => false))) return;
+  if (!(await modal.isVisible())) return;
 
   const closeButton = page.locator('#welcomeClose');
-  if (await closeButton.isVisible().catch(() => false)) {
-    await closeButton.click({ force: true });
+  if (await closeButton.isVisible()) {
+    await closeButton.click();
   } else {
-    await page.keyboard.press('Escape').catch(() => {});
+    await page.keyboard.press('Escape');
   }
 
-  await expect(modal).toBeHidden({ timeout: 5000 }).catch(() => {});
+  await expect(modal).toBeHidden({ timeout: 5000 });
 }
 
 async function visit(page, path) {
-  await page.goto(path, { waitUntil: 'domcontentloaded' });
+  await page.goto(path, { waitUntil: 'load' });
 }
 
 test.describe('Basic Navigation', () => {
@@ -46,7 +46,8 @@ test.describe('Basic Navigation', () => {
     await expect(couponLink).toBeVisible();
     
     // Click and verify navigation
-    await couponLink.click({ force: true });
+    await couponLink.scrollIntoViewIfNeeded();
+    await couponLink.click();
     await expect(page).toHaveURL(/coupon\.html/);
   });
   
@@ -116,15 +117,16 @@ test.describe('Basic Navigation', () => {
   test('service worker registration', async ({ page }) => {
     await visit(page, '/');
     
-    // Check if service worker is registered
-    await page.waitForTimeout(6000);
-
+    // Poll for service worker registration instead of sleeping blindly.
+    await page.waitForFunction(async () => {
+      if (!('serviceWorker' in navigator)) return false;
+      const registration = await navigator.serviceWorker.getRegistration();
+      return Boolean(navigator.serviceWorker.controller || registration);
+    }, { timeout: 10000 });
     const swRegistered = await page.evaluate(async () => {
-      if ('serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.getRegistration();
-        return !!registration;
-      }
-      return false;
+      if (!('serviceWorker' in navigator)) return false;
+      const registration = await navigator.serviceWorker.getRegistration();
+      return Boolean(navigator.serviceWorker.controller || registration);
     });
     
     expect(swRegistered).toBe(true);
@@ -160,7 +162,8 @@ test.describe('Coupon Page', () => {
     const generateBtn = page.locator('button:has-text("Generer")').first();
     
     if (await generateBtn.isVisible().catch(() => false)) {
-      await generateBtn.click({ force: true });
+      await expect(generateBtn).toBeEnabled();
+      await generateBtn.click();
       
       // Wait for result
       await page.waitForTimeout(1000);
@@ -202,7 +205,11 @@ test.describe('Performance', () => {
     const fcp = metrics.find(m => m.name === 'first-contentful-paint');
     
     if (fcp) {
-      expect(fcp.startTime).toBeLessThan(10000); // FCP under 10s for the current rich UI
+      if (fcp.startTime >= 3000) {
+        console.warn(`FCP warning: ${fcp.startTime.toFixed(0)}ms`);
+      }
+      // Keep "good" FCP under 3s; allow slower builds to surface as warnings first.
+      expect(fcp.startTime).toBeLessThan(3000);
     }
   });
   

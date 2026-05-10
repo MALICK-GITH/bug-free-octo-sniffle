@@ -1635,13 +1635,31 @@ initDenicheurModal();
 initDenicheurFullOption();
 
 Object.defineProperty(window, "allMatches", {
-  configurable: true,
+  configurable: false,
+  enumerable: true,
   get: () => allMatches,
 });
 
-window.toggleWatchlist = toggleWatchlist;
-window.renderMatches = renderMatches;
-window.renderWatchlistPanel = renderWatchlistPanel;
+Object.defineProperties(window, {
+  toggleWatchlist: {
+    configurable: false,
+    enumerable: true,
+    writable: false,
+    value: toggleWatchlist,
+  },
+  renderMatches: {
+    configurable: false,
+    enumerable: true,
+    writable: false,
+    value: renderMatches,
+  },
+  renderWatchlistPanel: {
+    configurable: false,
+    enumerable: true,
+    writable: false,
+    value: renderWatchlistPanel,
+  },
+});
 
 function registerHomeSiteControl() {
   window.SiteControl = {

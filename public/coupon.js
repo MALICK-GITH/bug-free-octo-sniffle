@@ -73,113 +73,6 @@ const ToastSystem = {
   }
 };
 
-// ============================================
-// SYSTÈME DE LOADING OVERLAY - SOLITAIRE HACK
-// ============================================
-const _LoadingSystem = {
-  overlay: null,
-  activeOperations: new Set(),
-  init() {
-    if (this.overlay) return;
-    this.overlay = document.createElement('div');
-    this.overlay.id = 'loading-overlay';
-    this.overlay.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(10, 22, 40, 0.85);
-      backdrop-filter: blur(4px);
-      z-index: 9998;
-      display: none;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      gap: 20px;
-    `;
-    this.overlay.innerHTML = `
-      <div style="
-        width: 60px;
-        height: 60px;
-        border: 4px solid rgba(59, 130, 246, 0.3);
-        border-top-color: #3b82f6;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-      "></div>
-      <p id="loading-text" style="
-        color: white;
-        font-size: 16px;
-        font-weight: 500;
-        margin: 0;
-      ">Chargement...</p>
-    `;
-
-    if (!document.getElementById('loading-animations')) {
-      const style = document.createElement('style');
-      style.id = 'loading-animations';
-      style.textContent = `
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    document.body.appendChild(this.overlay);
-  },
-  show(text = 'Chargement...') {
-    this.init();
-    const textEl = this.overlay.querySelector('#loading-text');
-    if (textEl) textEl.textContent = text;
-    this.overlay.style.display = 'flex';
-  },
-  hide() {
-    if (this.overlay) this.overlay.style.display = 'none';
-  },
-  async wrap(fn, text = 'Chargement...') {
-    const opId = Date.now() + Math.random();
-    this.activeOperations.add(opId);
-    this.show(text);
-    try {
-      return await fn();
-    } finally {
-      this.activeOperations.delete(opId);
-      if (this.activeOperations.size === 0) {
-        this.hide();
-      }
-    }
-  }
-};
-
-// ============================================
-// SYSTÈME DE DEBOUNCE - SOLITAIRE HACK
-// ============================================
-const _DebounceSystem = {
-  timers: new Map(),
-  fn(fn, delay = 300) {
-    const key = fn.toString();
-    return (...args) => {
-      clearTimeout(this.timers.get(key));
-      this.timers.set(key, setTimeout(() => {
-        fn.apply(this, args);
-        this.timers.delete(key);
-      }, delay));
-    };
-  },
-  once(fn, cooldown = 2000) {
-    let lastCall = 0;
-    return (...args) => {
-      const now = Date.now();
-      if (now - lastCall < cooldown) {
-        ToastSystem.show('Veuillez patienter avant de réessayer', 'warning', 2000);
-        return;
-      }
-      lastCall = now;
-      return fn.apply(this, args);
-    };
-  }
-};
 
 let lastCouponData = null;
 let lastCouponBackups = new Map();
@@ -263,8 +156,6 @@ const stabilityCache = {
   clear: () => { }
 };
 let ticketSnapshotA = null;
-let ticketSnapshotB = null;
-let _lastAntiChaosReport = null;
 
 // Vider tous les caches localStorage liés au coupon au chargement
 (function clearCouponCache() {
@@ -2155,7 +2046,6 @@ async function applyAntiChaosFilter(coupon = [], { league = "all", risk = "balan
     kept: out.length,
     excluded: excluded.slice(0, 8),
   };
-  _lastAntiChaosReport = report;
   return {
     coupon: out.slice(0, Math.max(1, targetSize)),
     removed,

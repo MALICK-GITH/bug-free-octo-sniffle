@@ -17,7 +17,7 @@
 
   function renderRichText(value) {
     const text = String(value || "").trim();
-    if (!text) return "<p>Aucune reponse.</p>";
+    if (!text) return "<p>Aucune réponse.</p>";
 
     const blocks = text.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean);
     return blocks

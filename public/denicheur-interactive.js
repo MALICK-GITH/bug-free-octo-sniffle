@@ -16,27 +16,21 @@ class DenicheurEnhanced {
   }
 
   init() {
-    console.log('🎯 Enhanced Denicheur Initializing...');
+    console.log('🎯 Denicheur Initializing...');
     
     // Setup UI enhancements
     this.setupUIEnhancements();
     
     // Setup interactive features
-    this.setupInteractiveFeatures();
     
     // Setup real-time updates
-    this.setupRealTimeUpdates();
     
     // Setup filters
-    this.setupFilters();
     
     // Setup animations
-    this.setupAnimations();
     
     // Setup mobile optimizations
-    this.setupMobileOptimizations();
     
-    console.log('✅ Enhanced Denicheur Ready');
   }
 
   setupUIEnhancements() {
@@ -67,125 +61,7 @@ class DenicheurEnhanced {
     this.addFilterControls();
   }
 
-  setupInteractiveFeatures() {
-    // Setup match selection
-    this.setupMatchSelection();
-    
-    // Setup match comparison
-    this.setupMatchComparison();
-    
-    // Setup quick actions
-    this.setupQuickActions();
-    
-    // Setup keyboard shortcuts
-    this.setupKeyboardShortcuts();
-    
-    // Setup tooltips
-    this.setupTooltips();
-  }
 
-  setupRealTimeUpdates() {
-    // Setup live updates for matches
-    this.setupLiveMatchUpdates();
-    
-    // Setup confidence updates
-    this.setupConfidenceUpdates();
-    
-    // Setup odds updates
-    this.setupOddsUpdates();
-    
-    // Setup countdown timers
-    this.setupCountdownTimers();
-  }
-
-  setupFilters() {
-    // Setup confidence filter
-    this.setupConfidenceFilter();
-    
-    // Setup odds filter
-    this.setupOddsFilter();
-    
-    // Setup league filter
-    this.setupLeagueFilter();
-    
-    // Setup time filter
-    this.setupTimeFilter();
-    
-    // Setup quick filters
-    this.setupQuickFilters();
-  }
-
-  setupAnimations() {
-    // Setup entrance animations
-    this.setupEntranceAnimations();
-    
-    // Setup hover effects
-    this.setupHoverEffects();
-    
-    // Setup loading animations
-    this.setupLoadingAnimations();
-    
-    // Setup success animations
-    this.setupSuccessAnimations();
-  }
-
-  setupMobileOptimizations() {
-    // Setup touch gestures
-    this.setupTouchGestures();
-    
-    // Setup swipe actions
-    this.setupSwipeActions();
-    
-    // Setup pull-to-refresh
-    this.setupPullToRefresh();
-    
-    // Setup haptic feedback
-    this.setupHapticFeedback();
-  }
-
-  setupMatchSelection() {}
-
-  setupMatchComparison() {}
-
-  setupQuickActions() {}
-
-  setupKeyboardShortcuts() {}
-
-  setupTooltips() {}
-
-  setupLiveMatchUpdates() {}
-
-  setupConfidenceUpdates() {}
-
-  setupOddsUpdates() {}
-
-  setupCountdownTimers() {}
-
-  setupConfidenceFilter() {}
-
-  setupOddsFilter() {}
-
-  setupLeagueFilter() {}
-
-  setupTimeFilter() {}
-
-  setupQuickFilters() {}
-
-  setupEntranceAnimations() {}
-
-  setupHoverEffects() {}
-
-  setupLoadingAnimations() {}
-
-  setupSuccessAnimations() {}
-
-  setupTouchGestures() {}
-
-  setupSwipeActions() {}
-
-  setupPullToRefresh() {}
-
-  setupHapticFeedback() {}
 
   // UI Enhancement Methods
   addProgressIndicator() {
@@ -969,3 +845,4 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = DenicheurEnhanced;
 }
+

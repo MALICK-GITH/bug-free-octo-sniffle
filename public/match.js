@@ -473,6 +473,29 @@ function probabilityOverLine(matrix, line) {
   return matrix.reduce((acc, item) => acc + (item.home + item.away >= threshold ? item.probability : 0), 0);
 }
 
+function isValidExactScoreEntry(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  if (typeof entry.score !== "string" || !/^\d+-\d+$/.test(entry.score)) return false;
+  return Number.isFinite(entry.probability);
+}
+
+function isValidExactScoreProjection(projection) {
+  if (!projection || typeof projection !== "object") return false;
+  if (!isValidExactScoreEntry(projection.primary)) return false;
+  if (!Array.isArray(projection.alternatives) || !projection.alternatives.every(isValidExactScoreEntry)) return false;
+  if (!Array.isArray(projection.overLines)) return false;
+  if (projection.overLines.some((line) => !line || typeof line !== "object" || !Number.isFinite(line.line) || !Number.isFinite(line.prob))) return false;
+  if (!Number.isFinite(projection.reliability)) return false;
+  if (!Number.isFinite(projection.totalGoals)) return false;
+  if (!Number.isFinite(projection.homeLambda)) return false;
+  if (!Number.isFinite(projection.awayLambda)) return false;
+  if (!Number.isFinite(projection.fitScore)) return false;
+  if (!Number.isFinite(projection.marketSupport)) return false;
+  if (!Number.isFinite(projection.bttsProb) && projection.bttsProb !== null) return false;
+  if (typeof projection.narrative !== "string" || !projection.narrative.trim()) return false;
+  return true;
+}
+
 function evaluateScoreLoss(homeLambda, awayLambda, target, signals) {
   const model = computeScoreMatrix(homeLambda, awayLambda);
   let loss =
@@ -527,8 +550,14 @@ function findBestExactScoreModel(match, markets = []) {
 }
 
 function buildExactScoreProjection(data) {
-  const backendProjection = data?.exactScore;
-  if (backendProjection && backendProjection.primary && Array.isArray(backendProjection.alternatives)) {
+  const backendExactScore = data?.exactScore;
+  const backendProjection =
+    backendExactScore && typeof backendExactScore === "object" && "available" in backendExactScore
+      ? backendExactScore.available
+        ? backendExactScore.value
+        : null
+      : backendExactScore;
+  if (isValidExactScoreProjection(backendProjection)) {
     return backendProjection;
   }
 
