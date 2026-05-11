@@ -524,6 +524,16 @@ function inferExactScoreBias(recommendation = "") {
   return bias.outcome || bias.total ? bias : null;
 }
 
+function describeExactScoreBias(bias) {
+  if (!bias) return "Projection multi-signaux sans biais de pari.";
+  if (bias.outcome === "home") return "La reco pointe vers le domicile, donc le score exact reste oriente vers l'equipe maison.";
+  if (bias.outcome === "away") return "La reco pointe vers l'exterieur, donc le score exact suit la tendance visiteuse.";
+  if (bias.outcome === "draw") return "La reco vise le nul, donc le score exact privilegie un scenario serre.";
+  if (bias.total === "over") return "La reco vise un match ouvert, donc le score exact garde plus de volume offensif.";
+  if (bias.total === "under") return "La reco vise un match ferme, donc le score exact reste compact.";
+  return "Projection multi-signaux sans biais de pari.";
+}
+
 function exactScoreMatchesBias(score, bias) {
   if (!bias || !score || typeof score !== "string") return true;
   const parts = score.split("-").map((part) => Number(part));
@@ -703,6 +713,9 @@ function buildExactScoreProjection(data) {
   const alignmentNote = bias?.outcome || bias?.total
     ? "Scenario exact aligne sur la decision finale du moteur."
     : "Scenario exact issu du moteur multi-signaux.";
+  const primaryAligned = !bias || exactScoreMatchesBias(primary?.score, bias);
+  const coherenceTone = bias ? (primaryAligned ? "good" : "watch") : "neutral";
+  const coherenceLabel = bias ? (primaryAligned ? "Aligné avec la reco" : "A surveiller") : "Score premium";
 
   return {
     primary,
@@ -715,6 +728,12 @@ function buildExactScoreProjection(data) {
     awayLambda: projection.awayLambda,
     overLines: projection.signals.overLines,
     bttsProb: projection.signals.bttsProb,
+    coherence: {
+      badgeTone: coherenceTone,
+      badgeLabel: coherenceLabel,
+      reason: describeExactScoreBias(bias),
+      recommendation: masterRecommendation || fallbackRecommendation,
+    },
     narrative: `${intensity}, ${edge}. ${alignmentNote} Projection issue d'un moteur multi-signaux (1X2${projection.signals.overLines.length ? " + totals" : ""}${projection.signals.bttsProb != null ? " + BTTS" : ""}).`,
   };
 }
@@ -737,16 +756,23 @@ function renderExactScorePanel(data) {
     projection.bttsProb == null ? "BTTS non exploitable" : `BTTS oui estime a ${(projection.bttsProb * 100).toFixed(1)}%`;
   const leagueProfileLabel = data?.leagueProfile?.title ? `<span class="exact-score-profile">Profil ligue: ${escapeHtml(data.leagueProfile.title)}</span>` : "";
   const narrative = projection.narrative ? escapeHtml(projection.narrative) : "Lecture analytique complementaire indisponible.";
+  const coherence = projection.coherence || {};
+  const coherenceTone = coherence.badgeTone === "good" ? "is-good" : coherence.badgeTone === "watch" ? "is-watch" : "is-neutral";
+  const coherenceLabel = escapeHtml(coherence.badgeLabel || "Score premium");
+  const coherenceReason = escapeHtml(coherence.reason || "Projection multi-signaux sans biais de pari.");
+  const coherenceRecommendation = escapeHtml(coherence.recommendation || String(data?.prediction?.maitre?.decision_finale?.pari_choisi || ""));
+  const scoreConfidence = Number(projection.primary?.probability || 0) * 100;
 
   host.innerHTML = `
     <div class="exact-score-imperial ${reliabilityTone}">
       <div class="exact-score-crown">
         <span class="exact-score-kicker">Projection Premium</span>
+        <span class="exact-score-badge ${coherenceTone}">${coherenceLabel}</span>
         <div class="exact-score-mainline">
           <div class="exact-score-primary">
             <strong>Score principal</strong>
             <div class="exact-score-value">${projection.primary.score}</div>
-            <small>Probabilite modelisee ${(projection.primary.probability * 100).toFixed(1)}%</small>
+            <small>Probabilite modelisee ${scoreConfidence.toFixed(1)}%</small>
           </div>
           <div class="exact-score-reliability">
             <span>Fiabilite renforcee</span>
@@ -780,6 +806,10 @@ function renderExactScorePanel(data) {
           <strong>Validation marches</strong>
           <p>${bttsText}${projection.overLines.length ? ` | ligne total cle: ${projection.overLines[0].line}` : ""}</p>
         </article>
+      </div>
+      <div class="exact-score-why">
+        <strong>Pourquoi ce score ?</strong>
+        <p>${coherenceReason}${coherenceRecommendation ? ` | Reco: ${coherenceRecommendation}` : ""}</p>
       </div>
       <div class="exact-score-note">
         Projection analytique haute precision, a lire comme scenario dominant et non comme certitude absolue.

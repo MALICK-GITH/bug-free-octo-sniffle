@@ -1174,11 +1174,13 @@ function buildTelegramCouponText(payload = {}) {
   );
   if (payload?.mini) {
     const top = coupon.slice(0, 3);
+    const heroSummary = buildCouponShareHeroSummaryLine(payload);
     const lines = [
       `FC25 MINI | ${riskProfile.toUpperCase()}`,
       `Sel: ${Number(summary.totalSelections) || coupon.length} | Cote: ${formatOddForTelegram(summary.combinedOdd)}`,
       `Conf: ${Number(summary.averageConfidence) || 0}%`,
       `Score Telegram: ${telegramConfidenceScore}/100`,
+      heroSummary,
       ...top.map((p, i) => {
         const exactLine = buildExactScoreLine(resolveImageExactScore(p?.exactScore, p?.pari));
         const suffix = exactLine ? ` | ${exactLine}` : "";
@@ -1196,6 +1198,7 @@ function buildTelegramCouponText(payload = {}) {
     `Cote combinee: ${formatOddForTelegram(summary.combinedOdd)}`,
     `Confiance moyenne: ${Number(summary.averageConfidence) || 0}%`,
     `Score confiance Telegram: ${telegramConfidenceScore}/100`,
+    buildCouponShareHeroSummaryLine(payload),
     "",
   ];
 
@@ -1255,6 +1258,143 @@ function buildExactScoreLine(exactScore) {
   return escapeXml(parts.join(" Â· "));
 }
 
+function describeExactScoreBias(bias) {
+  if (!bias) return "Projection multi-signaux sans biais de pari.";
+  if (bias.outcome === "home") return "La reco pousse vers le domicile, donc le score exact reste oriente cote equipe maison.";
+  if (bias.outcome === "away") return "La reco pousse vers l'exterieur, donc le score exact suit la tendance visiteuse.";
+  if (bias.outcome === "draw") return "La reco vise le nul, donc le score exact privilegie un scenario serre.";
+  if (bias.total === "over") return "La reco vise un match ouvert, donc le score exact garde plus de volume offensif.";
+  if (bias.total === "under") return "La reco vise un match ferme, donc le score exact reste compact.";
+  return "Projection multi-signaux sans biais de pari.";
+}
+
+function buildExactScoreContext(exactScore, recommendation = "", confidence = null) {
+  const normalized =
+    exactScore && typeof exactScore === "object" && "available" in exactScore
+      ? exactScore.available
+        ? exactScore.value
+        : null
+      : exactScore;
+  if (!normalized || typeof normalized !== "object") return null;
+
+  const bias = inferExactScoreBias(recommendation);
+  const selected = pickAlignedExactScore(normalized, recommendation);
+  if (!selected || typeof selected.score !== "string") return null;
+
+  const aligned = !bias || exactScoreMatchesBias(selected.score, bias);
+  const badgeTone = bias ? (aligned ? "good" : "watch") : "neutral";
+  const badgeLabel = bias ? (aligned ? "Aligné avec la reco" : "A surveiller") : "Score premium";
+
+  return {
+    score: selected.score,
+    reliability: Number.isFinite(normalized.reliability) ? normalized.reliability : null,
+    fitScore: Number.isFinite(normalized.fitScore) ? normalized.fitScore : null,
+    marketSupport: Number.isFinite(normalized.marketSupport) ? normalized.marketSupport : null,
+    badgeTone,
+    badgeLabel,
+    reason: describeExactScoreBias(bias),
+    recommendation: String(recommendation || "").trim(),
+    confidence: Number.isFinite(Number(confidence)) ? Number(confidence) : null,
+    aligned,
+  };
+}
+
+function getCouponShareLead(payload = {}) {
+  const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
+  const summary = payload.summary || {};
+  const lead = coupon[0] || {};
+  const exact = buildExactScoreContext(lead.exactScore, lead.pari, lead.confiance);
+  return {
+    lead,
+    summary,
+    exact,
+    generatedAt: formatDateTime(new Date()),
+    matchStart: formatMatchStartTimeUnix(lead.startTimeUnix),
+    confidence: Number.isFinite(Number(lead.confiance))
+      ? Number(lead.confiance)
+      : Number(summary.averageConfidence || 0),
+  };
+}
+
+function buildCouponShareHeroLines(payload = {}) {
+  const share = getCouponShareLead(payload);
+  const lead = share.lead;
+  const exact = share.exact;
+  const recommendation = String(lead.pari || "Aucun").trim();
+  const badge = exact?.badgeLabel || "Score premium";
+  const badgeReason = exact?.reason || "Projection multi-signaux.";
+  return [
+    "SCORE EXACT PREMIUM",
+    `Pari recommande: ${recommendation}`,
+    `Score exact: ${exact?.score || "-"}`,
+    `Badge: ${badge}`,
+    `Confiance: ${Number(share.confidence || 0).toFixed(1)}%`,
+    `Heure match: ${share.matchStart}`,
+    `Pourquoi: ${badgeReason}`,
+  ];
+}
+
+function buildCouponShareHeroSummaryLine(payload = {}) {
+  const share = getCouponShareLead(payload);
+  const lead = share.lead;
+  const exact = share.exact;
+  const confidence = Number(share.confidence || 0).toFixed(1);
+  return `Reco: ${lead.pari || "-"} | Score exact: ${exact?.score || "-"} | Conf: ${confidence}% | Heure: ${share.matchStart || "-"}`;
+}
+
+function buildCouponShareHeroSvg(payload = {}, options = {}) {
+  const share = getCouponShareLead(payload);
+  const lead = share.lead;
+  const exact = share.exact;
+  const width = Number(options.width) || 1200;
+  const innerW = width - 72;
+  const badgeTone = exact?.badgeTone || "neutral";
+  const badgeFill =
+    badgeTone === "good"
+      ? "rgba(142,255,176,0.14)"
+      : badgeTone === "watch"
+        ? "rgba(255,154,120,0.14)"
+        : "rgba(255,212,121,0.12)";
+  const badgeStroke =
+    badgeTone === "good"
+      ? "rgba(142,255,176,0.42)"
+      : badgeTone === "watch"
+        ? "rgba(255,154,120,0.42)"
+        : "rgba(255,212,121,0.36)";
+  const badgeText = badgeTone === "good" ? "#8effb0" : badgeTone === "watch" ? "#ffad8e" : "#ffd77a";
+  const recommendation = escapeXml(truncateCouponLabel(lead.pari || "Aucun pari", 56));
+  const why = escapeXml(truncateCouponLabel(exact?.reason || "Projection multi-signaux.", 92));
+  const score = escapeXml(exact?.score || "-");
+  const confidence = Number(share.confidence || 0).toFixed(1);
+  const matchStart = escapeXml(share.matchStart || "-");
+  const odd = formatOddForTelegram(lead.cote);
+
+  return `
+    <g transform="translate(36, 78)">
+      <rect x="0" y="0" width="${innerW}" height="190" rx="20" fill="rgba(6,10,22,0.9)" stroke="url(#imgStroke)" stroke-width="1.5"/>
+      <rect x="0" y="0" width="${innerW}" height="48" rx="20" fill="rgba(18,28,48,0.92)"/>
+      <text x="20" y="31" fill="#9ecfff" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.22em">${escapeXml(options.kicker || "SHARE PREMIUM")}</text>
+      <text x="${innerW - 18}" y="31" text-anchor="end" fill="#7a8fb8" font-size="12" font-family="Segoe UI, Arial, sans-serif">${escapeXml(share.generatedAt)}</text>
+      <text x="22" y="78" fill="#fff3d2" font-size="18" font-weight="900" font-family="Segoe UI, Arial, sans-serif">Pari recommande</text>
+      <text x="22" y="108" fill="#ffffff" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${recommendation}</text>
+      <rect x="22" y="120" width="164" height="24" rx="8" fill="${badgeFill}" stroke="${badgeStroke}" stroke-width="1"/>
+      <text x="104" y="137" text-anchor="middle" fill="${badgeText}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(exact?.badgeLabel || "Score premium")}</text>
+
+      <rect x="${innerW - 388}" y="62" width="366" height="60" rx="14" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)"/>
+      <text x="${innerW - 370}" y="86" fill="#8fa6c8" font-size="11" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.16em">SCORE EXACT</text>
+      <text x="${innerW - 370}" y="110" fill="#eef4ff" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${score}</text>
+
+      <rect x="${innerW - 388}" y="130" width="114" height="34" rx="10" fill="rgba(0,240,255,0.12)" stroke="rgba(0,240,255,0.28)"/>
+      <text x="${innerW - 331}" y="152" text-anchor="middle" fill="#9ff6ff" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">Conf ${confidence}%</text>
+      <rect x="${innerW - 264}" y="130" width="110" height="34" rx="10" fill="rgba(142,255,176,0.11)" stroke="rgba(142,255,176,0.28)"/>
+      <text x="${innerW - 209}" y="152" text-anchor="middle" fill="#c5ffd9" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(matchStart)}</text>
+      <rect x="${innerW - 142}" y="130" width="120" height="34" rx="10" fill="rgba(255,212,121,0.11)" stroke="rgba(255,212,121,0.28)"/>
+      <text x="${innerW - 82}" y="152" text-anchor="middle" fill="#ffe6a0" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(odd)}</text>
+
+      <text x="22" y="183" fill="#c5d6f0" font-size="12.5" font-family="Segoe UI, Arial, sans-serif">${why}</text>
+    </g>`;
+}
+
 function buildCouponImageSvg(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
@@ -1264,12 +1404,13 @@ function buildCouponImageSvg(payload = {}) {
   const count = Math.max(1, picks.length || 1);
   const cardH = 228;
   const gap = 18;
-  const headH = 178;
+  const headH = 270;
   const footH = 52;
   const width = 1200;
   const height = headH + footH + count * cardH + (count - 1) * gap;
   const generatedAt = formatDateTime(new Date());
   const innerW = width - 72;
+  const hero = buildCouponShareHeroSvg(payload, { width, kicker: "SHARE IMAGE" });
 
   const cards = picks.map((pick, i) => {
     const y = headH + i * (cardH + gap);
@@ -1354,6 +1495,7 @@ function buildCouponImageSvg(payload = {}) {
   <text x="48" y="96" fill="url(#imgHead)" font-size="34" font-weight="900" font-family="Segoe UI, Arial, sans-serif">SOLITFIFPRO225</text>
   <text x="48" y="124" fill="#c5d6f0" font-size="17" font-family="Segoe UI, Arial, sans-serif">Ticket pro â€” Profil ${escapeXml(riskRaw)} Â· Sel. ${Number(summary.totalSelections) || coupon.length} Â· CombinÃ©e ${formatOddForTelegram(summary.combinedOdd)}</text>
   <text x="48" y="148" fill="#7a8fb8" font-size="13" font-family="Segoe UI, Arial, sans-serif">GÃ©nÃ©rÃ© ${escapeXml(generatedAt)}</text>
+  ${hero}
   ${cards.join("\n")}
   <text x="48" y="${height - 26}" fill="#8fa1c4" font-size="14" font-family="Segoe UI, Arial, sans-serif">SignÃ© SOLITAIRE HACK Â· Esports Virtual</text>
 </svg>`;
@@ -1442,6 +1584,7 @@ function buildCouponStorySvg(payload = {}) {
   <text x="72" y="168" fill="#00f0ff" font-size="22" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.35em">SOLITFIFPRO225</text>
   <text x="72" y="210" fill="#d5e4ff" font-size="26" font-family="Segoe UI, Arial, sans-serif">Profil ${escapeXml(riskRaw)} Â· ${Number(summary.totalSelections) || coupon.length} sÃ©lections</text>
   <text x="72" y="246" fill="#8fa6c8" font-size="22" font-family="Segoe UI, Arial, sans-serif">Cote ${formatOddForTelegram(summary.combinedOdd)} Â· ${escapeXml(generatedAt)}</text>
+  ${buildCouponShareHeroSvg(payload, { width, kicker: "SHARE STORY" })}
   ${cards.join("\n")}
   <text x="72" y="${height - 88}" fill="#a8b8d8" font-size="24" font-family="Segoe UI, Arial, sans-serif">SignÃ© SOLITAIRE HACK</text>
   <text x="72" y="${height - 52}" fill="#6a7a9a" font-size="18" font-family="Segoe UI, Arial, sans-serif">Aucune combinaison n'est garantie gagnante.</text>
@@ -1456,13 +1599,14 @@ function buildCouponPremiumSvg(payload = {}) {
   const picks = coupon.slice(0, 8);
   const count = Math.max(1, picks.length || 1);
   const width = 1400;
-  const headH = 200;
+  const headH = 286;
   const cardH = 152;
   const gap = 14;
   const footH = 54;
   const height = headH + footH + count * cardH + (count - 1) * gap;
   const generatedAt = formatDateTime(new Date());
   const rowW = width - 64;
+  const hero = buildCouponShareHeroSvg(payload, { width, kicker: "SHARE PREMIUM" });
 
   const rows = picks
     .map((pick, idx) => {
@@ -1537,6 +1681,7 @@ function buildCouponPremiumSvg(payload = {}) {
   <text x="${width - 194}" y="56" text-anchor="middle" fill="#ffd77a" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">IMPERIAL EDITION</text>
   <text x="40" y="92" fill="#d4e2ff" font-size="18" font-family="Segoe UI, Arial, sans-serif">SOLITFIFPRO225 Â· Profil ${escapeXml(riskRaw)} Â· ${Number(summary.totalSelections) || coupon.length} sel. Â· ${formatOddForTelegram(summary.combinedOdd)}</text>
   <text x="40" y="120" fill="#7d8db0" font-size="14" font-family="Segoe UI, Arial, sans-serif">GÃ©nÃ©rÃ© ${escapeXml(generatedAt)} â€” rendu HD mobile &amp; desktop</text>
+  ${hero}
   ${rows}
   <text x="40" y="${height - 22}" fill="#8a9ab8" font-size="14" font-family="Segoe UI, Arial, sans-serif">SignÃ© SOLITAIRE HACK â€” jeu responsable â€” combinaison non garantie</text>
 </svg>`;
@@ -1621,6 +1766,8 @@ function buildCouponPdfSummaryLines(payload = {}) {
     `Cote combinee: ${formatOddForTelegram(summary.combinedOdd)}`,
     `Confiance moyenne: ${Number(summary.averageConfidence) || 0}%`,
     "",
+    ...buildCouponShareHeroLines(payload),
+    "",
   ];
   coupon.forEach((pick, i) => {
     lines.push(`${i + 1}. ${pick.teamHome || "Equipe 1"} vs ${pick.teamAway || "Equipe 2"}`);
@@ -1643,6 +1790,7 @@ function buildCouponPdfQuickLines(payload = {}) {
     `Date: ${generatedAt}`,
     `Selections: ${Number(summary.totalSelections) || coupon.length}`,
     `Cote combinee: ${formatOddForTelegram(summary.combinedOdd)}`,
+    buildCouponShareHeroSummaryLine(payload),
     "",
   ];
   coupon.slice(0, 14).forEach((pick, i) => {
@@ -1687,6 +1835,8 @@ function buildCouponPdfDetailedLines(payload = {}) {
     `Diversite ligues: ${leagues.size}`,
     `Qualite ticket: ${Number(insights.qualityScore) || 0}/100`,
     `Risque correlation: ${Number(insights.correlationRisk) || 0}%`,
+    "",
+    ...buildCouponShareHeroLines(payload),
     "",
     "DISTRIBUTION RISQUE",
     `Safe (>=75%): ${safeCount}`,
@@ -1778,6 +1928,17 @@ function buildPrintableCouponHtml(payload = {}) {
   const generatedAt = formatDateTime(new Date());
   const combinedOdd = formatOddForTelegram(summary.combinedOdd);
   const avgConf = Number(summary.averageConfidence) || 0;
+  const share = getCouponShareLead(payload);
+  const exact = share.exact;
+  const heroBadgeTone =
+    exact?.badgeTone === "good" ? "good" : exact?.badgeTone === "watch" ? "watch" : "neutral";
+  const heroBadgeLabel = escapeXml(exact?.badgeLabel || "Score premium");
+  const heroReason = escapeXml(exact?.reason || "Projection multi-signaux.");
+  const heroRecommendation = escapeXml(share.lead?.pari || "Aucun");
+  const heroScore = escapeXml(exact?.score || "-");
+  const heroConfidence = Number(share.confidence || 0).toFixed(1);
+  const heroMatchStart = escapeXml(share.matchStart || "-");
+  const heroBadgeClass = heroBadgeTone === "good" ? "is-good" : heroBadgeTone === "watch" ? "is-watch" : "is-neutral";
 
   const shareText = [
     "FC25 Coupon",
@@ -1837,6 +1998,81 @@ function buildPrintableCouponHtml(payload = {}) {
     tbody tr:nth-child(even) { background: #fbfdff; }
     .foot { margin-top: 12px; font-size: 11px; color: #4c607d; display: flex; justify-content: space-between; }
     .print-btn { margin-top: 12px; padding: 8px 12px; border: 0; background: #123b7a; color: white; border-radius: 6px; font-weight: 700; }
+    .share-hero {
+      margin: 10px 0 14px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr);
+      gap: 14px;
+      border: 1px solid #d0daea;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #f8fbff, #eef4ff);
+      padding: 14px;
+      box-shadow: 0 12px 26px rgba(15, 26, 47, 0.08);
+    }
+    .share-hero-title {
+      margin: 0 0 4px;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #627596;
+      font-weight: 800;
+    }
+    .share-hero-reco {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.08;
+      font-weight: 900;
+      color: #0f1a2f;
+    }
+    .share-hero-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+    .share-hero-badge.is-good { color: #0b6b32; background: #defce7; border-color: #8fd8a9; }
+    .share-hero-badge.is-watch { color: #9a4a22; background: #fff0e6; border-color: #f3be95; }
+    .share-hero-badge.is-neutral { color: #875f00; background: #fff8e5; border-color: #e6d09a; }
+    .share-hero-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      align-content: start;
+    }
+    .share-hero-stat {
+      border: 1px solid #d7e0ec;
+      border-radius: 12px;
+      background: #fff;
+      padding: 10px 11px;
+    }
+    .share-hero-stat span {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #7183a1;
+      font-weight: 800;
+    }
+    .share-hero-stat strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 16px;
+      color: #0f1a2f;
+      font-weight: 900;
+    }
+    .share-hero-note {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #42566f;
+      line-height: 1.45;
+    }
     @media print { .print-btn { display: none; } }
   </style>
 </head>
@@ -1852,6 +2088,32 @@ function buildPrintableCouponHtml(payload = {}) {
         <img src="${qrUrl}" width="160" height="160" alt="QR Coupon"/>
       </div>
     </div>
+    <section class="share-hero">
+      <div>
+        <p class="share-hero-title">Score Exact Premium</p>
+        <p class="share-hero-reco">${heroRecommendation}</p>
+        <span class="share-hero-badge ${heroBadgeClass}">${heroBadgeLabel}</span>
+        <p class="share-hero-note">${heroReason}</p>
+      </div>
+      <div class="share-hero-grid">
+        <article class="share-hero-stat">
+          <span>Score exact</span>
+          <strong>${heroScore}</strong>
+        </article>
+        <article class="share-hero-stat">
+          <span>Confiance</span>
+          <strong>${heroConfidence}%</strong>
+        </article>
+        <article class="share-hero-stat">
+          <span>Heure match</span>
+          <strong>${heroMatchStart}</strong>
+        </article>
+        <article class="share-hero-stat">
+          <span>Cote</span>
+          <strong>${combinedOdd}</strong>
+        </article>
+      </div>
+    </section>
     <div class="meta">
       <span class="pill">Profil: ${escapeXml(riskProfile)}</span>
       <span class="pill">Selections: ${Number(summary.totalSelections) || coupon.length}</span>
