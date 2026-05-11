@@ -490,6 +490,73 @@ function probabilityOverLine(matrix, line) {
   return matrix.reduce((acc, item) => acc + (item.home + item.away >= threshold ? item.probability : 0), 0);
 }
 
+function inferExactScoreBias(recommendation = "") {
+  const text = normalizeMarketLabel(recommendation);
+  if (!text) return null;
+
+  const bias = {
+    outcome: null,
+    total: null,
+  };
+
+  if (text.includes("plus de") || text.includes("over")) bias.total = "over";
+  if (text.includes("moins de") || text.includes("under")) bias.total = "under";
+
+  if (
+    text.includes("victoire domicile") ||
+    text === "1" ||
+    text.startsWith("1x") ||
+    text.includes("domicile")
+  ) {
+    bias.outcome = "home";
+  } else if (
+    text.includes("victoire exterieur") ||
+    text === "2" ||
+    text.endsWith("x2") ||
+    text.includes("exterieur") ||
+    text.includes("extérieur")
+  ) {
+    bias.outcome = "away";
+  } else if (text.includes("match nul") || text === "x" || text.includes("nul")) {
+    bias.outcome = "draw";
+  }
+
+  return bias.outcome || bias.total ? bias : null;
+}
+
+function exactScoreMatchesBias(score, bias) {
+  if (!bias || !score || typeof score !== "string") return true;
+  const parts = score.split("-").map((part) => Number(part));
+  if (parts.length !== 2 || parts.some((n) => !Number.isFinite(n))) return false;
+  const [homeGoals, awayGoals] = parts;
+  const totalGoals = homeGoals + awayGoals;
+
+  if (bias.outcome === "home" && homeGoals <= awayGoals) return false;
+  if (bias.outcome === "away" && awayGoals <= homeGoals) return false;
+  if (bias.outcome === "draw" && homeGoals !== awayGoals) return false;
+
+  if (bias.total === "over" && totalGoals <= 2) return false;
+  if (bias.total === "under" && totalGoals > 2) return false;
+
+  return true;
+}
+
+function rankExactScoreCandidates(matrix = [], bias = null) {
+  const ranked = Array.isArray(matrix)
+    ? matrix
+      .filter((item) => isValidExactScoreEntry(item))
+      .map((item) => ({
+        ...item,
+        aligned: exactScoreMatchesBias(item.score, bias),
+      }))
+      .sort((a, b) => {
+        if (a.aligned !== b.aligned) return a.aligned ? -1 : 1;
+        return b.probability - a.probability;
+      })
+    : [];
+  return ranked;
+}
+
 function isValidExactScoreEntry(entry) {
   if (!entry || typeof entry !== "object") return false;
   if (typeof entry.score !== "string" || !/^\d+-\d+$/.test(entry.score)) return false;
@@ -521,7 +588,7 @@ function isValidExactScoreProjection(projection) {
   return true;
 }
 
-function evaluateScoreLoss(homeLambda, awayLambda, target, signals) {
+function evaluateScoreLoss(homeLambda, awayLambda, target, signals, bias = null) {
   const model = computeScoreMatrix(homeLambda, awayLambda);
   let loss =
     Math.pow(model.homeWin - target.home, 2) * 2.4 +
@@ -537,10 +604,24 @@ function evaluateScoreLoss(homeLambda, awayLambda, target, signals) {
     loss += Math.pow(model.btts - signals.bttsProb, 2) * 2;
   }
 
+  if (bias?.outcome === "home" && model.awayWin > model.homeWin) {
+    loss += (model.awayWin - model.homeWin) * 1.5;
+  } else if (bias?.outcome === "away" && model.homeWin > model.awayWin) {
+    loss += (model.homeWin - model.awayWin) * 1.5;
+  } else if (bias?.outcome === "draw") {
+    loss += Math.abs(model.homeWin - model.awayWin) * 0.9;
+  }
+
+  if (bias?.total === "over" && model.totalLambda < 2.6) {
+    loss += (2.6 - model.totalLambda) * 0.9;
+  } else if (bias?.total === "under" && model.totalLambda > 2.4) {
+    loss += (model.totalLambda - 2.4) * 0.9;
+  }
+
   return { loss, model };
 }
 
-function findBestExactScoreModel(match, markets = []) {
+function findBestExactScoreModel(match, markets = [], bias = null) {
   const target = impliedProbabilities(match?.odds1x2 || {});
   const fairTarget = {
     home: target.home / 100,
@@ -552,7 +633,7 @@ function findBestExactScoreModel(match, markets = []) {
 
   for (let homeLambda = 0.4; homeLambda <= 4.6; homeLambda += 0.16) {
     for (let awayLambda = 0.3; awayLambda <= 4.2; awayLambda += 0.16) {
-      const candidate = evaluateScoreLoss(homeLambda, awayLambda, fairTarget, signals);
+      const candidate = evaluateScoreLoss(homeLambda, awayLambda, fairTarget, signals, bias);
       if (!best || candidate.loss < best.loss) {
         best = { ...candidate, homeLambda, awayLambda };
       }
@@ -564,7 +645,7 @@ function findBestExactScoreModel(match, markets = []) {
   let refined = best;
   for (let homeLambda = Math.max(0.2, best.homeLambda - 0.25); homeLambda <= best.homeLambda + 0.25; homeLambda += 0.04) {
     for (let awayLambda = Math.max(0.2, best.awayLambda - 0.25); awayLambda <= best.awayLambda + 0.25; awayLambda += 0.04) {
-      const candidate = evaluateScoreLoss(homeLambda, awayLambda, fairTarget, signals);
+      const candidate = evaluateScoreLoss(homeLambda, awayLambda, fairTarget, signals, bias);
       if (candidate.loss < refined.loss) {
         refined = { ...candidate, homeLambda, awayLambda };
       }
@@ -578,6 +659,9 @@ function buildExactScoreProjection(data) {
   if (data?.exactScoreAvailable === false || data?.leagueProfile?.exactScoreAllowed === false) {
     return null;
   }
+  const masterRecommendation = String(data?.prediction?.maitre?.decision_finale?.pari_choisi || "").trim();
+  const fallbackRecommendation = String(data?.prediction?.analyse_avancee?.top_3_recommandations?.[0]?.pari || "").trim();
+  const bias = inferExactScoreBias(masterRecommendation || fallbackRecommendation);
   const backendExactScore = data?.exactScore;
   const backendProjection =
     backendExactScore && typeof backendExactScore === "object" && "available" in backendExactScore
@@ -586,15 +670,18 @@ function buildExactScoreProjection(data) {
         : null
       : backendExactScore;
   if (isValidExactScoreProjection(backendProjection)) {
-    return normalizeExactScoreProjection(backendProjection);
+    const normalized = normalizeExactScoreProjection(backendProjection);
+    if (!bias || exactScoreMatchesBias(normalized.primary?.score, bias)) {
+      return normalized;
+    }
   }
 
   const match = data?.match || {};
   const markets = Array.isArray(data?.bettingMarkets) ? data.bettingMarkets : [];
-  const projection = findBestExactScoreModel(match, markets);
+  const projection = findBestExactScoreModel(match, markets, bias);
   if (!projection) return null;
 
-  const topScores = projection.model.matrix.slice(0, 4).map((item) => ({
+  const topScores = rankExactScoreCandidates(projection.model.matrix, bias).slice(0, 4).map((item) => ({
     score: `${item.home}-${item.away}`,
     probability: item.probability,
   }));
@@ -613,6 +700,9 @@ function buildExactScoreProjection(data) {
       : projection.awayLambda - projection.homeLambda >= 0.45
         ? "avantage exterieur"
         : "equilibre entre les deux equipes";
+  const alignmentNote = bias?.outcome || bias?.total
+    ? "Scenario exact aligne sur la decision finale du moteur."
+    : "Scenario exact issu du moteur multi-signaux.";
 
   return {
     primary,
@@ -625,7 +715,7 @@ function buildExactScoreProjection(data) {
     awayLambda: projection.awayLambda,
     overLines: projection.signals.overLines,
     bttsProb: projection.signals.bttsProb,
-    narrative: `${intensity}, ${edge}. Projection issue d'un moteur multi-signaux (1X2${projection.signals.overLines.length ? " + totals" : ""}${projection.signals.bttsProb != null ? " + BTTS" : ""}).`,
+    narrative: `${intensity}, ${edge}. ${alignmentNote} Projection issue d'un moteur multi-signaux (1X2${projection.signals.overLines.length ? " + totals" : ""}${projection.signals.bttsProb != null ? " + BTTS" : ""}).`,
   };
 }
 
@@ -635,8 +725,8 @@ function renderExactScorePanel(data) {
   const projection = buildExactScoreProjection(data);
   if (!projection) {
     host.innerHTML = data?.leagueProfile?.exactScoreAllowed === false
-      ? "<p>Projection score exact desactivee pour cette ligue. Le moteur privilegie alors les recommandations plus robustes.</p>"
-      : "<p>Projection score exact indisponible pour ce match.</p>";
+      ? "<p>Projection du score exact desactivee pour cette ligue. Le moteur privilegie alors les recommandations plus robustes.</p>"
+      : "<p>Projection du score exact indisponible pour ce match.</p>";
     return;
   }
 

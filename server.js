@@ -1091,6 +1091,70 @@ function formatMatchStartTimeUnix(unixSeconds) {
   return formatDateTime(n * 1000);
 }
 
+function inferExactScoreBias(recommendation = "") {
+  const text = normalizeLookupText(recommendation);
+  if (!text) return null;
+
+  const bias = {
+    outcome: null,
+    total: null,
+  };
+
+  if (text.includes("plus de") || text.includes("over")) bias.total = "over";
+  if (text.includes("moins de") || text.includes("under")) bias.total = "under";
+
+  if (text.includes("victoire domicile") || text === "1" || text.startsWith("1x") || text.includes("domicile")) {
+    bias.outcome = "home";
+  } else if (
+    text.includes("victoire exterieur") ||
+    text === "2" ||
+    text.endsWith("x2") ||
+    text.includes("exterieur") ||
+    text.includes("extérieur")
+  ) {
+    bias.outcome = "away";
+  } else if (text.includes("match nul") || text === "x" || text.includes("nul")) {
+    bias.outcome = "draw";
+  }
+
+  return bias.outcome || bias.total ? bias : null;
+}
+
+function exactScoreMatchesBias(score, bias) {
+  if (!bias || !score || typeof score !== "string") return true;
+  const parts = score.split("-").map((part) => Number(part));
+  if (parts.length !== 2 || parts.some((n) => !Number.isFinite(n))) return false;
+  const [homeGoals, awayGoals] = parts;
+  const totalGoals = homeGoals + awayGoals;
+
+  if (bias.outcome === "home" && homeGoals <= awayGoals) return false;
+  if (bias.outcome === "away" && awayGoals <= homeGoals) return false;
+  if (bias.outcome === "draw" && homeGoals !== awayGoals) return false;
+  if (bias.total === "over" && totalGoals <= 2) return false;
+  if (bias.total === "under" && totalGoals > 2) return false;
+
+  return true;
+}
+
+function pickAlignedExactScore(exactScore, recommendation = "") {
+  const normalized =
+    exactScore && typeof exactScore === "object" && "available" in exactScore
+      ? exactScore.available
+        ? exactScore.value
+        : null
+      : exactScore;
+  if (!normalized || typeof normalized !== "object") return null;
+
+  const bias = inferExactScoreBias(recommendation);
+  const primary = normalized.primary && typeof normalized.primary === "object" ? normalized.primary : null;
+  const alternatives = Array.isArray(normalized.alternatives) ? normalized.alternatives : [];
+  if (!bias) return primary;
+
+  if (primary && exactScoreMatchesBias(primary.score, bias)) return primary;
+  const alignedAlternative = alternatives.find((item) => item && exactScoreMatchesBias(item.score, bias));
+  return alignedAlternative || primary || null;
+}
+
 function buildTelegramCouponText(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
@@ -1115,7 +1179,11 @@ function buildTelegramCouponText(payload = {}) {
       `Sel: ${Number(summary.totalSelections) || coupon.length} | Cote: ${formatOddForTelegram(summary.combinedOdd)}`,
       `Conf: ${Number(summary.averageConfidence) || 0}%`,
       `Score Telegram: ${telegramConfidenceScore}/100`,
-      ...top.map((p, i) => `${i + 1}) ${p?.teamHome || "E1"} vs ${p?.teamAway || "E2"} | ${formatOddForTelegram(p?.cote)}`),
+      ...top.map((p, i) => {
+        const exactLine = buildExactScoreLine(resolveImageExactScore(p?.exactScore, p?.pari));
+        const suffix = exactLine ? ` | ${exactLine}` : "";
+        return `${i + 1}) ${p?.teamHome || "E1"} vs ${p?.teamAway || "E2"} | ${formatOddForTelegram(p?.cote)}${suffix}`;
+      }),
       "Signe: SOLITAIRE HACK",
     ];
     return lines.slice(0, 7).join("\n");
@@ -1132,9 +1200,11 @@ function buildTelegramCouponText(payload = {}) {
   ];
 
   coupon.forEach((pick, index) => {
+    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
+    const exactSuffix = exactLine ? ` | ${exactLine}` : "";
     lines.push(`${index + 1}. ${pick.teamHome || "Equipe 1"} vs ${pick.teamAway || "Equipe 2"}`);
     lines.push(`Ligue: ${pick.league || "Non specifiee"}`);
-    lines.push(`Pari: ${pick.pari || "-"}`);
+    lines.push(`Pari: ${pick.pari || "-"}${exactSuffix}`);
     lines.push(`Cote: ${formatOddForTelegram(pick.cote)} | Confiance: ${Number(pick.confiance) || 0}%`);
     lines.push("");
   });
@@ -1158,7 +1228,7 @@ function truncateCouponLabel(text = "", max = 44) {
   return `${s.slice(0, Math.max(0, max - 1))}â€¦`;
 }
 
-function resolveImageExactScore(exactScore) {
+function resolveImageExactScore(exactScore, recommendation = "") {
   const normalized =
     exactScore && typeof exactScore === "object" && "available" in exactScore
       ? exactScore.available
@@ -1166,10 +1236,10 @@ function resolveImageExactScore(exactScore) {
         : null
       : exactScore;
   if (!normalized || typeof normalized !== "object") return null;
-  const primary = normalized.primary && typeof normalized.primary === "object" ? normalized.primary : null;
-  if (!primary || typeof primary.score !== "string") return null;
+  const selected = pickAlignedExactScore(normalized, recommendation);
+  if (!selected || typeof selected.score !== "string") return null;
   return {
-    score: primary.score,
+    score: selected.score,
     reliability: Number.isFinite(normalized.reliability) ? normalized.reliability : null,
     fitScore: Number.isFinite(normalized.fitScore) ? normalized.fitScore : null,
     marketSupport: Number.isFinite(normalized.marketSupport) ? normalized.marketSupport : null,
@@ -1178,7 +1248,7 @@ function resolveImageExactScore(exactScore) {
 
 function buildExactScoreLine(exactScore) {
   if (!exactScore) return "";
-  const parts = [`Score exact ${exactScore.score}`];
+  const parts = [`Score exact: ${exactScore.score}`];
   if (Number.isFinite(exactScore.reliability)) parts.push(`fiabilite ${Math.round(exactScore.reliability)}/100`);
   if (Number.isFinite(exactScore.fitScore)) parts.push(`fit ${Math.round(exactScore.fitScore)}/100`);
   if (Number.isFinite(exactScore.marketSupport)) parts.push(`marches ${Math.round(exactScore.marketSupport)}/100`);
@@ -1210,7 +1280,7 @@ function buildCouponImageSvg(payload = {}) {
     const odd = formatOddForTelegram(pick.cote);
     const matchStart = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
     const cx = innerW / 2;
-    const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore)) : "";
+    const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore, pick.pari)) : "";
     return `
       <g transform="translate(36, ${y})">
         <rect x="0" y="0" width="${innerW}" height="${cardH}" rx="16" fill="rgba(8,12,22,0.94)" stroke="url(#imgStroke)" stroke-width="1.5"/>
@@ -1313,7 +1383,7 @@ function buildCouponStorySvg(payload = {}) {
     const conf = Number(pick.confiance) || 0;
     const risk = conf >= 75 ? "SAFE" : conf >= 60 ? "MODERE" : "RISQUE";
     const mid = cardW / 2;
-    const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore)) : "";
+    const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore, pick.pari)) : "";
     return `
       <g transform="translate(48, ${y})">
         <rect x="0" y="0" width="${cardW}" height="${cardH}" rx="26" fill="rgba(6,10,20,0.92)" stroke="url(#stStroke)" stroke-width="2"/>
@@ -1406,7 +1476,7 @@ function buildCouponPremiumSvg(payload = {}) {
       const startAt = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
       const q = Number(pick?.qualityScore || pick?.dataQuality || pick?.confiance || 0).toFixed(0);
       const hx = rowW / 2;
-      const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore)) : "";
+      const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore, pick.pari)) : "";
       return `
       <g transform="translate(32, ${y})">
         <rect x="0" y="0" width="${rowW}" height="${cardH}" rx="14" fill="rgba(5,9,18,0.96)" stroke="url(#pmStroke)"/>
@@ -1555,7 +1625,8 @@ function buildCouponPdfSummaryLines(payload = {}) {
   coupon.forEach((pick, i) => {
     lines.push(`${i + 1}. ${pick.teamHome || "Equipe 1"} vs ${pick.teamAway || "Equipe 2"}`);
     lines.push(`   Ligue: ${pick.league || "Non specifiee"}`);
-    lines.push(`   Pari: ${pick.pari || "-"}`);
+    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
+    lines.push(`   Pari: ${pick.pari || "-"}${exactLine ? ` | ${exactLine}` : ""}`);
     lines.push(`   Cote: ${formatOddForTelegram(pick.cote)} | Confiance: ${Number(pick.confiance) || 0}%`);
     lines.push("");
   });
@@ -1575,8 +1646,9 @@ function buildCouponPdfQuickLines(payload = {}) {
     "",
   ];
   coupon.slice(0, 14).forEach((pick, i) => {
+    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
     lines.push(
-      `${i + 1}) ${pick?.teamHome || "Equipe 1"} vs ${pick?.teamAway || "Equipe 2"} | ${pick?.pari || "-"} | ${formatOddForTelegram(
+      `${i + 1}) ${pick?.teamHome || "Equipe 1"} vs ${pick?.teamAway || "Equipe 2"} | ${pick?.pari || "-"}${exactLine ? ` | ${exactLine}` : ""} | ${formatOddForTelegram(
         pick?.cote
       )}`
     );
@@ -1630,9 +1702,10 @@ function buildCouponPdfDetailedLines(payload = {}) {
     const valueIndex = odd > 0 ? Number((conf / odd).toFixed(2)) : 0;
     const confidenceBand = conf >= 75 ? "SAFE" : conf >= 60 ? "MOYEN" : "ELEVE";
     const source = String(pick?.source || "MIXTE");
+    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
     lines.push(`${i + 1}. ${pick?.teamHome || "Equipe 1"} vs ${pick?.teamAway || "Equipe 2"}`);
     lines.push(`   Ligue: ${pick?.league || "Non specifiee"}`);
-    lines.push(`   Pari: ${pick?.pari || "-"}`);
+    lines.push(`   Pari: ${pick?.pari || "-"}${exactLine ? ` | ${exactLine}` : ""}`);
     lines.push(`   Cote: ${formatOddForTelegram(odd)} | Confiance: ${conf.toFixed(1)}% | Bande: ${confidenceBand}`);
     lines.push(`   Value Index (Confiance/Cote): ${valueIndex} | Source: ${source}`);
     lines.push("");
@@ -1711,7 +1784,10 @@ function buildPrintableCouponHtml(payload = {}) {
     `Date ${generatedAt}`,
     `Profil ${riskProfile}`,
     `Cote ${combinedOdd}`,
-    ...coupon.slice(0, 8).map((p, i) => `${i + 1}. ${p?.teamHome || "Equipe 1"} vs ${p?.teamAway || "Equipe 2"} | ${p?.pari || "-"} | ${formatOddForTelegram(p?.cote)}`),
+    ...coupon.slice(0, 8).map((p, i) => {
+      const exactLine = buildExactScoreLine(resolveImageExactScore(p?.exactScore, p?.pari));
+      return `${i + 1}. ${p?.teamHome || "Equipe 1"} vs ${p?.teamAway || "Equipe 2"} | ${p?.pari || "-"}${exactLine ? ` | ${exactLine}` : ""} | ${formatOddForTelegram(p?.cote)}`;
+    }),
   ].join(" | ");
   const qrUrl = `https://quickchart.io/qr?size=190&text=${encodeURIComponent(shareText)}`;
 
@@ -1724,13 +1800,14 @@ function buildPrintableCouponHtml(payload = {}) {
       const odd = formatOddForTelegram(p?.cote);
       const conf = Number(p?.confiance) || 0;
       const startAt = escapeXml(formatMatchStartTimeUnix(p?.startTimeUnix));
+      const exactLine = buildExactScoreLine(resolveImageExactScore(p?.exactScore, p?.pari));
       return `
         <tr>
           <td>${i + 1}</td>
           <td>${home} vs ${away}</td>
           <td>${league}</td>
           <td>${startAt}</td>
-          <td>${pari}</td>
+          <td>${pari}${exactLine ? `<br/><span class="exact-line">${exactLine}</span>` : ""}</td>
           <td>${odd}</td>
           <td>${conf.toFixed(1)}%</td>
         </tr>

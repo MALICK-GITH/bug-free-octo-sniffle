@@ -164,6 +164,7 @@ const stabilityCache = {
   clear: () => { }
 };
 let ticketSnapshotA = null;
+let ticketSnapshotB = null;
 
 // Vider tous les caches localStorage liés au coupon au chargement
 (function clearCouponCache() {
