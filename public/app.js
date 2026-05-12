@@ -145,20 +145,22 @@ function getKnownTeamLogo(name, knownLogos = new Map()) {
 }
 
 function sanitizeMatchLogos(match, knownLogos = new Map()) {
+  const homeLogo = getKnownTeamLogo(match?.teamHome, knownLogos) || String(match?.teamHomeLogo || "").trim() || null;
+  const awayLogo = getKnownTeamLogo(match?.teamAway, knownLogos) || String(match?.teamAwayLogo || "").trim() || null;
   return {
     ...match,
-    teamHomeLogo: getKnownTeamLogo(match?.teamHome, knownLogos),
-    teamAwayLogo: getKnownTeamLogo(match?.teamAway, knownLogos),
+    teamHomeLogo: homeLogo,
+    teamAwayLogo: awayLogo,
+    teamHomeLogoFallback: String(match?.teamHomeLogoFallback || "").trim() || null,
+    teamAwayLogoFallback: String(match?.teamAwayLogoFallback || "").trim() || null,
+    teamHomeLogoFile: String(match?.teamHomeLogoFile || "").trim() || null,
+    teamAwayLogoFile: String(match?.teamAwayLogoFile || "").trim() || null,
   };
 }
 
 async function fetchDirectTeamLogo(teamName) {
   const cached = getCachedTeamLogo(teamName);
   if (cached) return cached;
-
-  // The browser version avoids direct third-party logo lookups to keep the
-  // page quiet and deterministic. The local badge fallback already gives a
-  // clear visual identity without introducing console noise or CORS failures.
   return null;
 }
 
