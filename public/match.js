@@ -761,7 +761,15 @@ function renderExactScorePanel(data) {
   const coherenceLabel = escapeHtml(coherence.badgeLabel || "Score premium");
   const coherenceReason = escapeHtml(coherence.reason || "Projection multi-signaux sans biais de pari.");
   const coherenceRecommendation = escapeHtml(coherence.recommendation || String(data?.prediction?.maitre?.decision_finale?.pari_choisi || ""));
+  const primaryScore = escapeHtml(projection.primary?.score || "-");
   const scoreConfidence = Number(projection.primary?.probability || 0) * 100;
+  const alternativeScores = Array.isArray(projection.alternatives) ? projection.alternatives : [];
+  const safeAlternatives = alternativeScores
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      score: escapeHtml(item.score || "-"),
+      probability: Number(item.probability || 0),
+    }));
 
   host.innerHTML = `
     <div class="exact-score-imperial ${reliabilityTone}">
@@ -771,7 +779,7 @@ function renderExactScorePanel(data) {
         <div class="exact-score-mainline">
           <div class="exact-score-primary">
             <strong>Score principal</strong>
-            <div class="exact-score-value">${projection.primary.score}</div>
+            <div class="exact-score-value">${primaryScore}</div>
             <small>Probabilite modelisee ${scoreConfidence.toFixed(1)}%</small>
           </div>
           <div class="exact-score-reliability">
@@ -785,7 +793,7 @@ function renderExactScorePanel(data) {
         <article class="exact-score-card">
           <strong>Scenarios proches</strong>
           <div class="exact-score-alt-list">
-            ${projection.alternatives
+            ${safeAlternatives
               .map(
                 (item) => `
                   <span class="exact-score-alt">${item.score}<small>${(item.probability * 100).toFixed(1)}%</small></span>
