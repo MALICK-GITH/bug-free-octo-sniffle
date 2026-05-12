@@ -28,6 +28,14 @@ function formatOdd(value) {
   return typeof value === "number" ? value.toFixed(3) : "-";
 }
 
+function promptExactScoreImageChoice(label = "cette image") {
+  try {
+    return window.confirm(`Inclure le score exact dans ${label} ?\nOK = avec score exact\nAnnuler = sans score exact`);
+  } catch {
+    return false;
+  }
+}
+
 function toNumber(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -43,6 +51,15 @@ function chartGridColor() {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function isLowDataModeEnabled() {
@@ -473,10 +490,96 @@ function probabilityOverLine(matrix, line) {
   return matrix.reduce((acc, item) => acc + (item.home + item.away >= threshold ? item.probability : 0), 0);
 }
 
+function inferExactScoreBias(recommendation = "") {
+  const text = normalizeMarketLabel(recommendation);
+  if (!text) return null;
+
+  const bias = {
+    outcome: null,
+    total: null,
+  };
+
+  if (text.includes("plus de") || text.includes("over")) bias.total = "over";
+  if (text.includes("moins de") || text.includes("under")) bias.total = "under";
+
+  if (
+    text.includes("victoire domicile") ||
+    text === "1" ||
+    text.startsWith("1x") ||
+    text.includes("domicile")
+  ) {
+    bias.outcome = "home";
+  } else if (
+    text.includes("victoire exterieur") ||
+    text === "2" ||
+    text.endsWith("x2") ||
+    text.includes("exterieur") ||
+    text.includes("extérieur")
+  ) {
+    bias.outcome = "away";
+  } else if (text.includes("match nul") || text === "x" || text.includes("nul")) {
+    bias.outcome = "draw";
+  }
+
+  return bias.outcome || bias.total ? bias : null;
+}
+
+function describeExactScoreBias(bias) {
+  if (!bias) return "Projection multi-signaux sans biais de pari.";
+  if (bias.outcome === "home") return "La reco pointe vers le domicile, donc le score exact reste oriente vers l'equipe maison.";
+  if (bias.outcome === "away") return "La reco pointe vers l'exterieur, donc le score exact suit la tendance visiteuse.";
+  if (bias.outcome === "draw") return "La reco vise le nul, donc le score exact privilegie un scenario serre.";
+  if (bias.total === "over") return "La reco vise un match ouvert, donc le score exact garde plus de volume offensif.";
+  if (bias.total === "under") return "La reco vise un match ferme, donc le score exact reste compact.";
+  return "Projection multi-signaux sans biais de pari.";
+}
+
+function exactScoreMatchesBias(score, bias) {
+  if (!bias || !score || typeof score !== "string") return true;
+  const parts = score.split("-").map((part) => Number(part));
+  if (parts.length !== 2 || parts.some((n) => !Number.isFinite(n))) return false;
+  const [homeGoals, awayGoals] = parts;
+  const totalGoals = homeGoals + awayGoals;
+
+  if (bias.outcome === "home" && homeGoals <= awayGoals) return false;
+  if (bias.outcome === "away" && awayGoals <= homeGoals) return false;
+  if (bias.outcome === "draw" && homeGoals !== awayGoals) return false;
+
+  if (bias.total === "over" && totalGoals <= 2) return false;
+  if (bias.total === "under" && totalGoals > 2) return false;
+
+  return true;
+}
+
+function rankExactScoreCandidates(matrix = [], bias = null) {
+  const ranked = Array.isArray(matrix)
+    ? matrix
+      .filter((item) => isValidExactScoreEntry(item))
+      .map((item) => ({
+        ...item,
+        aligned: exactScoreMatchesBias(item.score, bias),
+      }))
+      .sort((a, b) => {
+        if (a.aligned !== b.aligned) return a.aligned ? -1 : 1;
+        return b.probability - a.probability;
+      })
+    : [];
+  return ranked;
+}
+
 function isValidExactScoreEntry(entry) {
   if (!entry || typeof entry !== "object") return false;
   if (typeof entry.score !== "string" || !/^\d+-\d+$/.test(entry.score)) return false;
   return Number.isFinite(entry.probability);
+}
+
+function normalizeExactScoreProjection(projection) {
+  return {
+    ...projection,
+    alternatives: Array.isArray(projection.alternatives) ? projection.alternatives : [],
+    overLines: Array.isArray(projection.overLines) ? projection.overLines : [],
+    narrative: typeof projection.narrative === "string" ? projection.narrative : "",
+  };
 }
 
 function isValidExactScoreProjection(projection) {
@@ -492,11 +595,10 @@ function isValidExactScoreProjection(projection) {
   if (!Number.isFinite(projection.fitScore)) return false;
   if (!Number.isFinite(projection.marketSupport)) return false;
   if (!Number.isFinite(projection.bttsProb) && projection.bttsProb !== null) return false;
-  if (typeof projection.narrative !== "string" || !projection.narrative.trim()) return false;
   return true;
 }
 
-function evaluateScoreLoss(homeLambda, awayLambda, target, signals) {
+function evaluateScoreLoss(homeLambda, awayLambda, target, signals, bias = null) {
   const model = computeScoreMatrix(homeLambda, awayLambda);
   let loss =
     Math.pow(model.homeWin - target.home, 2) * 2.4 +
@@ -512,10 +614,24 @@ function evaluateScoreLoss(homeLambda, awayLambda, target, signals) {
     loss += Math.pow(model.btts - signals.bttsProb, 2) * 2;
   }
 
+  if (bias?.outcome === "home" && model.awayWin > model.homeWin) {
+    loss += (model.awayWin - model.homeWin) * 1.5;
+  } else if (bias?.outcome === "away" && model.homeWin > model.awayWin) {
+    loss += (model.homeWin - model.awayWin) * 1.5;
+  } else if (bias?.outcome === "draw") {
+    loss += Math.abs(model.homeWin - model.awayWin) * 0.9;
+  }
+
+  if (bias?.total === "over" && model.totalLambda < 2.6) {
+    loss += (2.6 - model.totalLambda) * 0.9;
+  } else if (bias?.total === "under" && model.totalLambda > 2.4) {
+    loss += (model.totalLambda - 2.4) * 0.9;
+  }
+
   return { loss, model };
 }
 
-function findBestExactScoreModel(match, markets = []) {
+function findBestExactScoreModel(match, markets = [], bias = null) {
   const target = impliedProbabilities(match?.odds1x2 || {});
   const fairTarget = {
     home: target.home / 100,
@@ -527,7 +643,7 @@ function findBestExactScoreModel(match, markets = []) {
 
   for (let homeLambda = 0.4; homeLambda <= 4.6; homeLambda += 0.16) {
     for (let awayLambda = 0.3; awayLambda <= 4.2; awayLambda += 0.16) {
-      const candidate = evaluateScoreLoss(homeLambda, awayLambda, fairTarget, signals);
+      const candidate = evaluateScoreLoss(homeLambda, awayLambda, fairTarget, signals, bias);
       if (!best || candidate.loss < best.loss) {
         best = { ...candidate, homeLambda, awayLambda };
       }
@@ -539,7 +655,7 @@ function findBestExactScoreModel(match, markets = []) {
   let refined = best;
   for (let homeLambda = Math.max(0.2, best.homeLambda - 0.25); homeLambda <= best.homeLambda + 0.25; homeLambda += 0.04) {
     for (let awayLambda = Math.max(0.2, best.awayLambda - 0.25); awayLambda <= best.awayLambda + 0.25; awayLambda += 0.04) {
-      const candidate = evaluateScoreLoss(homeLambda, awayLambda, fairTarget, signals);
+      const candidate = evaluateScoreLoss(homeLambda, awayLambda, fairTarget, signals, bias);
       if (candidate.loss < refined.loss) {
         refined = { ...candidate, homeLambda, awayLambda };
       }
@@ -550,6 +666,12 @@ function findBestExactScoreModel(match, markets = []) {
 }
 
 function buildExactScoreProjection(data) {
+  if (data?.exactScoreAvailable === false || data?.leagueProfile?.exactScoreAllowed === false) {
+    return null;
+  }
+  const masterRecommendation = String(data?.prediction?.maitre?.decision_finale?.pari_choisi || "").trim();
+  const fallbackRecommendation = String(data?.prediction?.analyse_avancee?.top_3_recommandations?.[0]?.pari || "").trim();
+  const bias = inferExactScoreBias(masterRecommendation || fallbackRecommendation);
   const backendExactScore = data?.exactScore;
   const backendProjection =
     backendExactScore && typeof backendExactScore === "object" && "available" in backendExactScore
@@ -558,15 +680,18 @@ function buildExactScoreProjection(data) {
         : null
       : backendExactScore;
   if (isValidExactScoreProjection(backendProjection)) {
-    return backendProjection;
+    const normalized = normalizeExactScoreProjection(backendProjection);
+    if (!bias || exactScoreMatchesBias(normalized.primary?.score, bias)) {
+      return normalized;
+    }
   }
 
   const match = data?.match || {};
   const markets = Array.isArray(data?.bettingMarkets) ? data.bettingMarkets : [];
-  const projection = findBestExactScoreModel(match, markets);
+  const projection = findBestExactScoreModel(match, markets, bias);
   if (!projection) return null;
 
-  const topScores = projection.model.matrix.slice(0, 4).map((item) => ({
+  const topScores = rankExactScoreCandidates(projection.model.matrix, bias).slice(0, 4).map((item) => ({
     score: `${item.home}-${item.away}`,
     probability: item.probability,
   }));
@@ -585,6 +710,12 @@ function buildExactScoreProjection(data) {
       : projection.awayLambda - projection.homeLambda >= 0.45
         ? "avantage exterieur"
         : "equilibre entre les deux equipes";
+  const alignmentNote = bias?.outcome || bias?.total
+    ? "Scenario exact aligne sur la decision finale du moteur."
+    : "Scenario exact issu du moteur multi-signaux.";
+  const primaryAligned = !bias || exactScoreMatchesBias(primary?.score, bias);
+  const coherenceTone = bias ? (primaryAligned ? "good" : "watch") : "neutral";
+  const coherenceLabel = bias ? (primaryAligned ? "Aligné avec la reco" : "A surveiller") : "Score premium";
 
   return {
     primary,
@@ -597,7 +728,13 @@ function buildExactScoreProjection(data) {
     awayLambda: projection.awayLambda,
     overLines: projection.signals.overLines,
     bttsProb: projection.signals.bttsProb,
-    narrative: `${intensity}, ${edge}. Projection issue d'un moteur multi-signaux (1X2${projection.signals.overLines.length ? " + totals" : ""}${projection.signals.bttsProb != null ? " + BTTS" : ""}).`,
+    coherence: {
+      badgeTone: coherenceTone,
+      badgeLabel: coherenceLabel,
+      reason: describeExactScoreBias(bias),
+      recommendation: masterRecommendation || fallbackRecommendation,
+    },
+    narrative: `${intensity}, ${edge}. ${alignmentNote} Projection issue d'un moteur multi-signaux (1X2${projection.signals.overLines.length ? " + totals" : ""}${projection.signals.bttsProb != null ? " + BTTS" : ""}).`,
   };
 }
 
@@ -606,7 +743,9 @@ function renderExactScorePanel(data) {
   if (!host) return;
   const projection = buildExactScoreProjection(data);
   if (!projection) {
-    host.innerHTML = "<p>Projection score exact indisponible pour ce match.</p>";
+    host.innerHTML = data?.leagueProfile?.exactScoreAllowed === false
+      ? "<p>Projection du score exact desactivee pour cette ligue. Le moteur privilegie alors les recommandations plus robustes.</p>"
+      : "<p>Projection du score exact indisponible pour ce match.</p>";
     return;
   }
 
@@ -615,16 +754,25 @@ function renderExactScorePanel(data) {
   const totalLine = projection.totalGoals.toFixed(2);
   const bttsText =
     projection.bttsProb == null ? "BTTS non exploitable" : `BTTS oui estime a ${(projection.bttsProb * 100).toFixed(1)}%`;
+  const leagueProfileLabel = data?.leagueProfile?.title ? `<span class="exact-score-profile">Profil ligue: ${escapeHtml(data.leagueProfile.title)}</span>` : "";
+  const narrative = projection.narrative ? escapeHtml(projection.narrative) : "Lecture analytique complementaire indisponible.";
+  const coherence = projection.coherence || {};
+  const coherenceTone = coherence.badgeTone === "good" ? "is-good" : coherence.badgeTone === "watch" ? "is-watch" : "is-neutral";
+  const coherenceLabel = escapeHtml(coherence.badgeLabel || "Score premium");
+  const coherenceReason = escapeHtml(coherence.reason || "Projection multi-signaux sans biais de pari.");
+  const coherenceRecommendation = escapeHtml(coherence.recommendation || String(data?.prediction?.maitre?.decision_finale?.pari_choisi || ""));
+  const scoreConfidence = Number(projection.primary?.probability || 0) * 100;
 
   host.innerHTML = `
     <div class="exact-score-imperial ${reliabilityTone}">
       <div class="exact-score-crown">
         <span class="exact-score-kicker">Projection Premium</span>
+        <span class="exact-score-badge ${coherenceTone}">${coherenceLabel}</span>
         <div class="exact-score-mainline">
           <div class="exact-score-primary">
             <strong>Score principal</strong>
             <div class="exact-score-value">${projection.primary.score}</div>
-            <small>Probabilite modelisee ${(projection.primary.probability * 100).toFixed(1)}%</small>
+            <small>Probabilite modelisee ${scoreConfidence.toFixed(1)}%</small>
           </div>
           <div class="exact-score-reliability">
             <span>Fiabilite renforcee</span>
@@ -652,16 +800,21 @@ function renderExactScorePanel(data) {
         </article>
         <article class="exact-score-card">
           <strong>Lecture terrain</strong>
-          <p>${projection.narrative}</p>
+          <p>${narrative}</p>
         </article>
         <article class="exact-score-card">
           <strong>Validation marches</strong>
           <p>${bttsText}${projection.overLines.length ? ` | ligne total cle: ${projection.overLines[0].line}` : ""}</p>
         </article>
       </div>
+      <div class="exact-score-why">
+        <strong>Pourquoi ce score ?</strong>
+        <p>${coherenceReason}${coherenceRecommendation ? ` | Reco: ${coherenceRecommendation}` : ""}</p>
+      </div>
       <div class="exact-score-note">
         Projection analytique haute precision, a lire comme scenario dominant et non comme certitude absolue.
       </div>
+      ${leagueProfileLabel ? `<div class="exact-score-note">${leagueProfileLabel}</div>` : ""}
     </div>
   `;
 }
@@ -706,6 +859,7 @@ function pickSingleSelectionFromDetails(data) {
     pari,
     cote,
     confiance: Number.isFinite(confiance) ? Number(confiance.toFixed(1)) : 55,
+    exactScore: data?.exactScoreAvailable === false ? null : data?.exactScore || null,
   };
 }
 
@@ -759,7 +913,7 @@ async function sendCurrentMatchToTelegram() {
   }
 }
 
-async function sendCurrentMatchImageToTelegram() {
+async function sendCurrentMatchImageToTelegram(includeExactScore = null) {
   const btn = document.getElementById("sendMatchTelegramImageBtn");
   if (!lastDetailsData) return;
   const selection = pickSingleSelectionFromDetails(lastDetailsData);
@@ -774,12 +928,15 @@ async function sendCurrentMatchImageToTelegram() {
   }
 
   try {
+    const exactScoreImage =
+      includeExactScore === null ? promptExactScoreImageChoice("l'image du match Telegram") : Boolean(includeExactScore);
     const payload = {
       coupon: [selection],
       summary: couponSummary([selection]),
       riskProfile: "single-match",
       sendImage: true,
       imageFormat: "png",
+      includeExactScore: exactScoreImage,
     };
     const res = await fetch("/api/coupon/send-telegram", {
       method: "POST",
@@ -894,7 +1051,7 @@ async function downloadCurrentMatchPdf() {
   }
 }
 
-async function downloadCurrentMatchImage() {
+async function downloadCurrentMatchImage(includeExactScore = null) {
   if (!lastDetailsData) return;
   const selection = pickSingleSelectionFromDetails(lastDetailsData);
   if (!selection) {
@@ -903,11 +1060,14 @@ async function downloadCurrentMatchImage() {
   }
 
   try {
+    const exactScoreImage =
+      includeExactScore === null ? promptExactScoreImageChoice("l'image du match") : Boolean(includeExactScore);
     const payload = {
       coupon: [selection],
       summary: couponSummary([selection]),
       riskProfile: "single-match",
       format: "png",
+      includeExactScore: exactScoreImage,
     };
     const endpoints = ["/api/coupon/image"];
     let blob = null;

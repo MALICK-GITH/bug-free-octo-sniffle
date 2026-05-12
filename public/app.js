@@ -523,10 +523,22 @@ function initWelcomeModal() {
   if (stored === "hidden") return;
   modal.classList.remove("hidden");
 
+  const persistVisibilityChoice = () => {
+    if (hideToggle?.checked) {
+      localStorage.setItem(WELCOME_MODAL_KEY, "hidden");
+    } else {
+      localStorage.removeItem(WELCOME_MODAL_KEY);
+    }
+  };
+
   const close = () => {
-    if (hideToggle?.checked) localStorage.setItem(WELCOME_MODAL_KEY, "hidden");
+    persistVisibilityChoice();
     modal.classList.add("hidden");
   };
+  if (hideToggle) {
+    hideToggle.checked = stored === "hidden";
+    hideToggle.addEventListener("change", persistVisibilityChoice);
+  }
   if (closeBtn) closeBtn.addEventListener("click", close);
   modal.addEventListener("click", (event) => {
     if (event.target === modal) close();

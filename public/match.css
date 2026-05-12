@@ -327,6 +327,38 @@ h1 {
   font-weight: 700;
 }
 
+.exact-score-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 0.35rem;
+  padding: 0.34rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+  font-family: "Chakra Petch", sans-serif;
+  font-weight: 800;
+}
+
+.exact-score-badge.is-good {
+  background: rgba(142, 255, 176, 0.14);
+  border-color: rgba(142, 255, 176, 0.32);
+  color: #8effb0;
+}
+
+.exact-score-badge.is-watch {
+  background: rgba(255, 159, 123, 0.14);
+  border-color: rgba(255, 159, 123, 0.32);
+  color: #ffb89f;
+}
+
+.exact-score-badge.is-neutral {
+  background: rgba(255, 212, 121, 0.14);
+  border-color: rgba(255, 212, 121, 0.3);
+  color: #ffe39d;
+}
+
 .exact-score-mainline {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
@@ -411,6 +443,22 @@ h1 {
   padding-top: 0.8rem;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 0.84rem;
+}
+
+.exact-score-why {
+  margin-top: 0.9rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.exact-score-why strong {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: #fff4cf;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 0.92rem;
 }
 
 .exact-score-elite .exact-score-reliability strong { color: #8effb0; }

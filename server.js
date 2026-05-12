@@ -1,8 +1,9 @@
-const path = require("path");
+﻿const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const sharp = require("sharp");
 const { API_URL, getPenaltyMatches, getStructure, getMatchPredictionDetails, getCouponSelection, validateCouponTicket } = require("./services/liveFeed");
+const { getLeagueProfiles } = require("./services/leagueProfiles");
 const { toFeatures, deduplicate, extractRules, buildDecisionEngine, toTrainReadyCSV } = require("./services/patternEngineV2");
 const {
   saveCouponGeneration,
@@ -609,7 +610,7 @@ function localResearchAnswer(message = "", researchContext = "") {
 
 function buildSiteKnowledgeBlock() {
   return [
-    "BASE CONNAISSANCE SITE SOLITFIFPRO225 (TOUS FORMATS) — Signe SOLITAIRE HACK:",
+    "BASE CONNAISSANCE SITE SOLITFIFPRO225 (TOUS FORMATS) â€” Signe SOLITAIRE HACK:",
     "- Pages: / (matchs live), /match.html?id=... (detail match), /coupon.html (coupon builder), /mode-emploi.html (guide), /about.html (createur), /developpeur.html (contacts).",
     "- Donnees matchs: API 1xBet LiveFeed (FIFA virtuel global), tri ligue, statut match, cotes 1X2 et marches additionnels.",
     "- Couverture: FC 24, FC 25, et toutes les ligues/formats FIFA virtuels presentes sur le site.",
@@ -1090,6 +1091,70 @@ function formatMatchStartTimeUnix(unixSeconds) {
   return formatDateTime(n * 1000);
 }
 
+function inferExactScoreBias(recommendation = "") {
+  const text = normalizeLookupText(recommendation);
+  if (!text) return null;
+
+  const bias = {
+    outcome: null,
+    total: null,
+  };
+
+  if (text.includes("plus de") || text.includes("over")) bias.total = "over";
+  if (text.includes("moins de") || text.includes("under")) bias.total = "under";
+
+  if (text.includes("victoire domicile") || text === "1" || text.startsWith("1x") || text.includes("domicile")) {
+    bias.outcome = "home";
+  } else if (
+    text.includes("victoire exterieur") ||
+    text === "2" ||
+    text.endsWith("x2") ||
+    text.includes("exterieur") ||
+    text.includes("extérieur")
+  ) {
+    bias.outcome = "away";
+  } else if (text.includes("match nul") || text === "x" || text.includes("nul")) {
+    bias.outcome = "draw";
+  }
+
+  return bias.outcome || bias.total ? bias : null;
+}
+
+function exactScoreMatchesBias(score, bias) {
+  if (!bias || !score || typeof score !== "string") return true;
+  const parts = score.split("-").map((part) => Number(part));
+  if (parts.length !== 2 || parts.some((n) => !Number.isFinite(n))) return false;
+  const [homeGoals, awayGoals] = parts;
+  const totalGoals = homeGoals + awayGoals;
+
+  if (bias.outcome === "home" && homeGoals <= awayGoals) return false;
+  if (bias.outcome === "away" && awayGoals <= homeGoals) return false;
+  if (bias.outcome === "draw" && homeGoals !== awayGoals) return false;
+  if (bias.total === "over" && totalGoals <= 2) return false;
+  if (bias.total === "under" && totalGoals > 2) return false;
+
+  return true;
+}
+
+function pickAlignedExactScore(exactScore, recommendation = "") {
+  const normalized =
+    exactScore && typeof exactScore === "object" && "available" in exactScore
+      ? exactScore.available
+        ? exactScore.value
+        : null
+      : exactScore;
+  if (!normalized || typeof normalized !== "object") return null;
+
+  const bias = inferExactScoreBias(recommendation);
+  const primary = normalized.primary && typeof normalized.primary === "object" ? normalized.primary : null;
+  const alternatives = Array.isArray(normalized.alternatives) ? normalized.alternatives : [];
+  if (!bias) return primary;
+
+  if (primary && exactScoreMatchesBias(primary.score, bias)) return primary;
+  const alignedAlternative = alternatives.find((item) => item && exactScoreMatchesBias(item.score, bias));
+  return alignedAlternative || primary || null;
+}
+
 function buildTelegramCouponText(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
@@ -1109,12 +1174,18 @@ function buildTelegramCouponText(payload = {}) {
   );
   if (payload?.mini) {
     const top = coupon.slice(0, 3);
+    const heroSummary = buildCouponShareHeroSummaryLine(payload);
     const lines = [
       `FC25 MINI | ${riskProfile.toUpperCase()}`,
       `Sel: ${Number(summary.totalSelections) || coupon.length} | Cote: ${formatOddForTelegram(summary.combinedOdd)}`,
       `Conf: ${Number(summary.averageConfidence) || 0}%`,
       `Score Telegram: ${telegramConfidenceScore}/100`,
-      ...top.map((p, i) => `${i + 1}) ${p?.teamHome || "E1"} vs ${p?.teamAway || "E2"} | ${formatOddForTelegram(p?.cote)}`),
+      heroSummary,
+      ...top.map((p, i) => {
+        const exactLine = buildExactScoreLine(resolveImageExactScore(p?.exactScore, p?.pari));
+        const suffix = exactLine ? ` | ${exactLine}` : "";
+        return `${i + 1}) ${p?.teamHome || "E1"} vs ${p?.teamAway || "E2"} | ${formatOddForTelegram(p?.cote)}${suffix}`;
+      }),
       "Signe: SOLITAIRE HACK",
     ];
     return lines.slice(0, 7).join("\n");
@@ -1127,13 +1198,16 @@ function buildTelegramCouponText(payload = {}) {
     `Cote combinee: ${formatOddForTelegram(summary.combinedOdd)}`,
     `Confiance moyenne: ${Number(summary.averageConfidence) || 0}%`,
     `Score confiance Telegram: ${telegramConfidenceScore}/100`,
+    buildCouponShareHeroSummaryLine(payload),
     "",
   ];
 
   coupon.forEach((pick, index) => {
+    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
+    const exactSuffix = exactLine ? ` | ${exactLine}` : "";
     lines.push(`${index + 1}. ${pick.teamHome || "Equipe 1"} vs ${pick.teamAway || "Equipe 2"}`);
     lines.push(`Ligue: ${pick.league || "Non specifiee"}`);
-    lines.push(`Pari: ${pick.pari || "-"}`);
+    lines.push(`Pari: ${pick.pari || "-"}${exactSuffix}`);
     lines.push(`Cote: ${formatOddForTelegram(pick.cote)} | Confiance: ${Number(pick.confiance) || 0}%`);
     lines.push("");
   });
@@ -1154,23 +1228,189 @@ function escapeXml(text = "") {
 function truncateCouponLabel(text = "", max = 44) {
   const s = String(text || "").trim();
   if (s.length <= max) return s;
-  return `${s.slice(0, Math.max(0, max - 1))}…`;
+  return `${s.slice(0, Math.max(0, max - 1))}â€¦`;
+}
+
+function resolveImageExactScore(exactScore, recommendation = "") {
+  const normalized =
+    exactScore && typeof exactScore === "object" && "available" in exactScore
+      ? exactScore.available
+        ? exactScore.value
+        : null
+      : exactScore;
+  if (!normalized || typeof normalized !== "object") return null;
+  const selected = pickAlignedExactScore(normalized, recommendation);
+  if (!selected || typeof selected.score !== "string") return null;
+  return {
+    score: selected.score,
+    reliability: Number.isFinite(normalized.reliability) ? normalized.reliability : null,
+    fitScore: Number.isFinite(normalized.fitScore) ? normalized.fitScore : null,
+    marketSupport: Number.isFinite(normalized.marketSupport) ? normalized.marketSupport : null,
+  };
+}
+
+function buildExactScoreLine(exactScore) {
+  if (!exactScore) return "";
+  const parts = [`Score exact: ${exactScore.score}`];
+  if (Number.isFinite(exactScore.reliability)) parts.push(`fiabilite ${Math.round(exactScore.reliability)}/100`);
+  if (Number.isFinite(exactScore.fitScore)) parts.push(`fit ${Math.round(exactScore.fitScore)}/100`);
+  if (Number.isFinite(exactScore.marketSupport)) parts.push(`marches ${Math.round(exactScore.marketSupport)}/100`);
+  return escapeXml(parts.join(" Â· "));
+}
+
+function describeExactScoreBias(bias) {
+  if (!bias) return "Projection multi-signaux sans biais de pari.";
+  if (bias.outcome === "home") return "La reco pousse vers le domicile, donc le score exact reste oriente cote equipe maison.";
+  if (bias.outcome === "away") return "La reco pousse vers l'exterieur, donc le score exact suit la tendance visiteuse.";
+  if (bias.outcome === "draw") return "La reco vise le nul, donc le score exact privilegie un scenario serre.";
+  if (bias.total === "over") return "La reco vise un match ouvert, donc le score exact garde plus de volume offensif.";
+  if (bias.total === "under") return "La reco vise un match ferme, donc le score exact reste compact.";
+  return "Projection multi-signaux sans biais de pari.";
+}
+
+function buildExactScoreContext(exactScore, recommendation = "", confidence = null) {
+  const normalized =
+    exactScore && typeof exactScore === "object" && "available" in exactScore
+      ? exactScore.available
+        ? exactScore.value
+        : null
+      : exactScore;
+  if (!normalized || typeof normalized !== "object") return null;
+
+  const bias = inferExactScoreBias(recommendation);
+  const selected = pickAlignedExactScore(normalized, recommendation);
+  if (!selected || typeof selected.score !== "string") return null;
+
+  const aligned = !bias || exactScoreMatchesBias(selected.score, bias);
+  const badgeTone = bias ? (aligned ? "good" : "watch") : "neutral";
+  const badgeLabel = bias ? (aligned ? "Aligné avec la reco" : "A surveiller") : "Score premium";
+
+  return {
+    score: selected.score,
+    reliability: Number.isFinite(normalized.reliability) ? normalized.reliability : null,
+    fitScore: Number.isFinite(normalized.fitScore) ? normalized.fitScore : null,
+    marketSupport: Number.isFinite(normalized.marketSupport) ? normalized.marketSupport : null,
+    badgeTone,
+    badgeLabel,
+    reason: describeExactScoreBias(bias),
+    recommendation: String(recommendation || "").trim(),
+    confidence: Number.isFinite(Number(confidence)) ? Number(confidence) : null,
+    aligned,
+  };
+}
+
+function getCouponShareLead(payload = {}) {
+  const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
+  const summary = payload.summary || {};
+  const lead = coupon[0] || {};
+  const exact = buildExactScoreContext(lead.exactScore, lead.pari, lead.confiance);
+  return {
+    lead,
+    summary,
+    exact,
+    generatedAt: formatDateTime(new Date()),
+    matchStart: formatMatchStartTimeUnix(lead.startTimeUnix),
+    confidence: Number.isFinite(Number(lead.confiance))
+      ? Number(lead.confiance)
+      : Number(summary.averageConfidence || 0),
+  };
+}
+
+function buildCouponShareHeroLines(payload = {}) {
+  const share = getCouponShareLead(payload);
+  const lead = share.lead;
+  const exact = share.exact;
+  const recommendation = String(lead.pari || "Aucun").trim();
+  const badge = exact?.badgeLabel || "Score premium";
+  const badgeReason = exact?.reason || "Projection multi-signaux.";
+  return [
+    "SCORE EXACT PREMIUM",
+    `Pari recommande: ${recommendation}`,
+    `Score exact: ${exact?.score || "-"}`,
+    `Badge: ${badge}`,
+    `Confiance: ${Number(share.confidence || 0).toFixed(1)}%`,
+    `Heure match: ${share.matchStart}`,
+    `Pourquoi: ${badgeReason}`,
+  ];
+}
+
+function buildCouponShareHeroSummaryLine(payload = {}) {
+  const share = getCouponShareLead(payload);
+  const lead = share.lead;
+  const exact = share.exact;
+  const confidence = Number(share.confidence || 0).toFixed(1);
+  return `Reco: ${lead.pari || "-"} | Score exact: ${exact?.score || "-"} | Conf: ${confidence}% | Heure: ${share.matchStart || "-"}`;
+}
+
+function buildCouponShareHeroSvg(payload = {}, options = {}) {
+  const share = getCouponShareLead(payload);
+  const lead = share.lead;
+  const exact = share.exact;
+  const width = Number(options.width) || 1200;
+  const innerW = width - 72;
+  const badgeTone = exact?.badgeTone || "neutral";
+  const badgeFill =
+    badgeTone === "good"
+      ? "rgba(142,255,176,0.14)"
+      : badgeTone === "watch"
+        ? "rgba(255,154,120,0.14)"
+        : "rgba(255,212,121,0.12)";
+  const badgeStroke =
+    badgeTone === "good"
+      ? "rgba(142,255,176,0.42)"
+      : badgeTone === "watch"
+        ? "rgba(255,154,120,0.42)"
+        : "rgba(255,212,121,0.36)";
+  const badgeText = badgeTone === "good" ? "#8effb0" : badgeTone === "watch" ? "#ffad8e" : "#ffd77a";
+  const recommendation = escapeXml(truncateCouponLabel(lead.pari || "Aucun pari", 56));
+  const why = escapeXml(truncateCouponLabel(exact?.reason || "Projection multi-signaux.", 92));
+  const score = escapeXml(exact?.score || "-");
+  const confidence = Number(share.confidence || 0).toFixed(1);
+  const matchStart = escapeXml(share.matchStart || "-");
+  const odd = formatOddForTelegram(lead.cote);
+
+  return `
+    <g transform="translate(36, 78)">
+      <rect x="0" y="0" width="${innerW}" height="190" rx="20" fill="rgba(6,10,22,0.9)" stroke="url(#imgStroke)" stroke-width="1.5"/>
+      <rect x="0" y="0" width="${innerW}" height="48" rx="20" fill="rgba(18,28,48,0.92)"/>
+      <text x="20" y="31" fill="#9ecfff" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.22em">${escapeXml(options.kicker || "SHARE PREMIUM")}</text>
+      <text x="${innerW - 18}" y="31" text-anchor="end" fill="#7a8fb8" font-size="12" font-family="Segoe UI, Arial, sans-serif">${escapeXml(share.generatedAt)}</text>
+      <text x="22" y="78" fill="#fff3d2" font-size="18" font-weight="900" font-family="Segoe UI, Arial, sans-serif">Pari recommande</text>
+      <text x="22" y="108" fill="#ffffff" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${recommendation}</text>
+      <rect x="22" y="120" width="164" height="24" rx="8" fill="${badgeFill}" stroke="${badgeStroke}" stroke-width="1"/>
+      <text x="104" y="137" text-anchor="middle" fill="${badgeText}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(exact?.badgeLabel || "Score premium")}</text>
+
+      <rect x="${innerW - 388}" y="62" width="366" height="60" rx="14" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)"/>
+      <text x="${innerW - 370}" y="86" fill="#8fa6c8" font-size="11" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.16em">SCORE EXACT</text>
+      <text x="${innerW - 370}" y="110" fill="#eef4ff" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${score}</text>
+
+      <rect x="${innerW - 388}" y="130" width="114" height="34" rx="10" fill="rgba(0,240,255,0.12)" stroke="rgba(0,240,255,0.28)"/>
+      <text x="${innerW - 331}" y="152" text-anchor="middle" fill="#9ff6ff" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">Conf ${confidence}%</text>
+      <rect x="${innerW - 264}" y="130" width="110" height="34" rx="10" fill="rgba(142,255,176,0.11)" stroke="rgba(142,255,176,0.28)"/>
+      <text x="${innerW - 209}" y="152" text-anchor="middle" fill="#c5ffd9" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(matchStart)}</text>
+      <rect x="${innerW - 142}" y="130" width="120" height="34" rx="10" fill="rgba(255,212,121,0.11)" stroke="rgba(255,212,121,0.28)"/>
+      <text x="${innerW - 82}" y="152" text-anchor="middle" fill="#ffe6a0" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(odd)}</text>
+
+      <text x="22" y="183" fill="#c5d6f0" font-size="12.5" font-family="Segoe UI, Arial, sans-serif">${why}</text>
+    </g>`;
 }
 
 function buildCouponImageSvg(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
   const riskRaw = truncateCouponLabel(String(payload.riskProfile || "balanced"), 20);
+  const includeExactScore = Boolean(payload.includeExactScore);
   const picks = coupon.slice(0, 6);
   const count = Math.max(1, picks.length || 1);
   const cardH = 228;
   const gap = 18;
-  const headH = 178;
+  const headH = 270;
   const footH = 52;
   const width = 1200;
   const height = headH + footH + count * cardH + (count - 1) * gap;
   const generatedAt = formatDateTime(new Date());
   const innerW = width - 72;
+  const hero = buildCouponShareHeroSvg(payload, { width, kicker: "SHARE IMAGE" });
 
   const cards = picks.map((pick, i) => {
     const y = headH + i * (cardH + gap);
@@ -1181,6 +1421,7 @@ function buildCouponImageSvg(payload = {}) {
     const odd = formatOddForTelegram(pick.cote);
     const matchStart = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
     const cx = innerW / 2;
+    const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore, pick.pari)) : "";
     return `
       <g transform="translate(36, ${y})">
         <rect x="0" y="0" width="${innerW}" height="${cardH}" rx="16" fill="rgba(8,12,22,0.94)" stroke="url(#imgStroke)" stroke-width="1.5"/>
@@ -1200,6 +1441,7 @@ function buildCouponImageSvg(payload = {}) {
         <text x="32" y="176" fill="#eef4ff" font-size="18" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
         <text x="${innerW - 32}" y="148" text-anchor="end" fill="#8fa6c8" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">COTE</text>
         <text x="${innerW - 32}" y="182" text-anchor="end" fill="url(#imgOdd)" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
+        ${exactLine ? `<rect x="16" y="196" width="${innerW - 32}" height="18" rx="6" fill="rgba(255,255,255,0.05)"/><text x="28" y="210" fill="#d6e3ff" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
       </g>`;
   });
 
@@ -1248,11 +1490,14 @@ function buildCouponImageSvg(payload = {}) {
   <rect x="24" y="18" width="${width - 48}" height="${headH - 36}" rx="20" fill="rgba(6,10,22,0.75)" stroke="url(#imgStroke)" stroke-width="1.2"/>
   <rect x="36" y="30" width="168" height="30" rx="8" fill="rgba(0,240,255,0.12)" stroke="rgba(0,240,255,0.45)"/>
   <text x="48" y="51" fill="#00f0ff" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.28em">FC ESPORTS</text>
+  <rect x="${width - 250}" y="30" width="176" height="30" rx="8" fill="rgba(255,215,120,0.12)" stroke="rgba(255,215,120,0.55)"/>
+  <text x="${width - 162}" y="51" text-anchor="middle" fill="#ffd77a" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">IMPERIAL EDITION</text>
   <text x="48" y="96" fill="url(#imgHead)" font-size="34" font-weight="900" font-family="Segoe UI, Arial, sans-serif">SOLITFIFPRO225</text>
-  <text x="48" y="124" fill="#c5d6f0" font-size="17" font-family="Segoe UI, Arial, sans-serif">Ticket pro — Profil ${escapeXml(riskRaw)} · Sel. ${Number(summary.totalSelections) || coupon.length} · Combinée ${formatOddForTelegram(summary.combinedOdd)}</text>
-  <text x="48" y="148" fill="#7a8fb8" font-size="13" font-family="Segoe UI, Arial, sans-serif">Généré ${escapeXml(generatedAt)}</text>
+  <text x="48" y="124" fill="#c5d6f0" font-size="17" font-family="Segoe UI, Arial, sans-serif">Ticket pro â€” Profil ${escapeXml(riskRaw)} Â· Sel. ${Number(summary.totalSelections) || coupon.length} Â· CombinÃ©e ${formatOddForTelegram(summary.combinedOdd)}</text>
+  <text x="48" y="148" fill="#7a8fb8" font-size="13" font-family="Segoe UI, Arial, sans-serif">GÃ©nÃ©rÃ© ${escapeXml(generatedAt)}</text>
+  ${hero}
   ${cards.join("\n")}
-  <text x="48" y="${height - 26}" fill="#8fa1c4" font-size="14" font-family="Segoe UI, Arial, sans-serif">Signé SOLITAIRE HACK · Esports Virtual</text>
+  <text x="48" y="${height - 26}" fill="#8fa1c4" font-size="14" font-family="Segoe UI, Arial, sans-serif">SignÃ© SOLITAIRE HACK Â· Esports Virtual</text>
 </svg>`;
 }
 
@@ -1260,6 +1505,7 @@ function buildCouponStorySvg(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
   const riskRaw = truncateCouponLabel(String(payload.riskProfile || "balanced"), 18);
+  const includeExactScore = Boolean(payload.includeExactScore);
   const picks = coupon.slice(0, 5);
   const width = 1080;
   const height = 1920;
@@ -1279,6 +1525,7 @@ function buildCouponStorySvg(payload = {}) {
     const conf = Number(pick.confiance) || 0;
     const risk = conf >= 75 ? "SAFE" : conf >= 60 ? "MODERE" : "RISQUE";
     const mid = cardW / 2;
+    const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore, pick.pari)) : "";
     return `
       <g transform="translate(48, ${y})">
         <rect x="0" y="0" width="${cardW}" height="${cardH}" rx="26" fill="rgba(6,10,20,0.92)" stroke="url(#stStroke)" stroke-width="2"/>
@@ -1294,6 +1541,7 @@ function buildCouponStorySvg(payload = {}) {
         <text x="32" y="247" fill="#c8d9f5" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
         <text x="${cardW - 32}" y="247" text-anchor="end" fill="url(#stOdd)" font-size="22" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
         <text x="${cardW - 24}" y="44" text-anchor="end" fill="#ffc14d" font-size="20" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${conf}% ${risk}</text>
+        ${exactLine ? `<text x="32" y="262" fill="#d6e3ff" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
       </g>`;
   });
 
@@ -1331,11 +1579,14 @@ function buildCouponStorySvg(payload = {}) {
   <rect width="${width}" height="${height}" fill="url(#stSpot)"/>
   <rect x="40" y="72" width="${width - 80}" height="200" rx="28" fill="rgba(8,12,24,0.82)" stroke="url(#stStroke)" stroke-width="1.5"/>
   <text x="72" y="128" fill="url(#stTitle)" font-size="52" font-weight="900" font-family="Segoe UI, Arial, sans-serif">STORY ESPORTS</text>
+  <rect x="${width - 296}" y="92" width="214" height="34" rx="10" fill="rgba(255,215,120,0.12)" stroke="rgba(255,215,120,0.55)"/>
+  <text x="${width - 189}" y="115" text-anchor="middle" fill="#ffd77a" font-size="14" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">IMPERIAL EDITION</text>
   <text x="72" y="168" fill="#00f0ff" font-size="22" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.35em">SOLITFIFPRO225</text>
-  <text x="72" y="210" fill="#d5e4ff" font-size="26" font-family="Segoe UI, Arial, sans-serif">Profil ${escapeXml(riskRaw)} · ${Number(summary.totalSelections) || coupon.length} sélections</text>
-  <text x="72" y="246" fill="#8fa6c8" font-size="22" font-family="Segoe UI, Arial, sans-serif">Cote ${formatOddForTelegram(summary.combinedOdd)} · ${escapeXml(generatedAt)}</text>
+  <text x="72" y="210" fill="#d5e4ff" font-size="26" font-family="Segoe UI, Arial, sans-serif">Profil ${escapeXml(riskRaw)} Â· ${Number(summary.totalSelections) || coupon.length} sÃ©lections</text>
+  <text x="72" y="246" fill="#8fa6c8" font-size="22" font-family="Segoe UI, Arial, sans-serif">Cote ${formatOddForTelegram(summary.combinedOdd)} Â· ${escapeXml(generatedAt)}</text>
+  ${buildCouponShareHeroSvg(payload, { width, kicker: "SHARE STORY" })}
   ${cards.join("\n")}
-  <text x="72" y="${height - 88}" fill="#a8b8d8" font-size="24" font-family="Segoe UI, Arial, sans-serif">Signé SOLITAIRE HACK</text>
+  <text x="72" y="${height - 88}" fill="#a8b8d8" font-size="24" font-family="Segoe UI, Arial, sans-serif">SignÃ© SOLITAIRE HACK</text>
   <text x="72" y="${height - 52}" fill="#6a7a9a" font-size="18" font-family="Segoe UI, Arial, sans-serif">Aucune combinaison n'est garantie gagnante.</text>
 </svg>`;
 }
@@ -1344,16 +1595,18 @@ function buildCouponPremiumSvg(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
   const riskRaw = truncateCouponLabel(String(payload.riskProfile || "balanced"), 22);
+  const includeExactScore = Boolean(payload.includeExactScore);
   const picks = coupon.slice(0, 8);
   const count = Math.max(1, picks.length || 1);
   const width = 1400;
-  const headH = 200;
+  const headH = 286;
   const cardH = 152;
   const gap = 14;
   const footH = 54;
   const height = headH + footH + count * cardH + (count - 1) * gap;
   const generatedAt = formatDateTime(new Date());
   const rowW = width - 64;
+  const hero = buildCouponShareHeroSvg(payload, { width, kicker: "SHARE PREMIUM" });
 
   const rows = picks
     .map((pick, idx) => {
@@ -1367,6 +1620,7 @@ function buildCouponPremiumSvg(payload = {}) {
       const startAt = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
       const q = Number(pick?.qualityScore || pick?.dataQuality || pick?.confiance || 0).toFixed(0);
       const hx = rowW / 2;
+      const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore, pick.pari)) : "";
       return `
       <g transform="translate(32, ${y})">
         <rect x="0" y="0" width="${rowW}" height="${cardH}" rx="14" fill="rgba(5,9,18,0.96)" stroke="url(#pmStroke)"/>
@@ -1383,7 +1637,8 @@ function buildCouponPremiumSvg(payload = {}) {
         <text x="26" y="118" fill="#dce6ff" font-size="16" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${bet}</text>
         <text x="${rowW - 120}" y="122" text-anchor="end" fill="url(#pmOdd)" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
         <text x="${rowW - 22}" y="112" text-anchor="end" fill="#8899bb" font-size="10" font-family="Segoe UI, Arial, sans-serif">CONF</text>
-        <text x="${rowW - 22}" y="128" text-anchor="end" fill="#8899bb" font-size="10" font-family="Segoe UI, Arial, sans-serif">${conf}% · Q${q}</text>
+        ${exactLine ? `<text x="26" y="144" fill="#d6e3ff" font-size="10" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
+        <text x="${rowW - 22}" y="128" text-anchor="end" fill="#8899bb" font-size="10" font-family="Segoe UI, Arial, sans-serif">${conf}% Â· Q${q}</text>
       </g>`;
     })
     .join("\n");
@@ -1422,10 +1677,13 @@ function buildCouponPremiumSvg(payload = {}) {
   <rect width="${width}" height="${height}" fill="url(#pmLite)"/>
   <rect x="18" y="16" width="${width - 36}" height="${headH - 34}" rx="20" fill="rgba(6,10,22,0.78)" stroke="url(#pmStroke)" stroke-width="1.2"/>
   <text x="40" y="58" fill="url(#pmHead)" font-size="38" font-weight="900" font-family="Segoe UI, Arial, sans-serif">PREMIUM ESPORTS TICKET</text>
-  <text x="40" y="92" fill="#d4e2ff" font-size="18" font-family="Segoe UI, Arial, sans-serif">SOLITFIFPRO225 · Profil ${escapeXml(riskRaw)} · ${Number(summary.totalSelections) || coupon.length} sel. · ${formatOddForTelegram(summary.combinedOdd)}</text>
-  <text x="40" y="120" fill="#7d8db0" font-size="14" font-family="Segoe UI, Arial, sans-serif">Généré ${escapeXml(generatedAt)} — rendu HD mobile &amp; desktop</text>
+  <rect x="${width - 298}" y="34" width="208" height="32" rx="10" fill="rgba(255,215,120,0.12)" stroke="rgba(255,215,120,0.55)"/>
+  <text x="${width - 194}" y="56" text-anchor="middle" fill="#ffd77a" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">IMPERIAL EDITION</text>
+  <text x="40" y="92" fill="#d4e2ff" font-size="18" font-family="Segoe UI, Arial, sans-serif">SOLITFIFPRO225 Â· Profil ${escapeXml(riskRaw)} Â· ${Number(summary.totalSelections) || coupon.length} sel. Â· ${formatOddForTelegram(summary.combinedOdd)}</text>
+  <text x="40" y="120" fill="#7d8db0" font-size="14" font-family="Segoe UI, Arial, sans-serif">GÃ©nÃ©rÃ© ${escapeXml(generatedAt)} â€” rendu HD mobile &amp; desktop</text>
+  ${hero}
   ${rows}
-  <text x="40" y="${height - 22}" fill="#8a9ab8" font-size="14" font-family="Segoe UI, Arial, sans-serif">Signé SOLITAIRE HACK — jeu responsable — combinaison non garantie</text>
+  <text x="40" y="${height - 22}" fill="#8a9ab8" font-size="14" font-family="Segoe UI, Arial, sans-serif">SignÃ© SOLITAIRE HACK â€” jeu responsable â€” combinaison non garantie</text>
 </svg>`;
 }
 
@@ -1508,11 +1766,14 @@ function buildCouponPdfSummaryLines(payload = {}) {
     `Cote combinee: ${formatOddForTelegram(summary.combinedOdd)}`,
     `Confiance moyenne: ${Number(summary.averageConfidence) || 0}%`,
     "",
+    ...buildCouponShareHeroLines(payload),
+    "",
   ];
   coupon.forEach((pick, i) => {
     lines.push(`${i + 1}. ${pick.teamHome || "Equipe 1"} vs ${pick.teamAway || "Equipe 2"}`);
     lines.push(`   Ligue: ${pick.league || "Non specifiee"}`);
-    lines.push(`   Pari: ${pick.pari || "-"}`);
+    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
+    lines.push(`   Pari: ${pick.pari || "-"}${exactLine ? ` | ${exactLine}` : ""}`);
     lines.push(`   Cote: ${formatOddForTelegram(pick.cote)} | Confiance: ${Number(pick.confiance) || 0}%`);
     lines.push("");
   });
@@ -1529,11 +1790,13 @@ function buildCouponPdfQuickLines(payload = {}) {
     `Date: ${generatedAt}`,
     `Selections: ${Number(summary.totalSelections) || coupon.length}`,
     `Cote combinee: ${formatOddForTelegram(summary.combinedOdd)}`,
+    buildCouponShareHeroSummaryLine(payload),
     "",
   ];
   coupon.slice(0, 14).forEach((pick, i) => {
+    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
     lines.push(
-      `${i + 1}) ${pick?.teamHome || "Equipe 1"} vs ${pick?.teamAway || "Equipe 2"} | ${pick?.pari || "-"} | ${formatOddForTelegram(
+      `${i + 1}) ${pick?.teamHome || "Equipe 1"} vs ${pick?.teamAway || "Equipe 2"} | ${pick?.pari || "-"}${exactLine ? ` | ${exactLine}` : ""} | ${formatOddForTelegram(
         pick?.cote
       )}`
     );
@@ -1573,6 +1836,8 @@ function buildCouponPdfDetailedLines(payload = {}) {
     `Qualite ticket: ${Number(insights.qualityScore) || 0}/100`,
     `Risque correlation: ${Number(insights.correlationRisk) || 0}%`,
     "",
+    ...buildCouponShareHeroLines(payload),
+    "",
     "DISTRIBUTION RISQUE",
     `Safe (>=75%): ${safeCount}`,
     `Moyen (60% - 74.9%): ${mediumCount}`,
@@ -1587,9 +1852,10 @@ function buildCouponPdfDetailedLines(payload = {}) {
     const valueIndex = odd > 0 ? Number((conf / odd).toFixed(2)) : 0;
     const confidenceBand = conf >= 75 ? "SAFE" : conf >= 60 ? "MOYEN" : "ELEVE";
     const source = String(pick?.source || "MIXTE");
+    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
     lines.push(`${i + 1}. ${pick?.teamHome || "Equipe 1"} vs ${pick?.teamAway || "Equipe 2"}`);
     lines.push(`   Ligue: ${pick?.league || "Non specifiee"}`);
-    lines.push(`   Pari: ${pick?.pari || "-"}`);
+    lines.push(`   Pari: ${pick?.pari || "-"}${exactLine ? ` | ${exactLine}` : ""}`);
     lines.push(`   Cote: ${formatOddForTelegram(odd)} | Confiance: ${conf.toFixed(1)}% | Bande: ${confidenceBand}`);
     lines.push(`   Value Index (Confiance/Cote): ${valueIndex} | Source: ${source}`);
     lines.push("");
@@ -1662,13 +1928,27 @@ function buildPrintableCouponHtml(payload = {}) {
   const generatedAt = formatDateTime(new Date());
   const combinedOdd = formatOddForTelegram(summary.combinedOdd);
   const avgConf = Number(summary.averageConfidence) || 0;
+  const share = getCouponShareLead(payload);
+  const exact = share.exact;
+  const heroBadgeTone =
+    exact?.badgeTone === "good" ? "good" : exact?.badgeTone === "watch" ? "watch" : "neutral";
+  const heroBadgeLabel = escapeXml(exact?.badgeLabel || "Score premium");
+  const heroReason = escapeXml(exact?.reason || "Projection multi-signaux.");
+  const heroRecommendation = escapeXml(share.lead?.pari || "Aucun");
+  const heroScore = escapeXml(exact?.score || "-");
+  const heroConfidence = Number(share.confidence || 0).toFixed(1);
+  const heroMatchStart = escapeXml(share.matchStart || "-");
+  const heroBadgeClass = heroBadgeTone === "good" ? "is-good" : heroBadgeTone === "watch" ? "is-watch" : "is-neutral";
 
   const shareText = [
     "FC25 Coupon",
     `Date ${generatedAt}`,
     `Profil ${riskProfile}`,
     `Cote ${combinedOdd}`,
-    ...coupon.slice(0, 8).map((p, i) => `${i + 1}. ${p?.teamHome || "Equipe 1"} vs ${p?.teamAway || "Equipe 2"} | ${p?.pari || "-"} | ${formatOddForTelegram(p?.cote)}`),
+    ...coupon.slice(0, 8).map((p, i) => {
+      const exactLine = buildExactScoreLine(resolveImageExactScore(p?.exactScore, p?.pari));
+      return `${i + 1}. ${p?.teamHome || "Equipe 1"} vs ${p?.teamAway || "Equipe 2"} | ${p?.pari || "-"}${exactLine ? ` | ${exactLine}` : ""} | ${formatOddForTelegram(p?.cote)}`;
+    }),
   ].join(" | ");
   const qrUrl = `https://quickchart.io/qr?size=190&text=${encodeURIComponent(shareText)}`;
 
@@ -1681,13 +1961,14 @@ function buildPrintableCouponHtml(payload = {}) {
       const odd = formatOddForTelegram(p?.cote);
       const conf = Number(p?.confiance) || 0;
       const startAt = escapeXml(formatMatchStartTimeUnix(p?.startTimeUnix));
+      const exactLine = buildExactScoreLine(resolveImageExactScore(p?.exactScore, p?.pari));
       return `
         <tr>
           <td>${i + 1}</td>
           <td>${home} vs ${away}</td>
           <td>${league}</td>
           <td>${startAt}</td>
-          <td>${pari}</td>
+          <td>${pari}${exactLine ? `<br/><span class="exact-line">${exactLine}</span>` : ""}</td>
           <td>${odd}</td>
           <td>${conf.toFixed(1)}%</td>
         </tr>
@@ -1717,6 +1998,81 @@ function buildPrintableCouponHtml(payload = {}) {
     tbody tr:nth-child(even) { background: #fbfdff; }
     .foot { margin-top: 12px; font-size: 11px; color: #4c607d; display: flex; justify-content: space-between; }
     .print-btn { margin-top: 12px; padding: 8px 12px; border: 0; background: #123b7a; color: white; border-radius: 6px; font-weight: 700; }
+    .share-hero {
+      margin: 10px 0 14px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr);
+      gap: 14px;
+      border: 1px solid #d0daea;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #f8fbff, #eef4ff);
+      padding: 14px;
+      box-shadow: 0 12px 26px rgba(15, 26, 47, 0.08);
+    }
+    .share-hero-title {
+      margin: 0 0 4px;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #627596;
+      font-weight: 800;
+    }
+    .share-hero-reco {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.08;
+      font-weight: 900;
+      color: #0f1a2f;
+    }
+    .share-hero-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+    .share-hero-badge.is-good { color: #0b6b32; background: #defce7; border-color: #8fd8a9; }
+    .share-hero-badge.is-watch { color: #9a4a22; background: #fff0e6; border-color: #f3be95; }
+    .share-hero-badge.is-neutral { color: #875f00; background: #fff8e5; border-color: #e6d09a; }
+    .share-hero-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      align-content: start;
+    }
+    .share-hero-stat {
+      border: 1px solid #d7e0ec;
+      border-radius: 12px;
+      background: #fff;
+      padding: 10px 11px;
+    }
+    .share-hero-stat span {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #7183a1;
+      font-weight: 800;
+    }
+    .share-hero-stat strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 16px;
+      color: #0f1a2f;
+      font-weight: 900;
+    }
+    .share-hero-note {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #42566f;
+      line-height: 1.45;
+    }
     @media print { .print-btn { display: none; } }
   </style>
 </head>
@@ -1732,6 +2088,32 @@ function buildPrintableCouponHtml(payload = {}) {
         <img src="${qrUrl}" width="160" height="160" alt="QR Coupon"/>
       </div>
     </div>
+    <section class="share-hero">
+      <div>
+        <p class="share-hero-title">Score Exact Premium</p>
+        <p class="share-hero-reco">${heroRecommendation}</p>
+        <span class="share-hero-badge ${heroBadgeClass}">${heroBadgeLabel}</span>
+        <p class="share-hero-note">${heroReason}</p>
+      </div>
+      <div class="share-hero-grid">
+        <article class="share-hero-stat">
+          <span>Score exact</span>
+          <strong>${heroScore}</strong>
+        </article>
+        <article class="share-hero-stat">
+          <span>Confiance</span>
+          <strong>${heroConfidence}%</strong>
+        </article>
+        <article class="share-hero-stat">
+          <span>Heure match</span>
+          <strong>${heroMatchStart}</strong>
+        </article>
+        <article class="share-hero-stat">
+          <span>Cote</span>
+          <strong>${combinedOdd}</strong>
+        </article>
+      </div>
+    </section>
     <div class="meta">
       <span class="pill">Profil: ${escapeXml(riskProfile)}</span>
       <span class="pill">Selections: ${Number(summary.totalSelections) || coupon.length}</span>
@@ -2075,6 +2457,18 @@ app.get("/api/leagues", async (_req, res) => {
       }
     });
   }
+});
+
+app.get("/api/league-profiles", (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      profiles: getLeagueProfiles(),
+    },
+    meta: {
+      timestamp: new Date().toISOString(),
+    },
+  });
 });
 
 app.get("/api/structure", async (_req, res) => {
@@ -3289,7 +3683,7 @@ app.post("/api/coupon/validate", async (req, res) => {
     if (coupon && coupon.matches && coupon.matches.length > 0) {
       coupon.matches.forEach(match => {
         if (match.odds && match.odds < 1.3) {
-          validation.warnings.push(`Cote très basse pour ${match.homeTeam} vs ${match.awayTeam}`);
+          validation.warnings.push(`Cote trÃ¨s basse pour ${match.homeTeam} vs ${match.awayTeam}`);
           validation.health -= 5;
         }
       });
@@ -3481,7 +3875,7 @@ app.get("/api/match/:id/coach", async (req, res) => {
       analysis: details.prediction?.maitre?.decision_finale?.pari_choisi || "N/A",
       confidence: details.prediction?.maitre?.decision_finale?.confidence || 0,
       recommendation: details.prediction?.maitre?.decision_finale?.cote || 0,
-      reasoning: "Analyse basée sur les indicateurs techniques et historiques",
+      reasoning: "Analyse basÃ©e sur les indicateurs techniques et historiques",
       timestamp: new Date().toISOString()
     };
     
@@ -3513,8 +3907,8 @@ app.get("/api/match/:id/kpi", async (req, res) => {
     const match = data.matches.find((item) => getMatchId(item) === String(matchId));
     const teams = match ? getMatchTeams(match) : { home: "Equipe Domicile", away: "Equipe Exterieur" };
     
-    const homeTeam = match ? match.O1 : "Équipe Domicile";
-    const awayTeam = match ? match.O2 : "Équipe Extérieur";
+    const homeTeam = match ? match.O1 : "Ã‰quipe Domicile";
+    const awayTeam = match ? match.O2 : "Ã‰quipe ExtÃ©rieur";
     
     const kpi = {
       matchId: matchId,
@@ -3567,29 +3961,29 @@ app.get("/api/match/:id/insight", async (req, res) => {
     const match = data.matches.find((item) => getMatchId(item) === String(matchId));
     const teams = match ? getMatchTeams(match) : { home: "Equipe Domicile", away: "Equipe Exterieur" };
     
-    const homeTeam = match ? match.O1 : "Équipe Domicile";
-    const awayTeam = match ? match.O2 : "Équipe Extérieur";
+    const homeTeam = match ? match.O1 : "Ã‰quipe Domicile";
+    const awayTeam = match ? match.O2 : "Ã‰quipe ExtÃ©rieur";
     
     const insights = [
       {
         type: "form",
-        title: "Forme récente",
-        value: "L'équipe domicile est en bonne forme avec 3 victoires consécutives"
+        title: "Forme rÃ©cente",
+        value: "L'Ã©quipe domicile est en bonne forme avec 3 victoires consÃ©cutives"
       },
       {
         type: "h2h",
         title: "Historique",
-        value: "Les deux équipes se sont rencontrées 5 fois cette saison"
+        value: "Les deux Ã©quipes se sont rencontrÃ©es 5 fois cette saison"
       },
       {
         type: "injury",
         title: "Blessures",
-        value: "Aucun blessé majeur signalé"
+        value: "Aucun blessÃ© majeur signalÃ©"
       },
       {
         type: "weather",
         title: "Conditions",
-        value: "Conditions idéales pour ce match"
+        value: "Conditions idÃ©ales pour ce match"
       }
     ];
     
@@ -3628,9 +4022,9 @@ app.get("/api/match/:id/exact-score", async (req, res) => {
       });
     }
 
-    const data = await getPenaltyMatches();
-    const match = Array.isArray(data?.matches) ? data.matches.find((item) => getMatchId(item) === matchId) : null;
-    if (!match) {
+    const details = await getMatchPredictionDetails(matchId);
+    const resolvedMatch = details?.match || null;
+    if (!resolvedMatch) {
       return res.status(404).json({
         success: false,
         error: {
@@ -3640,10 +4034,10 @@ app.get("/api/match/:id/exact-score", async (req, res) => {
       });
     }
 
-    const details = await getMatchPredictionDetails(matchId);
-    const resolvedMatch = details?.match || match;
     const teams = getMatchTeams(resolvedMatch);
     const exactScoreValue = details?.exactScore || null;
+    const exactScoreAvailable = details?.exactScoreAvailable;
+    const timestamp = new Date().toISOString();
 
     res.json({
       success: true,
@@ -3651,14 +4045,14 @@ app.get("/api/match/:id/exact-score", async (req, res) => {
         matchId: getMatchId(resolvedMatch) || matchId,
         homeTeam: teams.home,
         awayTeam: teams.away,
-        timestamp: new Date().toISOString(),
+        timestamp,
         exactScore: {
-          available: Boolean(exactScoreValue),
+          available: typeof exactScoreAvailable === "boolean" ? exactScoreAvailable : Boolean(exactScoreValue),
           value: exactScoreValue,
         },
       },
       meta: {
-        timestamp: new Date().toISOString()
+        timestamp,
       }
     });
   } catch (error) {
@@ -5096,3 +5490,4 @@ function startServer(startPort, triesLeft = MAX_PORT_TRIES) {
 }
 
 startServer(DEFAULT_PORT);
+
