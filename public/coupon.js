@@ -81,6 +81,8 @@ const ToastSystem = {
   }
 };
 
+window.Toast = window.Toast || ToastSystem;
+
 
 let lastCouponData = null;
 let lastCouponBackups = new Map();
@@ -209,6 +211,35 @@ function normalizeText(v) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+}
+
+function getExactScoreSignal(details) {
+  const exactScore = details?.exactScore || null;
+  const api = window.ExactScoreSignal;
+  if (api && typeof api.normalizeExactScoreSignal === "function") {
+    return api.normalizeExactScoreSignal(exactScore || details, {
+      hasConvergence: Boolean(exactScore?.provenance?.usedConvergence),
+      hasBias: Boolean(exactScore?.provenance?.hasBias),
+      aligned: exactScore?.provenance?.aligned,
+    }).signal;
+  }
+  return 0;
+}
+
+function getCouponExactScorePreview(exactScore) {
+  const normalized =
+    exactScore && typeof exactScore === "object" && "available" in exactScore
+      ? exactScore.available
+        ? exactScore.value || exactScore
+        : null
+      : exactScore;
+  if (!normalized || typeof normalized !== "object") return null;
+  return {
+    score: normalized.primary?.score || normalized.score || "-",
+    badgeLabel: normalized.coherence?.badgeLabel || "Score premium",
+    reason: normalized.coherence?.reason || "Projection multi-signaux.",
+    aligned: normalized.coherence?.badgeTone === "good" || normalized.primary?.aligned === true,
+  };
 }
 
 function getDriftThreshold() {
@@ -786,21 +817,36 @@ function pickOptionFromDetails(details, profile = "balanced") {
   const top = details?.prediction?.analyse_avancee?.top_3_recommandations || [];
   const markets = Array.isArray(details?.bettingMarkets) ? details.bettingMarkets : [];
   const byName = new Map(markets.map((m) => [m.nom, m]));
+  const exactScoreSignal = getExactScoreSignal(details);
   const m = byName.get(master.pari_choisi);
   if (m && Number(master.confiance_numerique) >= cfg.minConfidence && m.cote >= cfg.minOdd && m.cote <= cfg.maxOdd) {
-    return { pari: m.nom, cote: m.cote, confiance: Number(master.confiance_numerique), source: "MAITRE" };
+    return {
+      pari: m.nom,
+      cote: m.cote,
+      confiance: clamp(Number(master.confiance_numerique) + exactScoreSignal, 0, 100),
+      source: "MAITRE",
+    };
   }
   const bestTop = top
     .filter((x) => Number.isFinite(Number(x?.cote)) && Number(x.cote) >= cfg.minOdd && Number(x.cote) <= cfg.maxOdd)
+    .map((entry) => ({
+      ...entry,
+      score_composite: Number(entry.score_composite || 0) + exactScoreSignal,
+    }))
     .sort((a, b) => Number(b.score_composite || 0) - Number(a.score_composite || 0))[0];
   if (bestTop) {
-    return { pari: bestTop.pari, cote: Number(bestTop.cote), confiance: Number(bestTop.score_composite || 50), source: "TOP3" };
+    return {
+      pari: bestTop.pari,
+      cote: Number(bestTop.cote),
+      confiance: clamp(Number(bestTop.score_composite || 50), 0, 100),
+      source: "TOP3",
+    };
   }
   const fallback = markets
     .filter((x) => Number.isFinite(Number(x?.cote)) && Number(x.cote) >= cfg.minOdd && Number(x.cote) <= cfg.maxOdd)
     .sort((a, b) => Number(a.cote) - Number(b.cote))[0];
   if (!fallback) return null;
-  return { pari: fallback.nom, cote: Number(fallback.cote), confiance: 45, source: "FALLBACK" };
+  return { pari: fallback.nom, cote: Number(fallback.cote), confiance: clamp(45 + exactScoreSignal, 0, 100), source: "FALLBACK" };
 }
 
 function readHistory() {
@@ -2268,6 +2314,10 @@ function renderCoupon(data) {
       )}">T- ${formatCountdownLabel(p.startTimeUnix)}</strong></span>
         <span>${p.pari}</span>
         <span>Cote ${formatOdd(p.cote)} | Confiance ${p.confiance}%</span>
+        ${(() => {
+          const exactPreview = getCouponExactScorePreview(p.exactScore);
+          return `<span>Score exact: ${exactPreview?.score || "-"}${exactPreview?.badgeLabel ? ` | ${exactPreview.badgeLabel}` : ""}</span>`;
+        })()}
         <span>EV ${computePickEV(p) >= 0 ? "+" : ""}${computePickEV(p).toFixed(3)}</span>
         <div class="confidence-track"><i style="width:${Math.max(4, Math.min(100, Number(p.confiance) || 0))}%"></i><em>${Number(
         p.confiance || 0
@@ -2287,6 +2337,7 @@ function renderCoupon(data) {
   const stake = getStakeValue();
   const pay = payoutFromStake(stake, data.summary?.combinedOdd);
   const couponEv = computeCouponEV(picks);
+  const leadExactScore = getCouponExactScorePreview(picks[0]?.exactScore);
 
   const antiChaosHtml =
     data?.antiChaosReport?.removed > 0
@@ -2317,6 +2368,7 @@ function renderCoupon(data) {
       <span>Deadline: ${insights.minStartMinutes == null ? "-" : formatMinutes(insights.minStartMinutes)}</span>
       <span>Mise ${stake.toFixed(0)} => Retour ${pay.payout.toFixed(2)} | Net ${pay.net.toFixed(2)}</span>
       <span>EV total: ${couponEv >= 0 ? "+" : ""}${couponEv.toFixed(3)}</span>
+      <span>Score exact leader: ${leadExactScore?.score || "-"}${leadExactScore?.badgeLabel ? ` | ${leadExactScore.badgeLabel}` : ""}</span>
       <span>Freeze ticket: ${freeze ? "ACTIF" : "OFF"} (${getFreezeMinutes()} min)</span>
     </div>
     <ol>${items}</ol>

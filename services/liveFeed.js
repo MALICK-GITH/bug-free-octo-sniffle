@@ -3,6 +3,8 @@ const API_URL =
 const { genererPredictionUnifiee, detectBetType } = require("./unifiedPrediction");
 const { evaluateMatch } = require("./extraPowerFilter");
 const { getLeagueProfile, getLeagueProfileSummary, scoreMarketAgainstProfile, weightExactScoreProbability } = require("./leagueProfiles");
+const { buildExactScoreConvergence, buildExactScoreBias, exactScoreMatchesBias } = require("./exactScoreConvergence");
+const { normalizeExactScoreSignal, buildExactScoreAttachment } = require("../public/exactScoreSignal");
 
 const PENALTY_KEYWORDS = [
   "penalty",
@@ -371,15 +373,31 @@ function buildExactScoreProjection(match, bettingMarkets = [], prediction = null
   }
 
   const projection = findBestExactScoreModel(match, bettingMarkets);
-  if (!projection) return null;
+  const bias = buildExactScoreBias(prediction || {});
+  const convergence = buildExactScoreConvergence({
+    bettingMarkets,
+    prediction,
+    league: match?.league,
+    leagueProfile,
+    bias,
+  });
+  if (!projection && !convergence) return null;
 
   const context = match?.context && typeof match.context === "object" ? match.context : {};
   const minute = Number(context.minute || 0);
   const currentHome = Number(context.score1 || 0);
   const currentAway = Number(context.score2 || 0);
   const remainingFactor = minute > 0 ? clamp((90 - minute) / 90, 0.25, 1) : 1;
-  const homeLambda = currentHome + projection.homeLambda * remainingFactor;
-  const awayLambda = currentAway + projection.awayLambda * remainingFactor;
+  const homeLambda = projection
+    ? currentHome + projection.homeLambda * remainingFactor
+    : convergence?.homeLambda != null
+      ? currentHome + convergence.homeLambda * remainingFactor
+      : currentHome;
+  const awayLambda = projection
+    ? currentAway + projection.awayLambda * remainingFactor
+    : convergence?.awayLambda != null
+      ? currentAway + convergence.awayLambda * remainingFactor
+      : currentAway;
   const finalModel = computeScoreMatrix(homeLambda, awayLambda);
 
   const weightedScores = finalModel.matrix
@@ -389,30 +407,54 @@ function buildExactScoreProjection(match, bettingMarkets = [], prediction = null
       probability: weightExactScoreProbability(leagueProfile, item.home + item.away, item.probability),
     }))
     .filter((item) => Number.isFinite(item.probability) && item.probability >= 0);
-  const weightedTotal = weightedScores.reduce((sum, item) => sum + item.probability, 0) || 1;
-  const topScores = weightedScores
+  const fallbackTopScores = weightedScores
     .map((item) => ({
       score: `${item.home}-${item.away}`,
-      probability: item.probability / weightedTotal,
+      probability: item.probability,
+    }))
+    .sort((a, b) => b.probability - a.probability)
+    .slice(0, 4);
+  const convergenceTopScores = convergence?.ranked?.length
+    ? convergence.ranked.map((item) => ({
+        score: item.score,
+        probability: Number(item.probability || 0),
+        votes_pour: item.votes_pour,
+        votes_contre: item.votes_contre,
+        ecart: item.ecart,
+        score_pondere: item.score_pondere,
+        detail: item.detail,
+        aligned: item.aligned,
+      }))
+    : null;
+  const sourceScores = convergenceTopScores || fallbackTopScores;
+  const sourceTotal = sourceScores.reduce((sum, item) => sum + Math.max(Number(item.probability) || 0, 0), 0) || 1;
+  const topScores = sourceScores
+    .map((item) => ({
+      ...item,
+      probability: Math.max(Number(item.probability) || 0, 0) / sourceTotal,
     }))
     .sort((a, b) => b.probability - a.probability)
     .slice(0, 4);
   const primary = topScores[0];
   const alternatives = topScores.slice(1, 4);
   const confidenceBase = Number(prediction?.maitre?.decision_finale?.confiance_numerique || 60);
-  const marketSupport = clamp(
-    Math.min(100, projection.signals.overLines.length * 18 + (projection.signals.bttsProb != null ? 18 : 0) + 36) +
-      Math.max(-12, Math.min(12, scoreMarketAgainstProfile(leagueProfile, "score exact"))),
-    0,
-    100
-  );
-  const fitScore = clamp(Math.round(100 - projection.loss * 260), 18, 96);
-  const reliability = clamp(
-    Math.round(fitScore * 0.44 + confidenceBase * 0.34 + marketSupport * 0.22 + Number(leagueProfile?.reliabilityBoost || 0)),
-    20,
-    95
-  );
-  const totalGoals = homeLambda + awayLambda;
+  const marketSupport = convergence?.marketSupport != null
+    ? convergence.marketSupport
+    : clamp(
+        Math.min(100, (projection?.signals?.overLines?.length || 0) * 18 + (projection?.signals?.bttsProb != null ? 18 : 0) + 36) +
+          Math.max(-12, Math.min(12, scoreMarketAgainstProfile(leagueProfile, "score exact"))),
+        0,
+        100
+      );
+  const fitScore = convergence?.fitScore != null ? convergence.fitScore : clamp(Math.round(100 - (projection?.loss || 0) * 260), 18, 96);
+  const reliability = convergence?.reliability != null
+    ? convergence.reliability
+    : clamp(
+        Math.round(fitScore * 0.44 + confidenceBase * 0.34 + marketSupport * 0.22 + Number(leagueProfile?.reliabilityBoost || 0)),
+        20,
+        95
+      );
+  const totalGoals = convergence?.totalGoals != null ? convergence.totalGoals : homeLambda + awayLambda;
   const intensity =
     totalGoals >= 4.2 ? "match tres ouvert" : totalGoals >= 3 ? "match ouvert" : totalGoals >= 2.2 ? "match equilibre" : "match ferme";
   const edge =
@@ -421,22 +463,86 @@ function buildExactScoreProjection(match, bettingMarkets = [], prediction = null
       : awayLambda - homeLambda >= 0.45
         ? "avantage exterieur"
         : "equilibre entre les deux equipes";
+  const hasConvergence = Boolean(convergence?.ranked?.length);
+  const hasBias = Boolean(bias);
+  const primaryAligned = hasConvergence && convergence?.ranked?.[0]?.aligned != null ? Boolean(convergence.ranked[0].aligned) : null;
+  const signalMeta = normalizeExactScoreSignal(
+    {
+      primary,
+      alternatives,
+      reliability,
+      fitScore,
+      marketSupport,
+      totalGoals,
+      homeLambda,
+      awayLambda,
+      overLines: convergence?.overLines || projection?.signals?.overLines || [],
+      bttsProb: convergence?.bttsProb != null ? convergence.bttsProb : projection?.signals?.bttsProb ?? null,
+      method: convergence ? convergence.method : "poisson-odds-market-v1",
+      coherence: {
+        badgeTone: hasConvergence ? (hasBias ? (primaryAligned === false ? "watch" : "good") : "neutral") : "neutral",
+        recommendation: String(
+          prediction?.maitre?.decision_finale?.pari_choisi || prediction?.analyse_avancee?.top_3_recommandations?.[0]?.pari || ""
+        ),
+      },
+      provenance: {
+        source: hasConvergence ? "convergence" : "poisson",
+        usedConvergence: hasConvergence,
+        hasBias: hasConvergence && hasBias,
+        aligned: hasConvergence ? primaryAligned : null,
+        method: convergence ? convergence.method : "poisson-odds-market-v1",
+      },
+    },
+    { bias, hasConvergence, hasBias: hasConvergence && hasBias, aligned: hasConvergence ? primaryAligned : null }
+  );
+  const coherenceTone = hasConvergence ? (hasBias ? (primaryAligned ? "good" : "watch") : "neutral") : "neutral";
+  const coherenceLabel = !hasConvergence
+    ? "Score modele"
+    : hasBias
+      ? primaryAligned
+        ? "Aligne avec la reco"
+        : "Reco en divergence"
+      : "Convergence active";
+  const biasNote = !hasConvergence
+    ? "Projection issue du modele fallback."
+    : hasBias
+      ? primaryAligned
+        ? "Convergence active et bias de recommandation aligne."
+        : "Convergence active mais bias de recommandation en divergence."
+      : "Projection issue du moteur de convergence sans biais de recommandation.";
+  const exactScore = buildExactScoreAttachment(
+    {
+      primary,
+      alternatives,
+      reliability,
+      fitScore,
+      marketSupport,
+      totalGoals,
+      homeLambda,
+      awayLambda,
+      overLines: convergence?.overLines || projection?.signals?.overLines || [],
+      bttsProb: convergence?.bttsProb != null ? convergence.bttsProb : projection?.signals?.bttsProb ?? null,
+      method: convergence ? convergence.method : "poisson-odds-market-v1",
+      coherence: {
+        badgeTone: coherenceTone,
+        badgeLabel: coherenceLabel,
+        reason: biasNote,
+        recommendation: String(
+          prediction?.maitre?.decision_finale?.pari_choisi || prediction?.analyse_avancee?.top_3_recommandations?.[0]?.pari || ""
+        ),
+      },
+      provenance: signalMeta.provenance,
+    },
+    { bias, hasConvergence, hasBias, aligned: primaryAligned }
+  );
 
   return {
-    primary,
-    alternatives,
-    reliability,
-    fitScore,
-    marketSupport,
-    totalGoals,
-    homeLambda,
-    awayLambda,
-    overLines: projection.signals.overLines,
-    bttsProb: projection.signals.bttsProb,
+    ...exactScore,
     predictions: topScores,
-    method: "poisson-odds-market-v1",
+    signal: signalMeta.signal,
+    normalizedSignal: signalMeta.normalized,
     leagueProfile: getLeagueProfileSummary(leagueProfile),
-    narrative: `${intensity}, ${edge}. Projection issue d'un moteur multi-signaux (1X2${projection.signals.overLines.length ? " + totals" : ""}${projection.signals.bttsProb != null ? " + BTTS" : ""}).`,
+    narrative: `${intensity}, ${edge}. ${biasNote} Projection issue d'un moteur ${hasConvergence ? "de convergence" : "fallback"}${(convergence?.overLines || projection?.signals?.overLines || []).length ? " multi-marches" : ""}${(convergence?.bttsProb != null ? convergence.bttsProb : projection?.signals?.bttsProb) != null ? " + BTTS" : ""}.`,
   };
 }
 
@@ -656,7 +762,11 @@ function buildMatchPredictionDetails(event) {
     context: match.context,
     bets,
   });
-  const exactScore = buildExactScoreProjection(match, bets, prediction);
+  const exactScoreProjection = buildExactScoreProjection(match, bets, prediction);
+  const exactScore = buildExactScoreAttachment(exactScoreProjection, {
+    bias: buildExactScoreBias(prediction || {}),
+    hasConvergence: Boolean(exactScoreProjection?.method && exactScoreProjection.method !== "poisson-odds-market-v1"),
+  });
 
   return {
     match,
@@ -685,6 +795,15 @@ function pickCouponOption(details, profile = "balanced") {
   const top = details?.prediction?.analyse_avancee?.top_3_recommandations || [];
   const marketByName = new Map((details?.bettingMarkets || []).map((m) => [m.nom, m]));
   const leagueProfile = getLeagueProfile(details?.match?.league);
+  const exactScore = details?.exactScore || null;
+  const exactScoreSignal = Number.isFinite(Number(exactScore?.signal))
+    ? Number(exactScore.signal)
+    : normalizeExactScoreSignal(exactScore, {
+        bias: buildExactScoreBias(details?.prediction || {}),
+        hasConvergence: Boolean(exactScore?.provenance?.usedConvergence),
+        hasBias: Boolean(exactScore?.provenance?.hasBias),
+        aligned: exactScore?.provenance?.aligned,
+      }).signal;
 
   const masterMarket = marketByName.get(master.pari_choisi);
   if (
@@ -697,7 +816,13 @@ function pickCouponOption(details, profile = "balanced") {
     return {
       pari: masterMarket.nom,
       cote: masterMarket.cote,
-      confiance: clamp(master.confiance_numerique + scoreMarketAgainstProfile(leagueProfile, masterMarket.nom) * 0.35, 0, 100),
+      confiance: clamp(
+        master.confiance_numerique +
+          scoreMarketAgainstProfile(leagueProfile, masterMarket.nom) * 0.35 +
+          exactScoreSignal,
+        0,
+        100
+      ),
       source: "MAITRE",
     };
   }
@@ -706,14 +831,17 @@ function pickCouponOption(details, profile = "balanced") {
     .filter((x) => Number.isFinite(x?.cote) && x.cote >= cfg.minOdd && x.cote <= cfg.maxOdd)
     .map((entry) => ({
       ...entry,
-      score_composite: Number(entry.score_composite || 0) + scoreMarketAgainstProfile(leagueProfile, entry.pari) * 0.3,
+      score_composite:
+        Number(entry.score_composite || 0) +
+        scoreMarketAgainstProfile(leagueProfile, entry.pari) * 0.3 +
+        exactScoreSignal,
     }))
     .sort((a, b) => b.score_composite - a.score_composite)[0];
   if (bestTop) {
     return {
       pari: bestTop.pari,
       cote: bestTop.cote,
-      confiance: bestTop.score_composite || 50,
+      confiance: clamp(Number(bestTop.score_composite || 50), 0, 100),
       source: "TOP3",
     };
   }
@@ -831,8 +959,19 @@ function computeSelectionConfidence(details, selectionPari) {
   const target = String(selectionPari || "");
   const master = details?.prediction?.maitre?.decision_finale || {};
   const leagueProfile = getLeagueProfile(details?.match?.league);
+  const exactScore = details?.exactScore || null;
+  const exactBias = buildExactScoreBias(details?.prediction || {});
+  const exactSignal = Number.isFinite(Number(exactScore?.signal))
+    ? Number(exactScore.signal)
+    : normalizeExactScoreSignal(exactScore, {
+        bias: exactBias,
+        hasConvergence: Boolean(exactScore?.provenance?.usedConvergence),
+        hasBias: Boolean(exactBias),
+        aligned:
+          exactScore?.provenance?.aligned ?? (exactScore?.primary?.score ? exactScoreMatchesBias(exactScore.primary.score, exactBias) : null),
+      }).signal;
   if (master.pari_choisi === target) {
-    return clamp(Number(master.confiance_numerique || 0) + scoreMarketAgainstProfile(leagueProfile, target) * 0.4, 0, 100);
+    return clamp(Number(master.confiance_numerique || 0) + scoreMarketAgainstProfile(leagueProfile, target) * 0.4 + exactSignal, 0, 100);
   }
 
   let best = 0;
@@ -844,7 +983,7 @@ function computeSelectionConfidence(details, selectionPari) {
       }
     }
   }
-  return clamp(Number(best || 0) + scoreMarketAgainstProfile(leagueProfile, target) * 0.4, 0, 100);
+  return clamp(Number(best || 0) + scoreMarketAgainstProfile(leagueProfile, target) * 0.4 + exactSignal, 0, 100);
 }
 
 async function validateCouponTicket(ticket, options = {}) {
@@ -898,6 +1037,13 @@ async function validateCouponTicket(ticket, options = {}) {
 
     const confidence = computeSelectionConfidence(details, selectedPari);
     const recommended = pickCouponOption(details);
+    const exactBias = buildExactScoreBias(details?.prediction || {});
+    const exactScoreAttachment = buildExactScoreAttachment(details.exactScore, {
+      bias: exactBias,
+      hasConvergence: Boolean(details?.exactScore?.provenance?.usedConvergence),
+      hasBias: Boolean(exactBias),
+      aligned: details?.exactScore?.provenance?.aligned,
+    });
     const shouldReplace =
       started ||
       !market ||
@@ -933,8 +1079,11 @@ async function validateCouponTicket(ticket, options = {}) {
             odd: recommended.cote,
             confidence: Number(recommended.confiance?.toFixed ? recommended.confiance.toFixed(1) : recommended.confiance),
             source: recommended.source,
+            exactScore: recommended.exactScore || exactScoreAttachment,
           }
         : null,
+      exactScore: exactScoreAttachment,
+      exactScoreAvailable: Boolean(details.exactScoreAvailable),
     };
 
     validatedSelections.push(row);

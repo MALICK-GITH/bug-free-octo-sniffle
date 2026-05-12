@@ -121,7 +121,7 @@ function notifyAction(title, detail = "") {
   if ("Notification" in window && Notification.permission === "granted") {
     try {
       new Notification(title, { body: detail || "Action terminee" });
-    } catch {}
+    } catch { }
   }
 }
 
@@ -235,8 +235,8 @@ function renderBots(bots) {
     .map((b) => {
       const picks = Array.isArray(b.paris_recommandes)
         ? b.paris_recommandes
-            .map((p) => `<li>${p.nom} | cote ${formatOdd(Number(p.cote))} | confiance ${p.confiance ?? 0}%</li>`)
-            .join("")
+          .map((p) => `<li>${p.nom} | cote ${formatOdd(Number(p.cote))} | confiance ${p.confiance ?? 0}%</li>`)
+          .join("")
         : "";
       return `
       <div class="box">
@@ -490,8 +490,10 @@ function probabilityOverLine(matrix, line) {
   return matrix.reduce((acc, item) => acc + (item.home + item.away >= threshold ? item.probability : 0), 0);
 }
 
-function inferExactScoreBias(recommendation = "") {
+function inferExactScoreBias(recommendation = "", homeTeam = "", awayTeam = "") {
   const text = normalizeMarketLabel(recommendation);
+  const homeTeamNorm = normalizeMarketLabel(homeTeam);
+  const awayTeamNorm = normalizeMarketLabel(awayTeam);
   if (!text) return null;
 
   const bias = {
@@ -521,7 +523,27 @@ function inferExactScoreBias(recommendation = "") {
     bias.outcome = "draw";
   }
 
-  return bias.outcome || bias.total ? bias : null;
+  // Détection spécifique des totaux d'équipe
+  if (homeTeamNorm && text.includes("total") && text.includes(homeTeamNorm)) {
+    bias.teamSpecific = {
+      team: "home",
+      type: text.includes("moins") || text.includes("under") ? "under" : "over",
+      line: extractLineFromRecommendation(text)
+    };
+  } else if (awayTeamNorm && text.includes("total") && text.includes(awayTeamNorm)) {
+    bias.teamSpecific = {
+      team: "away",
+      type: text.includes("moins") || text.includes("under") ? "under" : "over",
+      line: extractLineFromRecommendation(text)
+    };
+  }
+
+  return bias.outcome || bias.total || bias.teamSpecific ? bias : null;
+}
+
+function extractLineFromRecommendation(text) {
+  const match = text.match(/(\d+(?:[.,]\d+)?)/);
+  return match ? Number(match[1].replace(",", ".")) : null;
 }
 
 function describeExactScoreBias(bias) {
@@ -547,6 +569,18 @@ function exactScoreMatchesBias(score, bias) {
 
   if (bias.total === "over" && totalGoals <= 2) return false;
   if (bias.total === "under" && totalGoals > 2) return false;
+
+  // Vérification des biais spécifiques aux équipes
+  if (bias.teamSpecific) {
+    const { team, type, line } = bias.teamSpecific;
+    if (team === "home") {
+      if (type === "under" && homeGoals > line) return false;
+      if (type === "over" && homeGoals <= line) return false;
+    } else if (team === "away") {
+      if (type === "under" && awayGoals > line) return false;
+      if (type === "over" && awayGoals <= line) return false;
+    }
+  }
 
   return true;
 }
@@ -669,9 +703,12 @@ function buildExactScoreProjection(data) {
   if (data?.exactScoreAvailable === false || data?.leagueProfile?.exactScoreAllowed === false) {
     return null;
   }
+  const match = data?.match || {};
+  const homeTeam = String(match?.homeTeam || match?.team1 || "").trim();
+  const awayTeam = String(match?.awayTeam || match?.team2 || "").trim();
   const masterRecommendation = String(data?.prediction?.maitre?.decision_finale?.pari_choisi || "").trim();
   const fallbackRecommendation = String(data?.prediction?.analyse_avancee?.top_3_recommandations?.[0]?.pari || "").trim();
-  const bias = inferExactScoreBias(masterRecommendation || fallbackRecommendation);
+  const bias = inferExactScoreBias(masterRecommendation || fallbackRecommendation, homeTeam, awayTeam);
   const backendExactScore = data?.exactScore;
   const backendProjection =
     backendExactScore && typeof backendExactScore === "object" && "available" in backendExactScore
@@ -686,7 +723,6 @@ function buildExactScoreProjection(data) {
     }
   }
 
-  const match = data?.match || {};
   const markets = Array.isArray(data?.bettingMarkets) ? data.bettingMarkets : [];
   const projection = findBestExactScoreModel(match, markets, bias);
   if (!projection) return null;
@@ -794,12 +830,12 @@ function renderExactScorePanel(data) {
           <strong>Scenarios proches</strong>
           <div class="exact-score-alt-list">
             ${safeAlternatives
-              .map(
-                (item) => `
+      .map(
+        (item) => `
                   <span class="exact-score-alt">${item.score}<small>${(item.probability * 100).toFixed(1)}%</small></span>
                 `
-              )
-              .join("")}
+      )
+      .join("")}
           </div>
         </article>
         <article class="exact-score-card">
@@ -1125,13 +1161,13 @@ function computeMatchModel(data) {
   const oddsMean = ((odds.home || 0) + (odds.draw || 0) + (odds.away || 0)) / 3 || 1;
   const volatility = previousOdds
     ? Number(
-        (
-          (Math.abs(odds.home - previousOdds.home) +
-            Math.abs(odds.draw - previousOdds.draw) +
-            Math.abs(odds.away - previousOdds.away)) /
-          3
-        ).toFixed(3)
-      )
+      (
+        (Math.abs(odds.home - previousOdds.home) +
+          Math.abs(odds.draw - previousOdds.draw) +
+          Math.abs(odds.away - previousOdds.away)) /
+        3
+      ).toFixed(3)
+    )
     : 0;
 
   const homePower = clamp(probs.home * 0.52 + masterConfidence * 0.22 + avgBotConfidence * 0.16, 8, 96);
@@ -1224,10 +1260,10 @@ function renderNeuralCharts(data) {
   renderKpis(model);
 
   if (radarChart) {
-    try { radarChart.destroy(); } catch {}
+    try { radarChart.destroy(); } catch { }
   }
   if (flowChart) {
-    try { flowChart.destroy(); } catch {}
+    try { flowChart.destroy(); } catch { }
   }
 
   radarChart = new Chart(radarCanvas, {
@@ -1432,7 +1468,7 @@ function init() {
   if ("Notification" in window && Notification.permission === "default") {
     try {
       Notification.requestPermission();
-    } catch {}
+    } catch { }
   }
   const sendBtn = document.getElementById("sendMatchTelegramBtn");
   if (sendBtn) sendBtn.addEventListener("click", sendCurrentMatchToTelegram);

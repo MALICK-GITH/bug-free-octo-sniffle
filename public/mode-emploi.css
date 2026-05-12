@@ -225,6 +225,157 @@ h1 {
   background: #040a14;
 }
 
+.algo-shell {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.algo-summary {
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid rgba(141, 189, 240, 0.2);
+  border-radius: 14px;
+  background: rgba(6, 12, 24, 0.55);
+  padding: 0.82rem;
+}
+
+.algo-summary p {
+  margin: 0;
+}
+
+.algo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.algo-button {
+  border: 1px solid rgba(125, 255, 207, 0.42);
+  background: rgba(13, 69, 59, 0.4);
+  color: #d9fff0;
+  border-radius: 999px;
+  padding: 0.48rem 0.82rem;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.algo-button.secondary {
+  border-color: rgba(141, 189, 240, 0.24);
+  background: rgba(7, 18, 34, 0.72);
+  color: #dff0ff;
+}
+
+.algo-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.algo-group {
+  border: 1px solid rgba(141, 189, 240, 0.2);
+  border-radius: 14px;
+  background: rgba(8, 16, 32, 0.7);
+  padding: 0.55rem 0.7rem 0.75rem;
+}
+
+.algo-group summary {
+  cursor: pointer;
+  color: var(--ok);
+  font-family: "Chakra Petch", sans-serif;
+  font-weight: 700;
+  margin-bottom: 0.45rem;
+}
+
+.algo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.55rem;
+}
+
+.algo-field {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.algo-field label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.algo-field input {
+  width: 100%;
+  border: 1px solid rgba(141, 189, 240, 0.22);
+  border-radius: 10px;
+  background: rgba(4, 10, 20, 0.92);
+  color: var(--text);
+  padding: 0.55rem 0.62rem;
+  font: inherit;
+}
+
+.algo-field input::placeholder {
+  color: rgba(180, 200, 230, 0.45);
+}
+
+.algo-results {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.algo-result-card {
+  border: 1px solid rgba(141, 189, 240, 0.2);
+  border-radius: 14px;
+  background: linear-gradient(155deg, rgba(12, 27, 52, 0.9), rgba(8, 15, 29, 0.94));
+  padding: 0.8rem;
+}
+
+.algo-result-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.algo-result-score {
+  font-family: "Chakra Petch", sans-serif;
+  color: var(--accent);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.algo-result-meta {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.algo-detail {
+  margin-top: 0.65rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.algo-detail ul {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.algo-detail li {
+  margin-bottom: 0.2rem;
+}
+
+.algo-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 255, 207, 0.42);
+  background: rgba(13, 69, 59, 0.4);
+  color: #d9fff0;
+  padding: 0.22rem 0.58rem;
+  font-weight: 700;
+  width: fit-content;
+}
+
 @media (max-width: 700px) {
   .page {
     width: min(100%, 96vw);
@@ -267,5 +418,13 @@ h1 {
 
   .live-capture {
     height: 220px;
+  }
+
+  .algo-actions {
+    flex-direction: column;
+  }
+
+  .algo-button {
+    width: 100%;
   }
 }
