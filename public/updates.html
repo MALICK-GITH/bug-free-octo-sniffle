@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a1628" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>SOLITFIFPRO225 - Mises a jour</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/pages-luxe.css" />
+  <link rel="stylesheet" href="/unified-system.css" />
+  <link rel="stylesheet" href="/mobile-optimizations.css" />
+  <link rel="stylesheet" href="/mobile-ultra-premium.css" />
+  <link rel="stylesheet" href="/signature.css" />
+  <link rel="stylesheet" href="/site-embellishment.css" />
+  <link rel="stylesheet" href="/updates.css" />
+</head>
+
+<body class="updates-page">
+  <main class="page updates-shell">
+    <nav class="page-link-cloud" aria-label="Navigation mises a jour">
+      <a class="back" href="/">Retour aux matchs</a>
+      <a class="back" href="/coupon.html">Page Coupon</a>
+      <a class="back" href="/mode-emploi.html">Mode d'emploi</a>
+      <a class="back" href="/about.html">A propos du createur</a>
+      <a class="back" href="/developpeur.html">Page Developpeur</a>
+    </nav>
+
+    <section class="hero updates-hero">
+      <p class="tag">Journal de version</p>
+      <h1>Mises a jour</h1>
+      <p class="subtitle">
+        Chaque evolution importante du site est consignee ici. La page sert a la fois d'historique public et de
+        journal interne pour garder une trace claire des changements deployes.
+      </p>
+      <div class="hero-metric-strip" aria-hidden="true">
+        <article class="hero-metric-card">
+          <span>Traceabilite</span>
+          <strong>Historique vivant</strong>
+          <em>Chaque mise a jour ajoute un point de repere clair pour l'equipe.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Lecture</span>
+          <strong>Changelog lisible</strong>
+          <em>Les versions, categories et impacts sont regroupes dans un flux net.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Publication</span>
+          <strong>Ajout instantane</strong>
+          <em>Un formulaire simple permet de consigner une nouvelle version en quelques secondes.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Focus</span>
+          <strong>Produit d'abord</strong>
+          <em>Les changements majeurs restent visibles sans noyer le reste du site.</em>
+        </article>
+      </div>
+    </section>
+
+    <section class="updates-stats" id="updatesStats" aria-live="polite"></section>
+
+    <section class="updates-layout">
+      <section class="panel updates-panel" aria-labelledby="publishTitle">
+        <div class="panel-head">
+          <div>
+            <h2 id="publishTitle">Publier une mise a jour</h2>
+            <p>Remplis ce bloc pour archiver une nouvelle evolution du site dans l'historique.</p>
+          </div>
+          <button type="button" class="updates-refresh-btn" id="refreshUpdatesBtn">Rafraichir</button>
+        </div>
+
+        <form id="updateForm" class="update-form">
+          <div class="update-form-grid">
+            <label>
+              <span>Version</span>
+              <input name="version" type="text" placeholder="ex: 2026.05.19" />
+            </label>
+            <label>
+              <span>Titre</span>
+              <input name="title" type="text" placeholder="ex: Nouvelle page Mises a jour" required />
+            </label>
+            <label>
+              <span>Categorie</span>
+              <select name="category">
+                <option value="Fonctionnel">Fonctionnel</option>
+                <option value="Design">Design</option>
+                <option value="Performance">Performance</option>
+                <option value="Mobile">Mobile</option>
+                <option value="Data">Data</option>
+                <option value="Securite">Securite</option>
+                <option value="Autre">Autre</option>
+              </select>
+            </label>
+            <label>
+              <span>Auteur</span>
+              <input name="author" type="text" placeholder="SOLITAIRE HACK" value="SOLITAIRE HACK" />
+            </label>
+          </div>
+
+          <label>
+            <span>Resume court</span>
+            <input name="summary" type="text" maxlength="500"
+              placeholder="Resume executif de la mise a jour" />
+          </label>
+
+          <label>
+            <span>Points cles</span>
+            <textarea name="highlights" rows="4"
+              placeholder="Une ligne par point cle. Exemple:\nAjout de la nouvelle page.\nSauvegarde de l'historique.\nNavigation integree."></textarea>
+          </label>
+
+          <label>
+            <span>Details</span>
+            <textarea name="details" rows="6"
+              placeholder="Decris ici ce qui a change, pourquoi, et ce que cela apporte au site."></textarea>
+          </label>
+
+          <div class="update-form-actions">
+            <label class="update-pin-toggle">
+              <input name="pinned" type="checkbox" />
+              <span>Mettre en avant</span>
+            </label>
+            <button type="submit" class="updates-submit-btn">Enregistrer la mise a jour</button>
+          </div>
+        </form>
+
+        <p class="updates-status" id="updatesStatus" aria-live="polite"></p>
+      </section>
+
+      <aside class="panel updates-highlight" id="latestUpdatePanel" aria-labelledby="latestUpdateTitle">
+        <div class="panel-head">
+          <div>
+            <h2 id="latestUpdateTitle">Derniere version</h2>
+            <p>Le dernier enregistrement reste visible ici pour un repere rapide.</p>
+          </div>
+        </div>
+        <article class="latest-update-card" id="latestUpdateCard">
+          <p class="latest-update-empty">Aucune mise a jour enregistree pour le moment.</p>
+        </article>
+      </aside>
+    </section>
+
+    <section class="panel updates-feed-panel" aria-labelledby="historyTitle">
+      <div class="panel-head">
+        <div>
+          <h2 id="historyTitle">Historique complet</h2>
+          <p>Toutes les mises a jour enregistrees apparaissent ici dans l'ordre du plus recent au plus ancien.</p>
+        </div>
+        <span class="updates-feed-count" id="updatesCount">0 entree</span>
+      </div>
+      <div class="updates-feed" id="updatesFeed"></div>
+    </section>
+  </main>
+
+  <footer class="site-signature updates-footer">Signe par <strong>SOLITAIRE HACK</strong></footer>
+
+  <script src="/global-ui-shell.js" defer></script>
+  <script src="/browser-sync.js" defer></script>
+  <script src="/updates.js" type="module"></script>
+</body>
+
+</html>

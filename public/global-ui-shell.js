@@ -1,5 +1,7 @@
 (function () {
   const MOBILE_BREAKPOINT = 760;
+  let accountChip = null;
+  let fetchWrapped = false;
 
   function currentPageKey() {
     const path = window.location.pathname || "/";
@@ -7,6 +9,10 @@
     if (path.includes("coupon")) return "coupon";
     if (path.includes("match")) return "match";
     if (path.includes("mode-emploi")) return "guide";
+    if (path.includes("updates")) return "updates";
+    if (path.includes("suivre")) return "follow";
+    if (path.includes("auth")) return "auth";
+    if (path.includes("admin")) return "admin";
     if (path.includes("about")) return "about";
     if (path.includes("developpeur")) return "dev";
     return "other";
@@ -19,6 +25,10 @@
       { key: "home", href: "/", label: "Accueil" },
       { key: "coupon", href: "/coupon.html", label: "Coupon" },
       { key: "guide", href: "/mode-emploi.html", label: "Guide" },
+      { key: "updates", href: "/updates.html", label: "Mises a jour" },
+      { key: "follow", href: "/suivre.html", label: "Suivi" },
+      { key: "auth", href: "/auth.html", label: "Compte" },
+      { key: "admin", href: "/admin.html", label: "Admin" },
       { key: "about", href: "/about.html", label: "Studio" },
       { key: "dev", href: "/developpeur.html", label: "Support" },
     ];
@@ -33,6 +43,114 @@
       })
       .join("");
     document.body.appendChild(nav);
+  }
+
+  function buildAccountChip() {
+    if (document.querySelector(".global-account-chip")) return;
+
+    const chip = document.createElement("a");
+    chip.className = "global-account-chip";
+    chip.href = "/auth.html";
+    chip.setAttribute("aria-live", "polite");
+    chip.innerHTML = `
+      <span class="global-account-chip__label">Compte</span>
+      <strong class="global-account-chip__title">Connexion</strong>
+      <em class="global-account-chip__meta">Quota en lecture...</em>
+    `;
+    document.body.appendChild(chip);
+    accountChip = chip;
+
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!payload || payload.success === false) throw new Error(payload?.error?.message || "auth");
+        const user = payload.authenticated ? payload.user : null;
+        const quota = payload.quota || null;
+        const planLabel = user?.planKey || "free";
+        const remaining = quota?.unlimited ? "illimite" : quota?.remainingToday ?? 0;
+        chip.href = user?.role === "admin" ? "/admin.html" : "/auth.html";
+        chip.innerHTML = user
+          ? `
+            <span class="global-account-chip__label">${user.role === "admin" ? "Admin" : "Compte"}</span>
+            <strong class="global-account-chip__title">${user.username || user.email || "Profil"}</strong>
+            <em class="global-account-chip__meta">${quota?.unlimited ? "Quota illimite" : `${remaining} quota(s) restants`} · ${planLabel}</em>
+          `
+          : `
+            <span class="global-account-chip__label">Compte</span>
+            <strong class="global-account-chip__title">Connexion</strong>
+            <em class="global-account-chip__meta">Ouvre ton espace et ton quota</em>
+          `;
+      })
+      .catch(() => {
+        chip.innerHTML = `
+          <span class="global-account-chip__label">Compte</span>
+          <strong class="global-account-chip__title">Connexion</strong>
+          <em class="global-account-chip__meta">Acces au suivi et au quota</em>
+        `;
+      });
+  }
+
+  function updateAccountChip(payload = {}) {
+    if (!accountChip) return;
+    const user = payload?.authenticated ? payload.user : null;
+    const quota = payload?.quota || null;
+    const planLabel = user?.planKey || "free";
+    const remaining = quota?.unlimited ? "illimite" : quota?.remainingToday ?? 0;
+    accountChip.href = user?.role === "admin" ? "/admin.html" : "/auth.html";
+    accountChip.innerHTML = user
+      ? `
+        <span class="global-account-chip__label">${user.role === "admin" ? "Admin" : "Compte"}</span>
+        <strong class="global-account-chip__title">${user.username || user.email || "Profil"}</strong>
+        <em class="global-account-chip__meta">${quota?.unlimited ? "Quota illimite" : `${remaining} quota(s) restants`} · ${planLabel}</em>
+      `
+      : `
+        <span class="global-account-chip__label">Compte</span>
+        <strong class="global-account-chip__title">Connexion</strong>
+        <em class="global-account-chip__meta">Acces au suivi et au quota</em>
+      `;
+  }
+
+  function installFetchObserver() {
+    if (fetchWrapped || typeof window.fetch !== "function") return;
+    const originalFetch = window.fetch.bind(window);
+    fetchWrapped = true;
+
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      try {
+        const request = args[0];
+        const requestUrl = typeof request === "string" ? request : request?.url || "";
+        const isAuthRelated =
+          requestUrl.includes("/api/auth/me") ||
+          requestUrl.includes("/api/auth/login") ||
+          requestUrl.includes("/api/auth/register") ||
+          requestUrl.includes("/api/auth/logout") ||
+          requestUrl.includes("/api/predictions") ||
+          requestUrl.includes("/api/coupon") ||
+          requestUrl.includes("/api/coupon/generate") ||
+          requestUrl.includes("/api/coupon/validate") ||
+          requestUrl.includes("/api/matches/") ||
+          requestUrl.includes("/api/coupon/ladder") ||
+          requestUrl.includes("/api/coupon/multi");
+
+        if (isAuthRelated && response && typeof response.clone === "function") {
+          response
+            .clone()
+            .json()
+            .then((payload) => {
+              if (requestUrl.includes("/api/auth/logout")) {
+                updateAccountChip({ authenticated: false });
+                return;
+              }
+              if (payload && typeof payload === "object" && ("authenticated" in payload || "auth" in payload)) {
+                updateAccountChip(payload.auth && typeof payload.auth === "object" ? { authenticated: Boolean(payload.auth?.user), ...payload.auth } : payload);
+              }
+            })
+            .catch(() => null);
+        }
+      } catch (_error) {}
+      return response;
+    };
   }
 
   function disableLegacyBottomBars() {
@@ -148,10 +266,18 @@
     switcher.classList.add("global-theme-switcher--premium");
   }
 
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw-global.js").catch(() => null);
+  }
+
   function init() {
     document.body.classList.add(`page-${currentPageKey()}`);
     disableLegacyBottomBars();
     buildBottomNav();
+    buildAccountChip();
+    installFetchObserver();
+    registerServiceWorker();
     markRevealTargets();
     observeReveals();
     enableMobileAccordions();

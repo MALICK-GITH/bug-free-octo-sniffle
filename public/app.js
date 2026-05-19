@@ -8,6 +8,7 @@ const oddAlertLastShown = new Map();
 const LOW_DATA_MODE_KEY = "fc25_low_data_mode_v1";
 const WATCHLIST_KEY = "fc25_watchlist_v1";
 const WATCHLIST_SNAPSHOT_KEY = "fc25_watchlist_snapshot_v1";
+const WATCHLIST_USER_KEY = "fc25_watchlist_user_v1";
 const TEAM_LOGO_CACHE_KEY = "fc25_team_logo_cache_v1";
 const FRONTEND_VERSION = "2026.03.30-r3";
 let lastFetchedAt = null;
@@ -68,15 +69,15 @@ function formatOdd(value) {
 
 function scoreText(score) {
   if (!score || typeof score !== "object" || Object.keys(score).length === 0) return "Score: -";
-  const h = score.S1 ?? score.SA ?? score.H ?? score.Home ?? "?";
-  const a = score.S2 ?? score.SB ?? score.A ?? score.Away ?? "?";
+  const h = score.S1 ?? score.score1 ?? score.SA ?? score.H ?? score.Home ?? "?";
+  const a = score.S2 ?? score.score2 ?? score.SB ?? score.A ?? score.Away ?? "?";
   return `Score: ${h}-${a}`;
 }
 
 function extractScore(score) {
   if (!score || typeof score !== "object") return { home: "?", away: "?" };
-  const home = score.S1 ?? score.SA ?? score.H ?? score.Home ?? "?";
-  const away = score.S2 ?? score.SB ?? score.A ?? score.Away ?? "?";
+  const home = score.S1 ?? score.score1 ?? score.SA ?? score.H ?? score.Home ?? "?";
+  const away = score.S2 ?? score.score2 ?? score.SB ?? score.A ?? score.Away ?? "?";
   return { home, away };
 }
 
@@ -238,6 +239,18 @@ function setLowDataMode(value) {
   document.body.classList.toggle("low-data", Boolean(value));
 }
 
+function getWatchlistUserId() {
+  let userId = localStorage.getItem(WATCHLIST_USER_KEY);
+  if (userId) return userId;
+
+  const fallback =
+    (window.crypto && typeof window.crypto.randomUUID === "function"
+      ? `guest-${window.crypto.randomUUID()}`
+      : `guest-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  localStorage.setItem(WATCHLIST_USER_KEY, fallback);
+  return fallback;
+}
+
 function loadWatchlistIds() {
   try {
     const raw = JSON.parse(localStorage.getItem(WATCHLIST_KEY) || "[]");
@@ -255,12 +268,100 @@ function isInWatchlist(matchId) {
   return loadWatchlistIds().includes(String(matchId || ""));
 }
 
-function toggleWatchlist(matchId) {
-  const id = String(matchId || "");
+function buildWatchlistSnapshot(match = {}) {
+  const score = extractScore(match?.score || match?.context || {});
+  return {
+    matchId: String(match?.id || ""),
+    teamHome: String(match?.teamHome || "").trim(),
+    teamAway: String(match?.teamAway || "").trim(),
+    league: String(match?.league || "").trim(),
+    statusText: String(match?.statusText || "").trim(),
+    statusCode: Number(match?.statusCode || 0) || null,
+    phase: String(match?.phase || "").trim(),
+    startTimeUnix: Number(match?.startTimeUnix || 0) || null,
+    score: {
+      S1: score.home,
+      S2: score.away,
+    },
+    odds: {
+      home: normalizeOdd(match?.odds1x2?.home),
+      draw: normalizeOdd(match?.odds1x2?.draw),
+      away: normalizeOdd(match?.odds1x2?.away),
+    },
+    reliabilityScore: Number(match?.reliabilityScore || 0) || null,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function persistWatchlistState(payload = {}) {
+  const userId = getWatchlistUserId();
+  const body = {
+    userId,
+    matchIds: Array.isArray(payload.matchIds) ? payload.matchIds : loadWatchlistIds(),
+    snapshot: payload.snapshot && typeof payload.snapshot === "object" ? payload.snapshot : readWatchlistSnapshots(),
+  };
+
+  try {
+    const response = await fetch("/api/watchlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error("watchlist save failed");
+    return await response.json();
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function hydrateWatchlistState(matches = []) {
+  const userId = getWatchlistUserId();
+  const localIds = loadWatchlistIds();
+  const localSnapshots = readWatchlistSnapshots();
+
+  try {
+    const response = await fetch(`/api/watchlist?userId=${encodeURIComponent(userId)}&limit=200`, {
+      cache: "no-store",
+    });
+    const payload = await response.json();
+    const serverIds = Array.isArray(payload?.data?.watchlist) ? payload.data.watchlist.map((id) => String(id)) : [];
+    const serverSnapshot = payload?.data?.snapshot && typeof payload.data.snapshot === "object" ? payload.data.snapshot : {};
+    if (serverIds.length || Object.keys(serverSnapshot).length) {
+      saveWatchlistIds(serverIds);
+      saveWatchlistSnapshots(serverSnapshot);
+      return serverIds;
+    }
+
+    if (localIds.length || Object.keys(localSnapshots).length) {
+      void persistWatchlistState({ matchIds: localIds, snapshot: localSnapshots });
+    }
+
+    return localIds;
+  } catch (_error) {
+    if (localIds.length) {
+      void persistWatchlistState({ matchIds: localIds, snapshot: localSnapshots });
+    }
+    return localIds;
+  }
+}
+
+function toggleWatchlist(match, snapshot = null) {
+  const id = String(match?.id || match || "");
   if (!id) return false;
   const ids = loadWatchlistIds();
   const next = ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id];
   saveWatchlistIds(next);
+  const snapshotMap = readWatchlistSnapshots();
+  if (next.includes(id)) {
+    snapshotMap[id] = snapshot || buildWatchlistSnapshot(match);
+  } else {
+    delete snapshotMap[id];
+  }
+  saveWatchlistSnapshots(snapshotMap);
+  void persistWatchlistState({
+    matchIds: next,
+    snapshot: snapshotMap,
+  });
   return next.includes(id);
 }
 
@@ -406,8 +507,13 @@ function renderWatchlistPanel(matches = []) {
     return;
   }
 
+  const snapshots = readWatchlistSnapshots();
   const rows = ids
-    .map((id) => matches.find((match) => String(match?.id) === id))
+    .map((id) => {
+      const liveMatch = matches.find((match) => String(match?.id) === id);
+      if (liveMatch) return liveMatch;
+      return snapshots[id] ? { ...snapshots[id], id } : null;
+    })
     .filter(Boolean)
     .slice(0, 6);
 
@@ -432,26 +538,38 @@ function renderWatchlistPanel(matches = []) {
           <h2>Suivi prioritaire</h2>
           <p>Les matchs ajoutes ici remontent en premier quand la confiance baisse, quand le kickoff approche ou quand le marche devient instable.</p>
         </div>
-        <span class="watchlist-count">${rows.length} suivi(s)</span>
+        <div class="watchlist-head-actions">
+          <span class="watchlist-count">${rows.length} suivi(s)</span>
+          <a class="watchlist-link" href="/suivre.html">Voir la page suivi</a>
+        </div>
       </div>
       <div class="watchlist-grid">
         ${rows
       .map((match) => {
-        const metrics = buildMatchVisualScores(match);
+        const metrics = match.teamHome ? buildMatchVisualScores(match) : null;
+        const score = match.score || match.context || {};
+        const currentScore = scoreText(score);
+        const statusLabel = match.statusText || match.status || "Suivi";
+        const reliability = Number(match.reliabilityScore || 0);
+        const detailUrl = `/match.html?id=${encodeURIComponent(match.id)}`;
         return `
               <article class="watchlist-card">
                 <div class="watchlist-card-head">
-                  <strong>${escapeHtml(match.teamHome)} vs ${escapeHtml(match.teamAway)}</strong>
+                  <strong>${escapeHtml(match.teamHome || match.homeTeam || "Match suivi")} vs ${escapeHtml(match.teamAway || match.awayTeam || "")}</strong>
                   <span>${escapeHtml(match.league || "Ligue virtuelle")}</span>
                 </div>
                 <div class="watchlist-mini-score">
-                  <span>Indice ${metrics.overall}</span>
-                  <span>${watchlistSignal(match)}</span>
-                  <span>${matchTimelineLabel(match)}</span>
+                  <span>${currentScore}</span>
+                  <span>${match.teamHome ? `Indice ${metrics.overall}` : "Vue sauvegardee"}</span>
+                  <span>${match.teamHome ? watchlistSignal(match) : statusLabel}</span>
                 </div>
                 <div class="watchlist-actions">
-                  <a class="watchlist-link" href="/match.html?id=${encodeURIComponent(match.id)}">Ouvrir le detail</a>
+                  <a class="watchlist-link" href="${detailUrl}">Ouvrir le detail</a>
                   <button type="button" class="watchlist-remove-btn" data-watchlist-remove="${escapeHtml(match.id)}">Retirer</button>
+                </div>
+                <div class="watchlist-meta">
+                  <span>${escapeHtml(match.teamHome ? matchTimelineLabel(match) : "Enregistree")}</span>
+                  <span>${match.teamHome ? `${reliability || 0}%` : "Synchronisee DB"}</span>
                 </div>
               </article>
             `;
@@ -1188,7 +1306,7 @@ function createMatchCard(match, index) {
   const watchBtn = card.querySelector("[data-watch-id]");
   if (watchBtn) {
     watchBtn.addEventListener("click", () => {
-      const active = toggleWatchlist(match.id);
+      const active = toggleWatchlist(match, buildWatchlistSnapshot(match));
       watchBtn.classList.toggle("active", active);
       watchBtn.setAttribute("aria-pressed", active ? "true" : "false");
       watchBtn.setAttribute("aria-label", active ? "Retirer de la watchlist" : "Ajouter a la watchlist");
@@ -1578,7 +1696,6 @@ async function loadMatches() {
         : [];
     lastFetchedAt = meta.fetchedAt || data.fetchedAt || null;
     allMatches = enrichWithTrend(rawMatches);
-    updateWatchlistAlerts(allMatches);
     const filterMode = payload.filterMode || data.filterMode || "unknown";
     const mode = filterMode === "keyword-penalty" ? "filtre mot-cle" : "fallback groupe gr=285";
     currentModeLabel = `mode: ${mode}`;
@@ -1589,6 +1706,8 @@ async function loadMatches() {
     statsWrap.appendChild(createStat("Ligues", uniqueLeagues(allMatches).length));
 
     populateLeagueFilter(allMatches);
+    await hydrateWatchlistState(allMatches);
+    updateWatchlistAlerts(allMatches);
     renderSiteCommandCenter(allMatches);
     renderFrontlineStatus();
     renderWatchlistPanel(allMatches);

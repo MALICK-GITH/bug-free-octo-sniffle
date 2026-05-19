@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { DatabaseSync } = require("node:sqlite");
 const mysql = require("mysql2/promise");
 
@@ -102,6 +103,102 @@ sqliteDb.exec(`
   );
 `);
 
+sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS update_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    version TEXT,
+    title TEXT NOT NULL,
+    summary TEXT,
+    details TEXT,
+    highlights_json TEXT,
+    category TEXT,
+    author TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0
+  );
+`);
+
+sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS subscription_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_key TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    daily_prediction_quota INTEGER NOT NULL DEFAULT 0,
+    monthly_prediction_quota INTEGER NOT NULL DEFAULT 0,
+    is_unlimited INTEGER NOT NULL DEFAULT 0,
+    price_label TEXT,
+    description TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS auth_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    username TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    plan_key TEXT NOT NULL DEFAULT 'free',
+    status TEXT NOT NULL DEFAULT 'active',
+    subscription_status TEXT NOT NULL DEFAULT 'active',
+    quota_override_daily INTEGER,
+    quota_override_monthly INTEGER,
+    last_login_at TEXT,
+    last_active TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS auth_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_token TEXT NOT NULL UNIQUE,
+    user_id TEXT NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT
+  );
+`);
+
+sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS prediction_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    match_id TEXT,
+    cost_units INTEGER NOT NULL DEFAULT 1,
+    plan_key TEXT NOT NULL,
+    quota_before INTEGER,
+    quota_after INTEGER,
+    allowed INTEGER NOT NULL DEFAULT 1,
+    meta_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+const sqliteSeedPlansStmt = sqliteDb.prepare(`
+  INSERT OR IGNORE INTO subscription_plans (
+    plan_key, display_name, daily_prediction_quota, monthly_prediction_quota,
+    is_unlimited, price_label, description, sort_order, is_active
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+[
+  ["free", "Free", 3, 30, 0, "Gratuit", "Acces de base avec quota restreint.", 0, 1],
+  ["basic", "Basic", 20, 300, 0, "Pack Basic", "Pour les utilisateurs reguliers.", 1, 1],
+  ["pro", "Pro", 100, 2000, 0, "Pack Pro", "Pour une activite intensive.", 2, 1],
+  ["vip", "VIP", 0, 0, 1, "VIP", "Quota illimite et priorite complete.", 3, 1],
+].forEach((values) => sqliteSeedPlansStmt.run(...values));
+
 const sqliteInsertCouponGenerationStmt = sqliteDb.prepare(`
   INSERT INTO coupon_generations (size, league, risk, source, summary_json, coupon_json)
   VALUES (?, ?, ?, ?, ?, ?)
@@ -190,6 +287,88 @@ const sqliteSelectMobileDeviceStmt = sqliteDb.prepare(`
   WHERE platform = ? AND device_id = ?
   LIMIT 1
 `);
+
+const sqliteInsertUpdateHistoryStmt = sqliteDb.prepare(`
+  INSERT INTO update_history (version, title, summary, details, highlights_json, category, author, pinned)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const sqliteSelectUpdateHistoryStmt = sqliteDb.prepare(`
+  SELECT id, created_at, version, title, summary, details, highlights_json, category, author, pinned
+  FROM update_history
+  ORDER BY id DESC
+  LIMIT ?
+`);
+
+function normalizeKey(value, fallback = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "") || fallback;
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function randomToken(length = 32) {
+  return crypto.randomBytes(length).toString("hex");
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  const hash = crypto.pbkdf2Sync(String(password || ""), salt, 120000, 64, "sha512").toString("hex");
+  return `pbkdf2$${salt}$${hash}`;
+}
+
+function verifyPassword(password, storedHash) {
+  const parts = String(storedHash || "").split("$");
+  if (parts.length !== 3 || parts[0] !== "pbkdf2") return false;
+  const [, salt, expected] = parts;
+  const actual = crypto.pbkdf2Sync(String(password || ""), salt, 120000, 64, "sha512").toString("hex");
+  return crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
+}
+
+function formatSqliteDateTime(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const pad = (num) => String(num).padStart(2, "0");
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(
+    date.getUTCMinutes()
+  )}:${pad(date.getUTCSeconds())}`;
+}
+
+function parseAuthRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    quota_override_daily: row.quota_override_daily == null ? null : Number(row.quota_override_daily),
+    quota_override_monthly: row.quota_override_monthly == null ? null : Number(row.quota_override_monthly),
+    quota_before: row.quota_before == null ? null : Number(row.quota_before),
+    quota_after: row.quota_after == null ? null : Number(row.quota_after),
+    cost_units: row.cost_units == null ? null : Number(row.cost_units),
+    is_unlimited: Boolean(Number(row.is_unlimited)),
+    is_active: row.is_active == null ? true : Boolean(Number(row.is_active)),
+    daily_prediction_quota: row.daily_prediction_quota == null ? 0 : Number(row.daily_prediction_quota),
+    monthly_prediction_quota: row.monthly_prediction_quota == null ? 0 : Number(row.monthly_prediction_quota),
+    sort_order: row.sort_order == null ? 0 : Number(row.sort_order),
+  };
+}
+
+function toPlanRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    plan_key: row.plan_key,
+    display_name: row.display_name,
+    daily_prediction_quota: Number(row.daily_prediction_quota) || 0,
+    monthly_prediction_quota: Number(row.monthly_prediction_quota) || 0,
+    is_unlimited: Boolean(Number(row.is_unlimited)),
+    is_active: Boolean(Number(row.is_active)),
+    sort_order: Number(row.sort_order) || 0,
+  };
+}
 
 const mysqlConfig = {
   host: String(process.env.DB_HOST || "").trim(),
@@ -369,6 +548,21 @@ async function initMySql() {
           app_version VARCHAR(120) NULL,
           meta_json LONGTEXT NULL,
           UNIQUE KEY uniq_mobile_devices_platform_device_id (platform, device_id)
+        )
+      `);
+
+      await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS update_history (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          version VARCHAR(120) NULL,
+          title VARCHAR(255) NOT NULL,
+          summary TEXT NULL,
+          details LONGTEXT NULL,
+          highlights_json LONGTEXT NULL,
+          category VARCHAR(120) NULL,
+          author VARCHAR(255) NULL,
+          pinned TINYINT(1) NOT NULL DEFAULT 0
         )
       `);
 
@@ -721,6 +915,335 @@ async function getWatchlist(userId = "default") {
   };
 }
 
+function getPlanRow(planKey) {
+  return sqliteDb.prepare(
+    `SELECT id, plan_key, display_name, daily_prediction_quota, monthly_prediction_quota, is_unlimited, price_label, description, sort_order, is_active
+     FROM subscription_plans
+     WHERE plan_key = ?
+     LIMIT 1`
+  ).get(normalizeKey(planKey, "free"));
+}
+
+function getAuthAdminCount() {
+  return sqliteDb.prepare(`SELECT COUNT(*) AS count FROM auth_accounts WHERE role = 'admin'`).get().count || 0;
+}
+
+function getAuthUserRowById(userId) {
+  return sqliteDb.prepare(
+    `SELECT a.*, p.display_name AS plan_name, p.daily_prediction_quota, p.monthly_prediction_quota, p.is_unlimited
+     FROM auth_accounts a
+     LEFT JOIN subscription_plans p ON p.plan_key = a.plan_key
+     WHERE a.user_id = ?
+     LIMIT 1`
+  ).get(String(userId || "").trim());
+}
+
+function getAuthUserRowByEmail(email) {
+  return sqliteDb.prepare(
+    `SELECT a.*, p.display_name AS plan_name, p.daily_prediction_quota, p.monthly_prediction_quota, p.is_unlimited
+     FROM auth_accounts a
+     LEFT JOIN subscription_plans p ON p.plan_key = a.plan_key
+     WHERE a.email = ?
+     LIMIT 1`
+  ).get(normalizeEmail(email));
+}
+
+function listAuthUserRows(limit = 100) {
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 100));
+  return sqliteDb.prepare(
+    `SELECT a.*, p.display_name AS plan_name, p.daily_prediction_quota, p.monthly_prediction_quota, p.is_unlimited
+     FROM auth_accounts a
+     LEFT JOIN subscription_plans p ON p.plan_key = a.plan_key
+     ORDER BY a.updated_at DESC
+     LIMIT ?`
+  ).all(safeLimit).map(parseAuthRow);
+}
+
+function getAuthSessionRow(token) {
+  return sqliteDb.prepare(
+    `SELECT
+       s.session_token,
+       s.user_id AS session_user_id,
+       s.ip_address,
+       s.user_agent,
+       s.created_at AS session_created_at,
+       s.last_seen_at,
+       s.expires_at,
+       s.revoked_at,
+       a.user_id,
+       a.email,
+       a.username,
+       a.role,
+       a.plan_key,
+       a.status,
+       a.subscription_status,
+       a.quota_override_daily,
+       a.quota_override_monthly,
+       a.last_login_at,
+       a.last_active,
+       a.created_at,
+       a.updated_at,
+       p.display_name AS plan_name,
+       p.daily_prediction_quota,
+       p.monthly_prediction_quota,
+       p.is_unlimited
+     FROM auth_sessions s
+     JOIN auth_accounts a ON a.user_id = s.user_id
+     LEFT JOIN subscription_plans p ON p.plan_key = a.plan_key
+     WHERE s.session_token = ?
+       AND s.revoked_at IS NULL
+       AND s.expires_at > datetime('now')
+     LIMIT 1`
+  ).get(String(token || "").trim());
+}
+
+function getAuthQuotaStateRow(userId) {
+  const user = getAuthUserRowById(userId);
+  if (!user) return null;
+  const plan = getPlanRow(user.plan_key) || getPlanRow("free");
+  const quotaLimit = user.quota_override_daily ?? plan?.daily_prediction_quota ?? 0;
+  const unlimited = user.role === "admin" || Boolean(plan?.is_unlimited);
+  const startAt = formatSqliteDateTime(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())));
+  const endAt = formatSqliteDateTime(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1)));
+  const summary = sqliteDb.prepare(
+    `SELECT
+       COUNT(*) AS total_events,
+       COALESCE(SUM(CASE WHEN allowed = 1 THEN cost_units ELSE 0 END), 0) AS used_units,
+       COALESCE(SUM(CASE WHEN allowed = 0 THEN cost_units ELSE 0 END), 0) AS blocked_units
+     FROM prediction_usage
+     WHERE user_id = ?
+       AND created_at >= ?
+       AND created_at < ?`
+  ).get(String(userId || "").trim(), startAt, endAt);
+  const usedToday = Number(summary?.used_units) || 0;
+  const remainingToday = unlimited ? null : Math.max(0, Number(quotaLimit) - usedToday);
+  return {
+    user,
+    plan,
+    dailyQuota: unlimited ? null : Number(quotaLimit) || 0,
+    usedToday,
+    remainingToday,
+    unlimited,
+    blockedToday: Number(summary?.blocked_units) || 0,
+    totalEventsToday: Number(summary?.total_events) || 0,
+  };
+}
+
+async function getPlans() {
+  return sqliteDb.prepare(
+    `SELECT id, plan_key, display_name, daily_prediction_quota, monthly_prediction_quota, is_unlimited, price_label, description, sort_order, is_active
+     FROM subscription_plans
+     WHERE is_active = 1
+     ORDER BY sort_order ASC, plan_key ASC`
+  ).all().map(toPlanRow);
+}
+
+async function getPlan(planKey) {
+  return toPlanRow(getPlanRow(planKey));
+}
+
+async function getAdminCount() {
+  return getAuthAdminCount();
+}
+
+async function getAuthUserById(userId) {
+  return parseAuthRow(getAuthUserRowById(userId));
+}
+
+async function getAuthUserByEmail(email) {
+  return parseAuthRow(getAuthUserRowByEmail(email));
+}
+
+function verifyAuthPassword(password, storedHash) {
+  return verifyPassword(password, storedHash);
+}
+
+async function listAuthUsers(limit = 100) {
+  return listAuthUserRows(limit);
+}
+
+async function saveAuthUser(userData = {}) {
+  const email = normalizeEmail(userData.email);
+  const username = String(userData.username || "").trim();
+  const password = String(userData.password || "").trim();
+  const requestedPlanKey = normalizeKey(userData.planKey || "free", "free");
+  const roleInput = normalizeKey(userData.role || "user", "user");
+  const adminCount = getAuthAdminCount();
+  const role = adminCount === 0 ? "admin" : roleInput === "admin" ? "admin" : "user";
+  const requestedPlan = getPlanRow(requestedPlanKey);
+  const finalPlan = role === "admin" ? "vip" : requestedPlan ? requestedPlan.plan_key : "free";
+
+  if (!email) throw new Error("email requis");
+  if (!username) throw new Error("username requis");
+  if (!password || password.length < 8) throw new Error("mot de passe trop court");
+  if (getAuthUserRowByEmail(email)) throw new Error("email deja utilise");
+
+  const userId = normalizeKey(userData.userId || email.split("@")[0], "user");
+  const passwordHash = hashPassword(password);
+  sqliteDb.prepare(
+    `INSERT INTO auth_accounts (
+      user_id, email, username, password_hash, role, plan_key, status, subscription_status,
+      quota_override_daily, quota_override_monthly, last_login_at, last_active, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 'active', 'active', ?, ?, NULL, datetime('now'), datetime('now'), datetime('now'))`
+  ).run(
+    userId,
+    email,
+    username,
+    passwordHash,
+    role,
+    finalPlan,
+    userData.quotaOverrideDaily ?? null,
+    userData.quotaOverrideMonthly ?? null
+  );
+  return getAuthUserRowById(userId);
+}
+
+async function updateAuthUser(userId, updates = {}) {
+  const current = getAuthUserRowById(userId);
+  if (!current) throw new Error("utilisateur introuvable");
+
+  const nextUsername = updates.username != null ? String(updates.username).trim() : current.username;
+  const nextEmail = updates.email != null ? normalizeEmail(updates.email) : current.email;
+  const nextRole = updates.role != null ? normalizeKey(updates.role, current.role) : current.role;
+  const requestedPlanKey = updates.planKey != null ? normalizeKey(updates.planKey, current.plan_key) : current.plan_key;
+  const nextPlan = getPlanRow(requestedPlanKey) ? requestedPlanKey : current.plan_key;
+  const nextStatus = updates.status != null ? normalizeKey(updates.status, current.status) : current.status;
+  const nextSubscriptionStatus =
+    updates.subscriptionStatus != null ? normalizeKey(updates.subscriptionStatus, current.subscription_status) : current.subscription_status;
+  const nextQuotaOverrideDaily = updates.quotaOverrideDaily === undefined ? current.quota_override_daily : updates.quotaOverrideDaily;
+  const nextQuotaOverrideMonthly = updates.quotaOverrideMonthly === undefined ? current.quota_override_monthly : updates.quotaOverrideMonthly;
+  const nextPasswordHash =
+    updates.password && String(updates.password).trim().length >= 8 ? hashPassword(updates.password) : current.password_hash;
+
+  const adminCount = getAuthAdminCount();
+  if (current.role === "admin" && nextRole !== "admin" && adminCount <= 1) {
+    throw new Error("au moins un administrateur doit rester actif");
+  }
+
+  const resolvedPlan = nextRole === "admin" ? "vip" : nextPlan;
+  sqliteDb.prepare(
+    `UPDATE auth_accounts
+     SET email = ?,
+         username = ?,
+         role = ?,
+         plan_key = ?,
+         status = ?,
+         subscription_status = ?,
+         quota_override_daily = ?,
+         quota_override_monthly = ?,
+         password_hash = ?,
+         updated_at = datetime('now')
+     WHERE user_id = ?`
+  ).run(
+    nextEmail,
+    nextUsername,
+    nextRole,
+    resolvedPlan,
+    nextStatus,
+    nextSubscriptionStatus,
+    nextQuotaOverrideDaily,
+    nextQuotaOverrideMonthly,
+    nextPasswordHash,
+    String(userId || "").trim()
+  );
+  return getAuthUserRowById(userId);
+}
+
+async function deleteAuthUser(userId) {
+  const current = getAuthUserRowById(userId);
+  if (!current) return null;
+  if (current.role === "admin" && getAuthAdminCount() <= 1) {
+    throw new Error("au moins un administrateur doit rester actif");
+  }
+  sqliteDb.prepare(`DELETE FROM auth_sessions WHERE user_id = ?`).run(String(userId || "").trim());
+  sqliteDb.prepare(`DELETE FROM auth_accounts WHERE user_id = ?`).run(String(userId || "").trim());
+  return current;
+}
+
+async function createAuthSession(userId, { ipAddress = null, userAgent = null, daysValid = 30 } = {}) {
+  const token = randomToken(32);
+  const validDays = Math.max(1, Number(daysValid) || 30);
+  const expiresAt = formatSqliteDateTime(new Date(Date.now() + validDays * 24 * 60 * 60 * 1000));
+  sqliteDb.prepare(
+    `INSERT INTO auth_sessions (session_token, user_id, ip_address, user_agent, expires_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(token, String(userId || "").trim(), ipAddress, userAgent, expiresAt);
+  return { token, session: getAuthSessionRow(token) };
+}
+
+async function getAuthSession(token) {
+  return parseAuthRow(getAuthSessionRow(token));
+}
+
+async function revokeAuthSession(token) {
+  sqliteDb.prepare(
+    `UPDATE auth_sessions SET revoked_at = datetime('now') WHERE session_token = ?`
+  ).run(String(token || "").trim());
+  return true;
+}
+
+async function revokeAllAuthSessions(userId) {
+  sqliteDb.prepare(
+    `UPDATE auth_sessions SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL`
+  ).run(String(userId || "").trim());
+  return true;
+}
+
+async function recordPredictionUsage(entry = {}) {
+  sqliteDb.prepare(
+    `INSERT INTO prediction_usage (user_id, endpoint, match_id, cost_units, plan_key, quota_before, quota_after, allowed, meta_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    String(entry.userId || "").trim(),
+    String(entry.endpoint || "").trim(),
+    entry.matchId ? String(entry.matchId).trim() : null,
+    Math.max(1, Number(entry.costUnits) || 1),
+    normalizeKey(entry.planKey || "free", "free"),
+    entry.quotaBefore == null ? null : Number(entry.quotaBefore),
+    entry.quotaAfter == null ? null : Number(entry.quotaAfter),
+    entry.allowed ? 1 : 0,
+    toJson(entry.meta || {}, {})
+  );
+  return true;
+}
+
+async function getPredictionUsageSummary({ userId, startAt = null, endAt = null } = {}) {
+  const safeUserId = String(userId || "").trim();
+  const start = startAt ? formatSqliteDateTime(startAt) : "0000-01-01 00:00:00";
+  const end = endAt ? formatSqliteDateTime(endAt) : "9999-12-31 23:59:59";
+  const summary = sqliteDb.prepare(
+    `SELECT
+       COUNT(*) AS total_events,
+       COALESCE(SUM(CASE WHEN allowed = 1 THEN cost_units ELSE 0 END), 0) AS used_units,
+       COALESCE(SUM(CASE WHEN allowed = 0 THEN cost_units ELSE 0 END), 0) AS blocked_units
+     FROM prediction_usage
+     WHERE user_id = ?
+       AND created_at >= ?
+       AND created_at < ?`
+  ).get(safeUserId, start, end);
+  return {
+    total_events: Number(summary?.total_events) || 0,
+    used_units: Number(summary?.used_units) || 0,
+    blocked_units: Number(summary?.blocked_units) || 0,
+  };
+}
+
+async function getAuthQuotaState(userId) {
+  return getAuthQuotaStateRow(userId);
+}
+
+async function touchAuthSession(token, userId) {
+  const safeToken = String(token || "").trim();
+  const safeUserId = String(userId || "").trim();
+  if (!safeToken || !safeUserId) return;
+  sqliteDb.prepare(
+    `UPDATE auth_sessions SET last_seen_at = datetime('now') WHERE session_token = ?`
+  ).run(safeToken);
+  sqliteDb.prepare(
+    `UPDATE auth_accounts SET last_active = datetime('now') WHERE user_id = ?`
+  ).run(safeUserId);
+}
+
 async function registerMobileDevice(entry = {}) {
   const platform = String(entry.platform || "android").trim().toLowerCase() || "android";
   const deviceId = String(entry.deviceId || "").trim();
@@ -792,6 +1315,96 @@ async function registerMobileDevice(entry = {}) {
   };
 }
 
+function normalizeUpdateHighlights(value) {
+  return normalizeStringArray(value, 20);
+}
+
+async function saveUpdateEntry(entry = {}) {
+  const record = {
+    version: entry.version ? String(entry.version).trim() : null,
+    title: entry.title ? String(entry.title).trim() : null,
+    summary: entry.summary ? String(entry.summary).trim() : null,
+    details: entry.details ? String(entry.details).trim() : null,
+    highlights: normalizeUpdateHighlights(entry.highlights),
+    category: entry.category ? String(entry.category).trim() : null,
+    author: entry.author ? String(entry.author).trim() : null,
+    pinned: entry.pinned ? 1 : 0,
+  };
+
+  if (!record.title) {
+    throw new Error("title requis");
+  }
+
+  if (await canUseMySql()) {
+    const [result] = await mysqlPool.execute(
+      `INSERT INTO update_history (version, title, summary, details, highlights_json, category, author, pinned)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        record.version,
+        record.title,
+        record.summary,
+        record.details,
+        toJson(record.highlights, []),
+        record.category,
+        record.author,
+        record.pinned,
+      ]
+    );
+    return result.insertId;
+  }
+
+  const result = sqliteInsertUpdateHistoryStmt.run(
+    record.version,
+    record.title,
+    record.summary,
+    record.details,
+    toJson(record.highlights, []),
+    record.category,
+    record.author,
+    record.pinned
+  );
+  return result.lastInsertRowid;
+}
+
+async function getUpdateHistory(limit = 20) {
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 20));
+
+  if (await canUseMySql()) {
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, created_at, version, title, summary, details, highlights_json, category, author, pinned
+       FROM update_history
+       ORDER BY id DESC
+       LIMIT ?`,
+      [safeLimit]
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      createdAt: normalizeDate(row.created_at),
+      version: row.version || null,
+      title: row.title || "",
+      summary: row.summary || "",
+      details: row.details || "",
+      highlights: parseJsonSafe(row.highlights_json, []),
+      category: row.category || null,
+      author: row.author || null,
+      pinned: Boolean(row.pinned),
+    }));
+  }
+
+  return sqliteSelectUpdateHistoryStmt.all(safeLimit).map((row) => ({
+    id: row.id,
+    createdAt: row.created_at,
+    version: row.version || null,
+    title: row.title || "",
+    summary: row.summary || "",
+    details: row.details || "",
+    highlights: parseJsonSafe(row.highlights_json, []),
+    category: row.category || null,
+    author: row.author || null,
+    pinned: Boolean(row.pinned),
+  }));
+}
+
 async function getAuditHistory(limit = 20) {
   const safeLimit = Math.max(1, Math.min(200, Number(limit) || 20));
 
@@ -830,9 +1443,13 @@ async function getDbStatus() {
     const [validationRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM coupon_validations");
     const [telegramRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM telegram_logs");
     const [auditRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM audit_reports");
+    const [updateRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM update_history");
     const [favoriteRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM favorites");
     const [watchlistRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM watchlists");
     const [deviceRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM mobile_devices");
+    const [authRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM auth_accounts");
+    const [sessionRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM auth_sessions");
+    const [planRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM subscription_plans");
 
     return {
       ok: true,
@@ -844,9 +1461,13 @@ async function getDbStatus() {
         coupon_validations: Number(validationRows?.[0]?.c) || 0,
         telegram_logs: Number(telegramRows?.[0]?.c) || 0,
         audit_reports: Number(auditRows?.[0]?.c) || 0,
+        update_history: Number(updateRows?.[0]?.c) || 0,
         favorites: Number(favoriteRows?.[0]?.c) || 0,
         watchlists: Number(watchlistRows?.[0]?.c) || 0,
         mobile_devices: Number(deviceRows?.[0]?.c) || 0,
+        auth_accounts: Number(authRows?.[0]?.c) || 0,
+        auth_sessions: Number(sessionRows?.[0]?.c) || 0,
+        subscription_plans: Number(planRows?.[0]?.c) || 0,
       },
     };
   }
@@ -855,9 +1476,13 @@ async function getDbStatus() {
   const validationCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM coupon_validations").get().c;
   const telegramCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM telegram_logs").get().c;
   const auditCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM audit_reports").get().c;
+  const updateCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM update_history").get().c;
   const favoriteCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM favorites").get().c;
   const watchlistCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM watchlists").get().c;
   const deviceCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM mobile_devices").get().c;
+  const authCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM auth_accounts").get().c;
+  const sessionCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM auth_sessions").get().c;
+  const planCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM subscription_plans").get().c;
 
   return {
     ok: true,
@@ -870,9 +1495,13 @@ async function getDbStatus() {
       coupon_validations: Number(validationCount) || 0,
       telegram_logs: Number(telegramCount) || 0,
       audit_reports: Number(auditCount) || 0,
+      update_history: Number(updateCount) || 0,
       favorites: Number(favoriteCount) || 0,
       watchlists: Number(watchlistCount) || 0,
       mobile_devices: Number(deviceCount) || 0,
+      auth_accounts: Number(authCount) || 0,
+      auth_sessions: Number(sessionCount) || 0,
+      subscription_plans: Number(planCount) || 0,
     },
   };
 }
@@ -884,6 +1513,8 @@ module.exports = {
   saveAuditReport,
   getCouponHistory,
   getTelegramHistory,
+  saveUpdateEntry,
+  getUpdateHistory,
   getAuditHistory,
   getDbStatus,
   saveFavorite,
@@ -891,4 +1522,22 @@ module.exports = {
   saveWatchlist,
   getWatchlist,
   registerMobileDevice,
+  getPlans,
+  getPlan,
+  getAdminCount,
+  getAuthUserById,
+  getAuthUserByEmail,
+  verifyAuthPassword,
+  listAuthUsers,
+  saveAuthUser,
+  updateAuthUser,
+  deleteAuthUser,
+  createAuthSession,
+  getAuthSession,
+  revokeAuthSession,
+  revokeAllAuthSessions,
+  recordPredictionUsage,
+  getPredictionUsageSummary,
+  getAuthQuotaState,
+  touchAuthSession,
 };

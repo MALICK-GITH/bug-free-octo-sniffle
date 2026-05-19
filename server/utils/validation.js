@@ -114,6 +114,56 @@ const printCouponSchema = Joi.object({
   coupon: Joi.array().default([]),
 }).unknown(true);
 
+const updateHistorySchema = Joi.object({
+  version: Joi.string().trim().max(120).allow("").default(""),
+  title: Joi.string().trim().min(2).max(255).required(),
+  summary: Joi.string().trim().max(500).allow("").default(""),
+  details: Joi.string().trim().max(4000).allow("").default(""),
+  highlights: Joi.array()
+    .items(Joi.string().trim().min(1).max(200))
+    .max(20)
+    .default([]),
+  category: Joi.string().trim().max(120).allow("").default(""),
+  author: Joi.string().trim().max(255).allow("").default(""),
+  pinned: Joi.boolean().default(false),
+}).unknown(true);
+
+const authRegisterSchema = Joi.object({
+  email: Joi.string().trim().email().required(),
+  username: Joi.string().trim().min(2).max(80).required(),
+  password: Joi.string().trim().min(8).max(200).required(),
+  planKey: Joi.string().trim().max(50).default("free"),
+}).unknown(true);
+
+const authLoginSchema = Joi.object({
+  email: Joi.string().trim().email().required(),
+  password: Joi.string().trim().min(8).max(200).required(),
+}).unknown(true);
+
+const adminUserUpdateSchema = Joi.object({
+  email: Joi.string().trim().email(),
+  username: Joi.string().trim().min(2).max(80),
+  password: Joi.string().trim().min(8).max(200),
+  role: Joi.string().trim().valid("user", "admin"),
+  planKey: Joi.string().trim().max(50),
+  status: Joi.string().trim().valid("active", "suspended", "blocked"),
+  subscriptionStatus: Joi.string().trim().valid("active", "past_due", "canceled", "trialing"),
+  quotaOverrideDaily: Joi.number().integer().min(0).allow(null),
+  quotaOverrideMonthly: Joi.number().integer().min(0).allow(null),
+}).unknown(true);
+
+const adminUserCreateSchema = Joi.object({
+  email: Joi.string().trim().email().required(),
+  username: Joi.string().trim().min(2).max(80).required(),
+  password: Joi.string().trim().min(8).max(200).required(),
+  role: Joi.string().trim().valid("user", "admin").default("user"),
+  planKey: Joi.string().trim().max(50).default("free"),
+  status: Joi.string().trim().valid("active", "suspended", "blocked").default("active"),
+  subscriptionStatus: Joi.string().trim().valid("active", "past_due", "canceled", "trialing").default("active"),
+  quotaOverrideDaily: Joi.number().integer().min(0).allow(null),
+  quotaOverrideMonthly: Joi.number().integer().min(0).allow(null),
+}).unknown(true);
+
 module.exports = {
   validateBody,
   validateQuery,
@@ -126,4 +176,9 @@ module.exports = {
   patternsReportSchema,
   chatSchema,
   printCouponSchema,
+  updateHistorySchema,
+  authRegisterSchema,
+  authLoginSchema,
+  adminUserUpdateSchema,
+  adminUserCreateSchema,
 };

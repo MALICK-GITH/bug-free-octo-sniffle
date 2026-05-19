@@ -1,5 +1,6 @@
 ﻿const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
+const crypto = require("crypto");
 const express = require("express");
 const sharp = require("sharp");
 const config = require("./server/config");
@@ -17,6 +18,11 @@ const {
   patternsReportSchema,
   chatSchema,
   printCouponSchema,
+  updateHistorySchema,
+  authRegisterSchema,
+  authLoginSchema,
+  adminUserUpdateSchema,
+  adminUserCreateSchema,
 } = require("./server/utils/validation");
 const { registerSystemRoutes } = require("./server/routes/system");
 const { API_URL, getPenaltyMatches, getStructure, getMatchPredictionDetails, getCouponSelection, validateCouponTicket } = require("./services/liveFeed");
@@ -29,8 +35,9 @@ const {
   saveAuditReport,
   getCouponHistory,
   getTelegramHistory,
+  saveUpdateEntry,
+  getUpdateHistory,
   getAuditHistory,
-  getDbStatus,
   saveFavorite,
   getFavorites,
   saveWatchlist,
@@ -38,8 +45,9 @@ const {
   registerMobileDevice,
 } = require("./services/db");
 
-// Import PostgreSQL database service
-const dbService = require("./services/database");
+const authDb = require("./services/database");
+const legacyDbService = require("./services/db");
+const getDbStatus = (...args) => authDb.getDbStatus(...args);
 
 const app = express();
 const DEFAULT_PORT = config.port;
@@ -67,7 +75,83 @@ app.use(express.json({ limit: config.jsonLimit }));
 app.use(express.urlencoded({ extended: false, limit: config.jsonLimit }));
 app.use(csrfProtection({ allowedOrigins: config.allowedOrigins }));
 
-registerSystemRoutes(app, { startedAt: SERVER_STARTED_AT, getDbStatus, dbService });
+app.use(async (req, res, next) => {
+  if (!isProtectedPredictionPath(req.path)) {
+    return next();
+  }
+
+  try {
+    const authContext = await getAuthContextFromRequest(req);
+    if (!authContext) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: "AUTH_REQUIRED",
+          message: "Connecte-toi pour utiliser les predictions.",
+        },
+      });
+    }
+
+    const status = String(authContext.session.status || authContext.user.status || "").toLowerCase();
+    const subscriptionStatus = String(authContext.session.subscription_status || authContext.user.subscriptionStatus || "").toLowerCase();
+    if (status !== "active" || (!["active", "trialing"].includes(subscriptionStatus) && authContext.user.role !== "admin")) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "ACCOUNT_BLOCKED",
+          message: "Ton compte est suspendu ou ton abonnement n'est pas actif.",
+        },
+      });
+    }
+
+    const quota = authContext.quota;
+    if (!quota?.unlimited && Number(quota.remainingToday) <= 0) {
+      return res.status(429).json({
+        success: false,
+        error: buildQuotaError(quota),
+      });
+    }
+
+    req.authContext = authContext;
+    res.locals.authContext = authContext;
+    res.locals.predictionQuotaBefore = quota?.remainingToday ?? null;
+    res.on("finish", async () => {
+      if (res.statusCode >= 400) return;
+      try {
+        const quotaAfter = authContext.quota?.unlimited
+          ? null
+          : Math.max(0, Number(authContext.quota.remainingToday) - 1);
+        await authDb.recordPredictionUsage({
+          userId: authContext.user.userId,
+          endpoint: `${req.method} ${req.path}`,
+          matchId: req.params?.matchId || req.params?.id || req.query?.matchId || null,
+          costUnits: 1,
+          planKey: authContext.user.planKey,
+          quotaBefore: authContext.quota?.remainingToday ?? null,
+          quotaAfter,
+          allowed: true,
+          meta: {
+            ip: req.ip || req.socket?.remoteAddress || null,
+            userAgent: req.get("user-agent") || null,
+          },
+        });
+      } catch (_error) {}
+    });
+
+    return next();
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "AUTH_CONTEXT_ERROR",
+        message: "Impossible de verifier ton acces.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+registerSystemRoutes(app, { startedAt: SERVER_STARTED_AT, getDbStatus, dbService: legacyDbService });
 
 app.use((req, res, next) => {
   if (req.method !== "POST" || !isHeavyPostPath(req.path)) return next();
@@ -365,6 +449,165 @@ function normalizeIdList(values, limit = 300) {
 
 function normalizePlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+const AUTH_COOKIE_NAME = "sf_session";
+const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const PROTECTED_PREDICTION_PATHS = [
+  /^\/api\/predictions(?:\/|$)/,
+  /^\/api\/odds\/\d+$/,
+  /^\/api\/match\/\d+\/coach$/,
+  /^\/api\/match\/\d+\/exact-score$/,
+  /^\/api\/coupon$/,
+  /^\/api\/coupon\/generate$/,
+  /^\/api\/coupon\/validate$/,
+  /^\/api\/coupon\/audit$/,
+  /^\/api\/coupon\/print-a4$/,
+  /^\/api\/coupon\/pdf(?:\/|$)/,
+  /^\/api\/coupon\/image(?:\/|$)/,
+  /^\/api\/coupon\/ladder$/,
+  /^\/api\/coupon\/multi$/,
+  /^\/api\/coupon\/send-telegram(?:-pack)?$/,
+  /^\/api\/telegram\/send-coupon$/,
+  /^\/api\/pdf\/coupon$/,
+  /^\/api\/download\/coupon$/,
+];
+
+function parseCookies(header = "") {
+  return String(header || "")
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .reduce((acc, item) => {
+      const separatorIndex = item.indexOf("=");
+      if (separatorIndex <= 0) return acc;
+      const key = item.slice(0, separatorIndex).trim();
+      const value = item.slice(separatorIndex + 1).trim();
+      if (key) acc[key] = decodeURIComponent(value);
+      return acc;
+    }, {});
+}
+
+function setCookie(res, name, value, options = {}) {
+  const parts = [`${name}=${encodeURIComponent(value)}`];
+  if (options.maxAge != null) parts.push(`Max-Age=${Math.floor(options.maxAge)}`);
+  if (options.path) parts.push(`Path=${options.path}`);
+  if (options.httpOnly) parts.push("HttpOnly");
+  if (options.sameSite) parts.push(`SameSite=${options.sameSite}`);
+  if (options.secure) parts.push("Secure");
+  if (options.domain) parts.push(`Domain=${options.domain}`);
+  const existing = res.getHeader("Set-Cookie");
+  const next = Array.isArray(existing) ? existing.concat(parts.join("; ")) : existing ? [existing, parts.join("; ")] : [parts.join("; ")];
+  res.setHeader("Set-Cookie", next);
+}
+
+function clearAuthCookie(res) {
+  setCookie(res, AUTH_COOKIE_NAME, "", {
+    maxAge: 0,
+    path: "/",
+    httpOnly: true,
+    sameSite: "Lax",
+  });
+}
+
+function getSessionTokenFromRequest(req) {
+  const cookies = parseCookies(req.headers?.cookie || "");
+  const bearer = String(req.headers?.authorization || "").trim();
+  if (cookies[AUTH_COOKIE_NAME]) return cookies[AUTH_COOKIE_NAME];
+  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
+  return "";
+}
+
+function serializeAuthAccount(account = {}, quota = null) {
+  return {
+    userId: account.user_id || account.userId || "",
+    email: account.email || "",
+    username: account.username || "",
+    role: account.role || "user",
+    planKey: account.plan_key || account.planKey || "free",
+    status: account.status || "active",
+    subscriptionStatus: account.subscription_status || account.subscriptionStatus || "active",
+    quotaOverrideDaily: account.quota_override_daily ?? account.quotaOverrideDaily ?? null,
+    quotaOverrideMonthly: account.quota_override_monthly ?? account.quotaOverrideMonthly ?? null,
+    lastLoginAt: account.last_login_at || account.lastLoginAt || null,
+    lastActive: account.last_active || account.lastActive || null,
+    quota,
+  };
+}
+
+function serializeAdminAccount(account = {}, quota = null) {
+  return {
+    ...serializeAuthAccount(account, quota),
+    planName: account.plan_name || account.planName || "",
+    planDailyQuota: account.daily_prediction_quota ?? account.planDailyQuota ?? 0,
+    planMonthlyQuota: account.monthly_prediction_quota ?? account.planMonthlyQuota ?? 0,
+    planUnlimited: Boolean(account.is_unlimited ?? account.planUnlimited ?? false),
+  };
+}
+
+async function getAuthContextFromRequest(req) {
+  const token = getSessionTokenFromRequest(req);
+  if (!token) return null;
+  const session = await authDb.getAuthSession(token);
+  if (!session) return null;
+
+  try {
+    await authDb.touchAuthSession(token, session.user_id);
+  } catch (_error) {}
+
+  const user = {
+    user_id: session.user_id,
+    email: session.email,
+    username: session.username,
+    role: session.role,
+    plan_key: session.plan_key,
+    status: session.status,
+    subscription_status: session.subscription_status,
+    quota_override_daily: session.quota_override_daily,
+    quota_override_monthly: session.quota_override_monthly,
+    last_login_at: session.last_login_at,
+    last_active: session.last_active,
+  };
+  const quota = await authDb.getAuthQuotaState(user.user_id);
+  return {
+    token,
+    session,
+    user: serializeAuthAccount(user, quota),
+    quota,
+  };
+}
+
+function isProtectedPredictionPath(pathname = "") {
+  return PROTECTED_PREDICTION_PATHS.some((pattern) => pattern.test(String(pathname || "")));
+}
+
+function buildQuotaError(quota = null) {
+  const remaining = quota?.remainingToday;
+  const dailyQuota = quota?.dailyQuota;
+  return {
+    code: "QUOTA_EXCEEDED",
+    message:
+      dailyQuota == null
+        ? "Tu as atteint ton quota de predictions."
+        : `Quota atteint: ${remaining ?? 0}/${dailyQuota} predictions restantes aujourd'hui.`,
+    quota: quota
+      ? {
+          dailyQuota: quota.dailyQuota,
+          usedToday: quota.usedToday,
+          remainingToday: quota.remainingToday,
+          unlimited: quota.unlimited,
+          planKey: quota.user?.plan_key || quota.user?.planKey || "free",
+        }
+      : null,
+  };
+}
+
+function buildAuthQuotaMeta(authContext = null) {
+  if (!authContext) return null;
+  return {
+    user: serializeAuthAccount(authContext.user, authContext.quota),
+    quota: authContext.quota,
+  };
 }
 
 function buildMobileBootstrapData(dbStatus = {}) {
@@ -3046,6 +3289,7 @@ app.get("/api/predictions", async (_req, res) => {
         predictions,
         total: predictions.length,
       },
+      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -3111,6 +3355,7 @@ app.get("/api/predictions/top", async (_req, res) => {
         predictions: topPredictions,
         total: topPredictions.length
       },
+      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString()
       }
@@ -3137,6 +3382,7 @@ app.get("/api/predictions/:matchId", async (req, res) => {
       data: {
         prediction: details
       },
+      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString()
       }
@@ -3156,7 +3402,7 @@ app.get("/api/predictions/:matchId", async (req, res) => {
 app.get("/api/matches/:id/details", async (req, res) => {
   try {
     const details = await getMatchPredictionDetails(req.params.id);
-    res.json({ success: true, source: API_URL, ...details });
+    res.json({ success: true, source: API_URL, auth: buildAuthQuotaMeta(res.locals.authContext || null), ...details });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -3182,7 +3428,7 @@ app.get("/api/coupon", async (req, res) => {
         coupon: Array.isArray(coupon?.coupon) ? coupon.coupon : [],
       });
     } catch (_dbError) {}
-    res.json({ success: true, source: API_URL, ...coupon });
+    res.json({ success: true, source: API_URL, auth: buildAuthQuotaMeta(res.locals.authContext || null), ...coupon });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -3204,7 +3450,7 @@ app.post("/api/coupon/validate", validateBody(couponValidateSchema), async (req,
         report,
       });
     } catch (_dbError) {}
-    res.json({ success: true, source: API_URL, ...report });
+    res.json({ success: true, source: API_URL, auth: buildAuthQuotaMeta(res.locals.authContext || null), ...report });
   } catch (error) {
     try {
       await saveCouponValidation({
@@ -3381,6 +3627,62 @@ app.get("/api/coupon/history", async (req, res) => {
   }
 });
 
+app.get("/api/updates", async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(200, Number(req.query?.limit) || 24));
+    const items = await getUpdateHistory(limit);
+
+    return res.json({
+      success: true,
+      total: items.length,
+      items,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      total: 0,
+      items: [],
+      error: {
+        code: "UPDATE_HISTORY_FETCH_ERROR",
+        message: "Impossible de recuperer l'historique des mises a jour.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.post("/api/updates", validateBody(updateHistorySchema), async (req, res) => {
+  try {
+    const insertedId = await saveUpdateEntry({
+      version: req.body?.version,
+      title: req.body?.title,
+      summary: req.body?.summary,
+      details: req.body?.details,
+      highlights: req.body?.highlights,
+      category: req.body?.category,
+      author: req.body?.author,
+      pinned: Boolean(req.body?.pinned),
+    });
+    const items = await getUpdateHistory(200);
+    const update = items.find((item) => Number(item.id) === Number(insertedId)) || null;
+
+    return res.status(201).json({
+      success: true,
+      message: "Mise a jour enregistree.",
+      update,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "UPDATE_HISTORY_SAVE_ERROR",
+        message: "Impossible d'enregistrer la mise a jour.",
+        details: error.message,
+      },
+    });
+  }
+});
+
 app.get("/api/coupon/:id", async (req, res) => {
   try {
     const couponId = req.params.id;
@@ -3542,6 +3844,343 @@ app.post("/api/watchlist", validateBody(watchlistSchema), async (req, res) => {
         code: "WATCHLIST_SAVE_ERROR",
         message: "Impossible d'enregistrer la watchlist.",
         details: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/auth/plans", async (_req, res) => {
+  try {
+    const plans = await authDb.getPlans();
+    res.json({
+      success: true,
+      plans,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "AUTH_PLANS_ERROR",
+        message: "Impossible de recuperer les plans.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/auth/me", async (req, res) => {
+  try {
+    const authContext = await getAuthContextFromRequest(req);
+    const plans = await authDb.getPlans();
+
+    if (!authContext) {
+      return res.json({
+        success: true,
+        authenticated: false,
+        user: null,
+        quota: null,
+        plans,
+      });
+    }
+
+    return res.json({
+      success: true,
+      authenticated: true,
+      user: authContext.user,
+      quota: authContext.quota,
+      plans,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "AUTH_ME_ERROR",
+        message: "Impossible de recuperer le profil courant.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.post("/api/auth/register", validateBody(authRegisterSchema), async (req, res) => {
+  try {
+    const account = await authDb.saveAuthUser({
+      email: req.body?.email,
+      username: req.body?.username,
+      password: req.body?.password,
+      planKey: req.body?.planKey || "free",
+      role: "user",
+    });
+    const session = await authDb.createAuthSession(account.user_id, {
+      ipAddress: req.ip || null,
+      userAgent: req.get("user-agent") || null,
+      daysValid: 30,
+    });
+    setCookie(res, AUTH_COOKIE_NAME, session.token, {
+      maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: req.secure,
+    });
+    const quota = await authDb.getAuthQuotaState(account.user_id);
+
+    return res.status(201).json({
+      success: true,
+      message: "Compte cree.",
+      authenticated: true,
+      user: serializeAuthAccount(account, quota),
+      quota,
+      plans: await authDb.getPlans(),
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: "AUTH_REGISTER_ERROR",
+        message: error.message,
+      },
+    });
+  }
+});
+
+app.post("/api/auth/login", validateBody(authLoginSchema), async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim();
+    const password = String(req.body?.password || "");
+    const account = await authDb.getAuthUserByEmail(email);
+    if (!account) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: "INVALID_CREDENTIALS",
+          message: "Identifiants invalides.",
+        },
+      });
+    }
+
+    if (String(account.status || "").toLowerCase() !== "active") {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "ACCOUNT_BLOCKED",
+          message: "Ce compte est bloque.",
+        },
+      });
+    }
+
+    const valid = authDb.verifyAuthPassword(password, account.password_hash);
+    if (!valid) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: "INVALID_CREDENTIALS",
+          message: "Identifiants invalides.",
+        },
+      });
+    }
+
+    const updated = await authDb.updateAuthUser(account.user_id, {
+      status: "active",
+    });
+    const session = await authDb.createAuthSession(account.user_id, {
+      ipAddress: req.ip || null,
+      userAgent: req.get("user-agent") || null,
+      daysValid: 30,
+    });
+    setCookie(res, AUTH_COOKIE_NAME, session.token, {
+      maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: req.secure,
+    });
+    const quota = await authDb.getAuthQuotaState(account.user_id);
+
+    return res.json({
+      success: true,
+      authenticated: true,
+      message: "Connexion reussie.",
+      user: serializeAuthAccount(updated || account, quota),
+      quota,
+      plans: await authDb.getPlans(),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "AUTH_LOGIN_ERROR",
+        message: error.message,
+      },
+    });
+  }
+});
+
+app.post("/api/auth/logout", async (req, res) => {
+  try {
+    const token = getSessionTokenFromRequest(req);
+    if (token) {
+      await authDb.revokeAuthSession(token);
+    }
+    clearAuthCookie(res);
+    return res.json({
+      success: true,
+      message: "Deconnecte.",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "AUTH_LOGOUT_ERROR",
+        message: error.message,
+      },
+    });
+  }
+});
+
+app.post("/api/admin/users", validateBody(adminUserCreateSchema), async (req, res) => {
+  try {
+    const authContext = await getAuthContextFromRequest(req);
+    if (!authContext || authContext.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "ADMIN_REQUIRED",
+          message: "Acces administrateur requis.",
+        },
+      });
+    }
+
+    const account = await authDb.saveAuthUser({
+      email: req.body?.email,
+      username: req.body?.username,
+      password: req.body?.password,
+      role: req.body?.role || "user",
+      planKey: req.body?.planKey || "free",
+      quotaOverrideDaily: req.body?.quotaOverrideDaily ?? null,
+      quotaOverrideMonthly: req.body?.quotaOverrideMonthly ?? null,
+    });
+
+    const updated = await authDb.updateAuthUser(account.user_id, {
+      status: req.body?.status || "active",
+      subscriptionStatus: req.body?.subscriptionStatus || "active",
+      quotaOverrideDaily: req.body?.quotaOverrideDaily ?? null,
+      quotaOverrideMonthly: req.body?.quotaOverrideMonthly ?? null,
+      role: req.body?.role || "user",
+      planKey: req.body?.planKey || "free",
+    });
+    const quota = await authDb.getAuthQuotaState(updated.user_id);
+    return res.status(201).json({
+      success: true,
+      user: serializeAdminAccount(updated, quota),
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: "ADMIN_CREATE_ERROR",
+        message: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/admin/users", async (req, res) => {
+  try {
+    const authContext = await getAuthContextFromRequest(req);
+    if (!authContext || authContext.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "ADMIN_REQUIRED",
+          message: "Acces administrateur requis.",
+        },
+      });
+    }
+
+    const limit = Math.max(1, Math.min(200, Number(req.query?.limit) || 100));
+    const users = await authDb.listAuthUsers(limit);
+    const plans = await authDb.getPlans();
+    return res.json({
+      success: true,
+      users: users.map((user) => serializeAdminAccount(user, null)),
+      plans,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "ADMIN_USERS_ERROR",
+        message: error.message,
+      },
+    });
+  }
+});
+
+app.patch("/api/admin/users/:userId", validateBody(adminUserUpdateSchema), async (req, res) => {
+  try {
+    const authContext = await getAuthContextFromRequest(req);
+    if (!authContext || authContext.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "ADMIN_REQUIRED",
+          message: "Acces administrateur requis.",
+        },
+      });
+    }
+
+    const user = await authDb.updateAuthUser(req.params.userId, {
+      email: req.body?.email,
+      username: req.body?.username,
+      password: req.body?.password,
+      role: req.body?.role,
+      planKey: req.body?.planKey,
+      status: req.body?.status,
+      subscriptionStatus: req.body?.subscriptionStatus,
+      quotaOverrideDaily: req.body?.quotaOverrideDaily,
+      quotaOverrideMonthly: req.body?.quotaOverrideMonthly,
+    });
+    const quota = await authDb.getAuthQuotaState(user.user_id);
+    return res.json({
+      success: true,
+      user: serializeAdminAccount(user, quota),
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: "ADMIN_UPDATE_ERROR",
+        message: error.message,
+      },
+    });
+  }
+});
+
+app.delete("/api/admin/users/:userId", async (req, res) => {
+  try {
+    const authContext = await getAuthContextFromRequest(req);
+    if (!authContext || authContext.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "ADMIN_REQUIRED",
+          message: "Acces administrateur requis.",
+        },
+      });
+    }
+
+    const deleted = await authDb.deleteAuthUser(req.params.userId);
+    return res.json({
+      success: true,
+      deleted: deleted ? serializeAdminAccount(deleted, null) : null,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: "ADMIN_DELETE_ERROR",
+        message: error.message,
       },
     });
   }
@@ -3779,6 +4418,7 @@ app.post("/api/coupon/generate", validateBody(couponGenerateSchema), async (req,
       data: {
         coupon,
       },
+      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -3849,6 +4489,7 @@ app.post("/api/coupon/ladder", async (req, res) => {
       data: {
         ladder,
       },
+      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -3932,6 +4573,7 @@ app.post("/api/coupon/multi", async (req, res) => {
       data: {
         strategies,
       },
+      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString(),
       },

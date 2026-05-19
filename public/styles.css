@@ -361,6 +361,14 @@ h1 {
   margin-bottom: 0.9rem;
 }
 
+.watchlist-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  align-items: center;
+}
+
 .watchlist-count {
   flex-shrink: 0;
   border: 1px solid rgba(255, 209, 102, 0.35);
@@ -421,6 +429,22 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem;
+}
+
+.watchlist-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+  color: #9fc3ef;
+  font-size: 0.76rem;
+}
+
+.watchlist-meta span {
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .watchlist-link,

@@ -280,6 +280,55 @@ img[data-src].loaded {
 }
 
 /* ============================================
+   GLOBAL ACCOUNT CHIP
+   ============================================ */
+.global-account-chip {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 10000;
+  display: grid;
+  gap: 0.14rem;
+  min-width: 170px;
+  max-width: min(240px, calc(100vw - 28px));
+  padding: 0.72rem 0.88rem;
+  border: 1px solid rgba(66, 245, 108, 0.2);
+  border-radius: 18px;
+  background: rgba(7, 11, 22, 0.72);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  color: var(--text, #f2f2f7);
+  text-decoration: none;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+}
+
+.global-account-chip__label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(148, 255, 194, 0.92);
+}
+
+.global-account-chip__title {
+  display: block;
+  font-size: 0.98rem;
+  line-height: 1.08;
+}
+
+.global-account-chip__meta {
+  display: block;
+  font-style: normal;
+  font-size: 0.78rem;
+  line-height: 1.28;
+  color: rgba(226, 234, 246, 0.74);
+}
+
+.global-account-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(66, 245, 108, 0.34);
+}
+
+/* ============================================
    PRINT STYLES
    ============================================ */
 @media print {
@@ -298,5 +347,16 @@ img[data-src].loaded {
   .panel {
     break-inside: avoid;
     border: 1px solid #ccc;
+  }
+}
+
+@media (max-width: 760px) {
+  .global-account-chip {
+    top: auto;
+    bottom: 82px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    min-width: 0;
   }
 }

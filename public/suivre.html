@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a1628" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>SOLITFIFPRO225 - Suivi des matchs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/pages-luxe.css" />
+  <link rel="stylesheet" href="/unified-system.css" />
+  <link rel="stylesheet" href="/mobile-optimizations.css" />
+  <link rel="stylesheet" href="/mobile-ultra-premium.css" />
+  <link rel="stylesheet" href="/signature.css" />
+  <link rel="stylesheet" href="/site-embellishment.css" />
+  <link rel="stylesheet" href="/suivre.css" />
+</head>
+
+<body class="follow-page">
+  <main class="page follow-shell">
+    <nav class="page-link-cloud" aria-label="Navigation suivi">
+      <a class="back" href="/">Retour aux matchs</a>
+      <a class="back" href="/coupon.html">Page Coupon</a>
+      <a class="back" href="/updates.html">Mises a jour</a>
+      <a class="back" href="/mode-emploi.html">Mode d'emploi</a>
+      <a class="back" href="/about.html">A propos</a>
+    </nav>
+
+    <section class="hero follow-hero">
+      <p class="tag">Suivi intelligent</p>
+      <h1>Page suivre le match</h1>
+      <p class="subtitle">
+        Tous les matchs suivis sont relus depuis la base du site. Tu vois ici le score, la prediction, et le statut
+        de validation sans dépendre du navigateur seul.
+      </p>
+      <div class="hero-metric-strip" aria-hidden="true">
+        <article class="hero-metric-card">
+          <span>Persistence</span>
+          <strong>Base de donnees</strong>
+          <em>Les matchs suivis restent accessibles apres fermeture du site.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Lecture</span>
+          <strong>Score + statut</strong>
+          <em>Chaque carte affiche le score et l'etat de la prediction.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Validation</span>
+          <strong>Gagne ou perdu</strong>
+          <em>Quand le match est termine, la validation apparait clairement.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Action</span>
+          <strong>Retirer ou ouvrir</strong>
+          <em>Tu peux acceder au detail du match ou le sortir du suivi.</em>
+        </article>
+      </div>
+    </section>
+
+    <section class="follow-stats" id="followStats" aria-live="polite"></section>
+
+    <section class="panel follow-toolbar">
+      <div>
+        <h2>Suivi actif</h2>
+        <p id="followSubtitle">Chargement de la watchlist depuis la base...</p>
+      </div>
+      <div class="follow-toolbar-actions">
+        <button type="button" id="refreshFollowBtn" class="follow-btn">Rafraichir</button>
+        <a class="follow-btn follow-btn-secondary" href="/">Voir les matchs</a>
+      </div>
+    </section>
+
+    <section class="follow-grid" id="followGrid"></section>
+  </main>
+
+  <footer class="site-signature follow-footer">Signe par <strong>SOLITAIRE HACK</strong></footer>
+
+  <script src="/global-ui-shell.js" defer></script>
+  <script src="/browser-sync.js" defer></script>
+  <script src="/suivre.js" type="module"></script>
+</body>
+
+</html>
