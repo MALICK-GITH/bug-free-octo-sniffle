@@ -32,10 +32,12 @@ export const STORAGE_KEYS = {
     CHAT_HISTORY: 'fc25_chat_history_v1',
     REFRESH_MATCH: 'fc25_page_refresh_minutes_v1',
     REFRESH_COUPON: 'fc25_coupon_refresh_minutes_v1',
-    WELCOME_MODAL: 'fc25_welcome_modal_v1',
     THEME_OLD: 'sfc25-theme'
   }
 };
+
+export const WELCOME_MODAL_KEY = 'sfc25:welcome:modal';
+export const LEGACY_WELCOME_MODAL_KEY = 'fc25_welcome_modal_v1';
 
 /**
  * Nettoie toutes les clés legacy
@@ -77,6 +79,12 @@ export function migrateLegacyData() {
     } catch (e) {
       console.warn('[Storage] Failed to migrate watchlist');
     }
+  }
+
+  const oldWelcome = localStorage.getItem(LEGACY_WELCOME_MODAL_KEY);
+  if (oldWelcome && !localStorage.getItem(WELCOME_MODAL_KEY)) {
+    localStorage.setItem(WELCOME_MODAL_KEY, oldWelcome);
+    migrations.push('welcome-modal');
   }
   
   if (migrations.length) {
