@@ -15,6 +15,8 @@ let pageRefreshIntervalId = null;
 let countdown = AUTO_REFRESH_SECONDS;
 let previousOdds = null;
 let loading = false;
+let authStatePromise = null;
+let currentAuthState = null;
 const IS_MOBILE = window.matchMedia("(max-width: 760px)").matches;
 let lastDetailsData = null;
 let coachModeEnabled = true;
@@ -113,6 +115,55 @@ function setMatchTelegramButtonEnabled(enabled) {
   if (pdfBtn) pdfBtn.disabled = !enabled;
   if (imageBtn) imageBtn.disabled = !enabled;
   if (exportBtn) exportBtn.disabled = !enabled;
+}
+
+function setPredictionPanelsContent(html) {
+  const ids = ["master", "coachPanel", "insightGrid", "exactScorePanel", "bots", "top3", "markets"];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.innerHTML = html;
+  }
+}
+
+function renderLockedPredictionView(message) {
+  lastDetailsData = null;
+  previousOdds = null;
+  setMatchTelegramButtonEnabled(false);
+  renderDriftAlert([]);
+  document.getElementById("title").textContent = "Acces limite";
+  document.getElementById("sub").textContent = message;
+  setPredictionPanelsContent(`
+    <article class="locked-access-card">
+      <strong>Predictions verrouillees</strong>
+      <p>${escapeHtml(message)}</p>
+      <p>Tu peux consulter les matchs sur l'accueil, mais il te faut un quota actif pour ouvrir ce detail.</p>
+      <a class="auth-primary-btn" href="/auth.html">Voir mon compte</a>
+    </article>
+  `);
+}
+
+function isPredictionQuotaAvailable(authState) {
+  const user = authState?.authenticated ? authState.user : null;
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  const quota = authState?.quota || null;
+  if (!quota) return false;
+  if (quota.unlimited) return true;
+  return Number(quota.remainingToday || 0) > 0;
+}
+
+function getAuthState() {
+  if (!authStatePromise) {
+    authStatePromise = fetch("/api/auth/me", { cache: "no-store" })
+      .then((response) => response.json())
+      .catch(() => null)
+      .then((payload) => {
+        currentAuthState = payload || null;
+        return currentAuthState;
+      });
+  }
+  return authStatePromise;
 }
 
 function notifyAction(title, detail = "") {
@@ -1382,9 +1433,22 @@ async function loadData(trigger = "manual") {
   if (loading || !currentMatchId) return;
   loading = true;
   try {
+    const authState = await getAuthState();
+    if (!isPredictionQuotaAvailable(authState)) {
+      renderLockedPredictionView(
+        authState?.authenticated
+          ? "Ton compte est actif, mais il n'a plus de quota pour afficher les details de prediction."
+          : "Connecte-toi pour voir les details de prediction."
+      );
+      return;
+    }
+
     const res = await fetch(`/api/matches/${encodeURIComponent(currentMatchId)}/details`, { cache: "no-store" });
     const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.error || data.message || "Erreur API");
+    if (!res.ok || !data.success) {
+      const message = data?.error?.message || data?.message || "Erreur API";
+      throw new Error(message);
+    }
 
     const match = data.match || {};
     lastDetailsData = data;
@@ -1411,8 +1475,16 @@ async function loadData(trigger = "manual") {
   } catch (error) {
     lastDetailsData = null;
     setMatchTelegramButtonEnabled(false);
-    document.getElementById("title").textContent = "Erreur de chargement";
-    document.getElementById("sub").textContent = error.message;
+    if (error?.message?.includes("Quota") || error?.message?.includes("quota") || error?.message?.includes("AUTH")) {
+      renderLockedPredictionView(
+        currentAuthState?.authenticated
+          ? "Ton compte n'a plus de quota pour afficher les details de prediction."
+          : "Connecte-toi pour voir les details de prediction."
+      );
+    } else {
+      document.getElementById("title").textContent = "Erreur de chargement";
+      document.getElementById("sub").textContent = error.message;
+    }
     console.error("Erreur match.js:", error);
   } finally {
     loading = false;

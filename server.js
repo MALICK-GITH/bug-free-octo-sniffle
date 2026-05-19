@@ -508,6 +508,7 @@ const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const PROTECTED_PREDICTION_PATHS = [
   /^\/api\/predictions(?:\/|$)/,
   /^\/api\/odds\/\d+$/,
+  /^\/api\/matches\/\d+\/details$/,
   /^\/api\/match\/\d+\/coach$/,
   /^\/api\/match\/\d+\/exact-score$/,
   /^\/api\/coupon$/,
@@ -3453,6 +3454,38 @@ app.get("/api/predictions/:matchId", async (req, res) => {
 
 app.get("/api/matches/:id/details", async (req, res) => {
   try {
+    const authContext = res.locals.authContext || (await getAuthContextFromRequest(req));
+    if (!authContext) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: "AUTH_REQUIRED",
+          message: "Connecte-toi pour utiliser les predictions.",
+        },
+      });
+    }
+
+    const status = String(authContext.session.status || authContext.user.status || "").toLowerCase();
+    const subscriptionStatus = String(authContext.session.subscription_status || authContext.user.subscriptionStatus || "").toLowerCase();
+    if (status !== "active" || (!["active", "trialing"].includes(subscriptionStatus) && authContext.user.role !== "admin")) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "ACCOUNT_BLOCKED",
+          message: "Ton compte est suspendu ou ton abonnement n'est pas actif.",
+        },
+      });
+    }
+
+    const quota = authContext.quota;
+    if (!quota?.unlimited && Number(quota.remainingToday) <= 0) {
+      return res.status(429).json({
+        success: false,
+        error: buildQuotaError(quota),
+      });
+    }
+
+    res.locals.authContext = authContext;
     const details = await getMatchPredictionDetails(req.params.id);
     res.json({ success: true, source: API_URL, auth: buildAuthQuotaMeta(res.locals.authContext || null), ...details });
   } catch (error) {
