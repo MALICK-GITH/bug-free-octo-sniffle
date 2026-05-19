@@ -121,6 +121,7 @@ const COUPON_START_ALERT_KEY = "fc25_coupon_start_alert_v1";
 const COUPON_DRIFT_KEY = "fc25_coupon_drift_v1";
 const COUPON_WATCH_DELTA_KEY = "fc25_coupon_watch_delta_v1";
 const COUPON_IMAGE_FMT_KEY = "fc25_coupon_export_format_v1";
+const COUPON_IMAGE_MODE_KEY = "fc25_coupon_export_mode_v1";
 const AUTO_REFRESH_ENABLED = false;
 
 function siteLog(level, message, meta) {
@@ -135,14 +136,33 @@ function getCouponImageFormatPreference() {
   return v === "jpg" ? "jpg" : "png";
 }
 
+function getCouponImageVisualModePreference(fallbackMode = "hacker") {
+  const r = document.querySelector('input[name="couponImgMode"]:checked');
+  if (r) return r.value || fallbackMode;
+  const v = localStorage.getItem(COUPON_IMAGE_MODE_KEY);
+  return v || fallbackMode;
+}
+
 function persistCouponImageFormat() {
   const r = document.querySelector('input[name="couponImgFmt"]:checked');
   if (r) localStorage.setItem(COUPON_IMAGE_FMT_KEY, r.value);
 }
 
+function persistCouponImageVisualMode() {
+  const r = document.querySelector('input[name="couponImgMode"]:checked');
+  if (r) localStorage.setItem(COUPON_IMAGE_MODE_KEY, r.value);
+}
+
 function hydrateCouponImageFormatRadios() {
   const v = localStorage.getItem(COUPON_IMAGE_FMT_KEY) || "png";
   document.querySelectorAll('input[name="couponImgFmt"]').forEach((el) => {
+    el.checked = el.value === v;
+  });
+}
+
+function hydrateCouponImageVisualModeRadios() {
+  const v = localStorage.getItem(COUPON_IMAGE_MODE_KEY) || "hacker";
+  document.querySelectorAll('input[name="couponImgMode"]').forEach((el) => {
     el.checked = el.value === v;
   });
 }
@@ -2888,6 +2908,7 @@ async function sendCouponToTelegram(sendImage = false, mini = false, includeExac
       mini: Boolean(mini && !sendImage),
       imageFormat: sendImage ? getCouponImageFormatPreference() : "png",
       includeExactScore: exactScoreImage,
+      visualMode: getCouponImageVisualModePreference(sendImage ? "hacker" : "hacker"),
       ticketShield: {
         driftThresholdPercent: getDriftThreshold(),
         replacedSelections: adapted.replaced,
@@ -3044,6 +3065,7 @@ async function fetchCouponImageBlob(mode = "default", format = "png", includeExa
     mode,
     format: safeFormat,
     includeExactScore: Boolean(includeExactScore),
+    visualMode: getCouponImageVisualModePreference(mode === "premium" ? "royal" : mode === "story" ? "hightech" : "hacker"),
   };
   const endpoints = mode === "story" ? ["/api/coupon/image/story", "/api/coupon/image"] : ["/api/coupon/image"];
   let blob = null;
@@ -3780,8 +3802,12 @@ async function initCouponPage() {
   applyStoredCouponFormValues();
   applyQueryOverrides();
   hydrateCouponImageFormatRadios();
+  hydrateCouponImageVisualModeRadios();
   document.querySelectorAll('input[name="couponImgFmt"]').forEach((el) => {
     el.addEventListener("change", persistCouponImageFormat);
+  });
+  document.querySelectorAll('input[name="couponImgMode"]').forEach((el) => {
+    el.addEventListener("change", persistCouponImageVisualMode);
   });
 
   const refreshInput = document.getElementById("refreshMinutesCouponInput");

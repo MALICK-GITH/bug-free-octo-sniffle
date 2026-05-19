@@ -2,10 +2,10 @@
   "name": "fifa-virtual-penalty-live",
   "version": "1.0.0",
   "description": "Site Node.js pour afficher uniquement les matchs FIFA virtuel penalty (1xBet LiveFeed).",
-  "main": "server.js",
+  "main": "server/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
     "lint": "eslint public --ext .js --max-warnings 200",
     "check:server": "node --check server.js && node --check services/db.js && node --check services/database.js",
     "test": "playwright test"
@@ -25,6 +25,7 @@
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.1",
     "helmet": "^7.2.0",
+    "joi": "^17.13.3",
     "morgan": "^1.10.1",
     "mysql2": "^3.20.0",
     "pg": "^8.20.0",

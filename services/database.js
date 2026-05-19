@@ -1,28 +1,58 @@
 // Database Service - PostgreSQL Integration for FIFA PRO
 const { Pool } = require('pg');
 
-const databaseConfig = {
-  host: String(process.env.DB_HOST || '').trim(),
-  port: Number(process.env.DB_PORT) || 5432,
-  database: String(process.env.DB_NAME || '').trim(),
-  user: String(process.env.DB_USER || '').trim(),
-  password: String(process.env.DB_PASSWORD || '').trim(),
-  ssl:
-    String(process.env.DB_SSL || 'true').trim().toLowerCase() === 'false'
-      ? false
-      : { rejectUnauthorized: false },
-  max: 20, // Maximum number of connections
-  idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
-  connectionTimeoutMillis: 2000, // How long to wait when connecting a new client
-};
+function trimEnv(value) {
+  return String(value || '').trim();
+}
 
-const databaseEnabled = Boolean(
-  databaseConfig.host &&
-    databaseConfig.database &&
-    databaseConfig.user &&
-    databaseConfig.password
-);
+function isSslDisabled() {
+  return trimEnv(process.env.DB_SSL).toLowerCase() === 'false';
+}
 
+function buildDatabaseConfig() {
+  const connectionString = trimEnv(
+    process.env.DATABASE_URL ||
+      process.env.SUPABASE_DATABASE_URL ||
+      process.env.DB_URL ||
+      ''
+  );
+
+  const common = {
+    max: Number(process.env.DB_POOL_MAX) || 20,
+    idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS) || 30000,
+    connectionTimeoutMillis: Number(process.env.DB_CONNECTION_TIMEOUT_MS) || 2000,
+  };
+
+  if (connectionString) {
+    return {
+      ...common,
+      connectionString,
+      ssl: isSslDisabled() ? false : { rejectUnauthorized: false },
+    };
+  }
+
+  const host = trimEnv(process.env.DB_HOST);
+  const database = trimEnv(process.env.DB_NAME);
+  const user = trimEnv(process.env.DB_USER);
+  const password = trimEnv(process.env.DB_PASSWORD);
+
+  if (!(host && database && user && password)) {
+    return null;
+  }
+
+  return {
+    ...common,
+    host,
+    port: Number(process.env.DB_PORT) || 5432,
+    database,
+    user,
+    password,
+    ssl: isSslDisabled() ? false : { rejectUnauthorized: false },
+  };
+}
+
+const databaseConfig = buildDatabaseConfig();
+const databaseEnabled = Boolean(databaseConfig);
 const pool = databaseEnabled ? new Pool(databaseConfig) : null;
 
 class DatabaseService {
@@ -32,7 +62,7 @@ class DatabaseService {
     if (this.enabled) {
       this.init();
     } else {
-      console.log('ℹ️ PostgreSQL disabled: configure DB_HOST, DB_NAME, DB_USER and DB_PASSWORD to enable it.');
+      console.log('PostgreSQL disabled: configure DATABASE_URL or DB_HOST, DB_NAME, DB_USER and DB_PASSWORD.');
     }
   }
 
@@ -41,14 +71,14 @@ class DatabaseService {
     try {
       // Test connection
       const client = await this.pool.connect();
-      console.log('✅ Database connected successfully');
+      console.log('Database connected successfully');
       await client.release();
       
       // Create tables if they don't exist
       await this.createTables();
-      console.log('✅ Database tables initialized');
+      console.log('Database tables initialized');
     } catch (error) {
-      console.error('❌ Database connection failed:', error);
+      console.error('Database connection failed:', error);
     }
   }
 
@@ -169,7 +199,7 @@ class DatabaseService {
       console.log(`📊 Query executed in ${duration}ms`);
       return result;
     } catch (error) {
-      console.error('❌ Database query error:', error);
+      console.error('Database query error:', error);
       throw error;
     }
   }
@@ -450,7 +480,7 @@ class DatabaseService {
   async close() {
     if (!this.pool) return;
     await this.pool.end();
-    console.log('🔌 Database connection closed');
+    console.log('Database connection closed');
   }
 }
 

@@ -2,6 +2,23 @@
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const sharp = require("sharp");
+const config = require("./server/config");
+const { createHelmetMiddleware, csrfProtection, requestTimingLogger } = require("./server/middleware/security");
+const { apiNotFound, errorHandler } = require("./server/middleware/errors");
+const {
+  validateBody,
+  validateQuery,
+  couponGenerateSchema,
+  couponValidateSchema,
+  couponFavoriteSchema,
+  watchlistQuerySchema,
+  watchlistSchema,
+  mobileDeviceRegisterSchema,
+  patternsReportSchema,
+  chatSchema,
+  printCouponSchema,
+} = require("./server/utils/validation");
+const { registerSystemRoutes } = require("./server/routes/system");
 const { API_URL, getPenaltyMatches, getStructure, getMatchPredictionDetails, getCouponSelection, validateCouponTicket } = require("./services/liveFeed");
 const { getLeagueProfiles } = require("./services/leagueProfiles");
 const { toFeatures, deduplicate, extractRules, buildDecisionEngine, toTrainReadyCSV } = require("./services/patternEngineV2");
@@ -25,45 +42,32 @@ const {
 const dbService = require("./services/database");
 
 const app = express();
-const DEFAULT_PORT = Number(process.env.PORT) || 3029;
-const MAX_PORT_TRIES = 20;
-const CHAT_RATE_LIMIT_WINDOW_MS = 60_000;
-const CHAT_RATE_LIMIT_MAX = 10;
+const DEFAULT_PORT = config.port;
+const MAX_PORT_TRIES = config.maxPortTries;
+const CHAT_RATE_LIMIT_WINDOW_MS = config.chatRateLimitWindowMs;
+const CHAT_RATE_LIMIT_MAX = config.chatRateLimitMax;
 const chatRateState = new Map();
-const HEAVY_POST_WINDOW_MS = 60_000;
-const HEAVY_POST_MAX = 40;
+const HEAVY_POST_WINDOW_MS = config.heavyPostWindowMs;
+const HEAVY_POST_MAX = config.heavyPostMax;
 const heavyPostState = new Map();
 const SERVER_STARTED_AT = Date.now();
-const CHAT_IO_TIMEOUT_MS = 3500;
-const CHAT_PROVIDER_TIMEOUT_MS = 7000;
-const MOBILE_API_VERSION = "2026-04-18-android";
-const ANDROID_MIN_SDK = 26;
-const ANDROID_TARGET_SDK = 35;
-const ANDROID_PACKAGE_NAME = "com.solitairehack.solitfifpro225";
+const CHAT_IO_TIMEOUT_MS = config.chatIoTimeoutMs;
+const CHAT_PROVIDER_TIMEOUT_MS = config.chatProviderTimeoutMs;
+const MOBILE_API_VERSION = config.mobileApiVersion;
+const ANDROID_MIN_SDK = config.androidMinSdk;
+const ANDROID_TARGET_SDK = config.androidTargetSdk;
+const ANDROID_PACKAGE_NAME = config.androidPackageName;
 
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+app.use(createHelmetMiddleware({ reportOnly: config.cspReportOnly }));
+app.use(requestTimingLogger);
 app.use(express.static(path.join(__dirname, "public")));
-app.use(express.json());
+app.use(express.json({ limit: config.jsonLimit }));
+app.use(express.urlencoded({ extended: false, limit: config.jsonLimit }));
+app.use(csrfProtection({ allowedOrigins: config.allowedOrigins }));
 
-app.get("/health", async (_req, res) => {
-  try {
-    const dbHealth = await getDbStatus();
-    const postgresHealth = await dbService.healthCheck();
-    res.json({
-      ok: true,
-      uptimeSec: Math.floor((Date.now() - SERVER_STARTED_AT) / 1000),
-      startedAt: new Date(SERVER_STARTED_AT).toISOString(),
-      database: dbHealth,
-      auxiliaryPostgres: postgresHealth,
-    });
-  } catch (error) {
-    res.json({
-      ok: true,
-      uptimeSec: Math.floor((Date.now() - SERVER_STARTED_AT) / 1000),
-      startedAt: new Date(SERVER_STARTED_AT).toISOString(),
-      database: { status: "error", error: error.message },
-    });
-  }
-});
+registerSystemRoutes(app, { startedAt: SERVER_STARTED_AT, getDbStatus, dbService });
 
 app.use((req, res, next) => {
   if (req.method !== "POST" || !isHeavyPostPath(req.path)) return next();
@@ -1255,7 +1259,15 @@ function buildExactScoreLine(exactScore) {
   if (Number.isFinite(exactScore.reliability)) parts.push(`fiabilite ${Math.round(exactScore.reliability)}/100`);
   if (Number.isFinite(exactScore.fitScore)) parts.push(`fit ${Math.round(exactScore.fitScore)}/100`);
   if (Number.isFinite(exactScore.marketSupport)) parts.push(`marches ${Math.round(exactScore.marketSupport)}/100`);
-  return escapeXml(parts.join(" Â· "));
+  return escapeXml(parts.join(" | "));
+}
+
+function buildExactScoreImageLine(exactScore) {
+  if (!exactScore) return "";
+  const parts = [`Exact: ${exactScore.score}`];
+  if (Number.isFinite(exactScore.reliability)) parts.push(`Fiab ${Math.round(exactScore.reliability)}/100`);
+  if (Number.isFinite(exactScore.fitScore)) parts.push(`Fit ${Math.round(exactScore.fitScore)}/100`);
+  return escapeXml(parts.join(" | "));
 }
 
 function describeExactScoreBias(bias) {
@@ -1342,26 +1354,140 @@ function buildCouponShareHeroSummaryLine(payload = {}) {
   return `Reco: ${lead.pari || "-"} | Score exact: ${exact?.score || "-"} | Conf: ${confidence}% | Heure: ${share.matchStart || "-"}`;
 }
 
+function normalizeCouponVisualMode(payload = {}) {
+  const raw = String(payload.visualMode || payload.mode || "").trim().toLowerCase();
+  if (["hacker", "premium", "royal", "hightech", "high-tech"].includes(raw)) {
+    return raw === "high-tech" ? "hightech" : raw;
+  }
+  if (raw === "story") return "hightech";
+  if (raw === "default") return "hacker";
+  return payload.mode === "premium" ? "royal" : payload.mode === "story" ? "hightech" : "hacker";
+}
+
+function getCouponVisualTheme(payload = {}) {
+  const mode = normalizeCouponVisualMode(payload);
+  const themes = {
+    hacker: {
+      label: "HACKER MODE",
+      title: "NEON HACKER",
+      subtitle: "Cyber grid / stealth / neon trace",
+      bg: "#050810",
+      glow: "rgba(0,240,255,0.12)",
+      floor: "rgba(93,255,162,0.08)",
+      mesh: "rgba(255,255,255,0.04)",
+      accent: "#00f0ff",
+      stroke: "rgba(0,240,255,0.42)",
+      odd: "#5dffa2",
+      chipFill: "rgba(0,240,255,0.10)",
+      chipStroke: "rgba(0,240,255,0.44)",
+      textStrong: "#dfffff",
+      textSoft: "#8eb8d6",
+      cardFill: "rgba(4,8,16,0.92)",
+      badgeFill: "rgba(0,240,255,0.12)",
+      badgeText: "#00f0ff",
+      heroAccent: "#5dffa2",
+      edgeGlow: "rgba(0,240,255,0.35)",
+      panelTitle: "#00f0ff",
+      scoreTone: "#cffff3",
+      layout: "compact",
+    },
+    premium: {
+      label: "PREMIUM MODE",
+      title: "PREMIUM LUXE",
+      subtitle: "Glass polish / elite ticket / soft gold",
+      bg: "#060a12",
+      glow: "rgba(255,215,120,0.12)",
+      floor: "rgba(255,191,88,0.08)",
+      mesh: "rgba(255,255,255,0.035)",
+      accent: "#ffd77a",
+      stroke: "rgba(255,215,120,0.42)",
+      odd: "#9fff6e",
+      chipFill: "rgba(255,215,120,0.12)",
+      chipStroke: "rgba(255,215,120,0.45)",
+      textStrong: "#ffffff",
+      textSoft: "#d8c8a0",
+      cardFill: "rgba(7,11,20,0.94)",
+      badgeFill: "rgba(255,215,120,0.12)",
+      badgeText: "#ffd77a",
+      heroAccent: "#ffd77a",
+      edgeGlow: "rgba(255,215,120,0.32)",
+      panelTitle: "#ffd77a",
+      scoreTone: "#fff3d0",
+      layout: "balanced",
+    },
+    royal: {
+      label: "ROYAL MODE",
+      title: "ROYAL EDITION",
+      subtitle: "Deep velvet / gold trim / imperial contrast",
+      bg: "#090611",
+      glow: "rgba(255,191,88,0.12)",
+      floor: "rgba(123,44,255,0.10)",
+      mesh: "rgba(255,255,255,0.03)",
+      accent: "#ffdb7d",
+      stroke: "rgba(255,191,88,0.44)",
+      odd: "#ffdb7d",
+      chipFill: "rgba(255,191,88,0.12)",
+      chipStroke: "rgba(255,191,88,0.48)",
+      textStrong: "#fff8e5",
+      textSoft: "#cdbb9f",
+      cardFill: "rgba(10,7,24,0.95)",
+      badgeFill: "rgba(255,191,88,0.14)",
+      badgeText: "#ffdb7d",
+      heroAccent: "#ffdb7d",
+      edgeGlow: "rgba(255,191,88,0.34)",
+      panelTitle: "#ffdb7d",
+      scoreTone: "#fff1bd",
+      layout: "royal",
+    },
+    hightech: {
+      label: "HIGH TECH MODE",
+      title: "HIGH TECH HUD",
+      subtitle: "Futuristic glass / cyan magenta / telemetry",
+      bg: "#040711",
+      glow: "rgba(255,0,170,0.12)",
+      floor: "rgba(0,240,255,0.08)",
+      mesh: "rgba(255,255,255,0.035)",
+      accent: "#ff7fe0",
+      stroke: "rgba(255,0,170,0.42)",
+      odd: "#00f0ff",
+      chipFill: "rgba(0,240,255,0.11)",
+      chipStroke: "rgba(255,0,170,0.42)",
+      textStrong: "#ffffff",
+      textSoft: "#a8c6ef",
+      cardFill: "rgba(6,9,20,0.94)",
+      badgeFill: "rgba(255,0,170,0.12)",
+      badgeText: "#ff7fe0",
+      heroAccent: "#ff7fe0",
+      edgeGlow: "rgba(255,0,170,0.28)",
+      panelTitle: "#ff7fe0",
+      scoreTone: "#f6eefe",
+      layout: "stacked",
+    },
+  };
+  return themes[mode] || themes.hacker;
+}
+
 function buildCouponShareHeroSvg(payload = {}, options = {}) {
   const share = getCouponShareLead(payload);
   const lead = share.lead;
   const exact = share.exact;
   const width = Number(options.width) || 1200;
   const innerW = width - 72;
+  const theme = getCouponVisualTheme(payload);
   const badgeTone = exact?.badgeTone || "neutral";
   const badgeFill =
     badgeTone === "good"
       ? "rgba(142,255,176,0.14)"
       : badgeTone === "watch"
         ? "rgba(255,154,120,0.14)"
-        : "rgba(255,212,121,0.12)";
+        : theme.badgeFill;
   const badgeStroke =
     badgeTone === "good"
       ? "rgba(142,255,176,0.42)"
       : badgeTone === "watch"
         ? "rgba(255,154,120,0.42)"
-        : "rgba(255,212,121,0.36)";
-  const badgeText = badgeTone === "good" ? "#8effb0" : badgeTone === "watch" ? "#ffad8e" : "#ffd77a";
+        : theme.chipStroke;
+  const badgeText = badgeTone === "good" ? "#8effb0" : badgeTone === "watch" ? "#ffad8e" : theme.badgeText;
   const recommendation = escapeXml(truncateCouponLabel(lead.pari || "Aucun pari", 56));
   const why = escapeXml(truncateCouponLabel(exact?.reason || "Projection multi-signaux.", 92));
   const score = escapeXml(exact?.score || "-");
@@ -1371,27 +1497,27 @@ function buildCouponShareHeroSvg(payload = {}, options = {}) {
 
   return `
     <g transform="translate(36, 78)">
-      <rect x="0" y="0" width="${innerW}" height="190" rx="20" fill="rgba(6,10,22,0.9)" stroke="url(#imgStroke)" stroke-width="1.5"/>
+      <rect x="0" y="0" width="${innerW}" height="190" rx="20" fill="${theme.cardFill}" stroke="${theme.stroke}" stroke-width="1.5"/>
       <rect x="0" y="0" width="${innerW}" height="48" rx="20" fill="rgba(18,28,48,0.92)"/>
-      <text x="20" y="31" fill="#9ecfff" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.22em">${escapeXml(options.kicker || "SHARE PREMIUM")}</text>
-      <text x="${innerW - 18}" y="31" text-anchor="end" fill="#7a8fb8" font-size="12" font-family="Segoe UI, Arial, sans-serif">${escapeXml(share.generatedAt)}</text>
-      <text x="22" y="78" fill="#fff3d2" font-size="18" font-weight="900" font-family="Segoe UI, Arial, sans-serif">Pari recommande</text>
+      <text x="20" y="31" fill="${theme.panelTitle}" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.22em">${escapeXml(options.kicker || theme.label)}</text>
+      <text x="${innerW - 18}" y="31" text-anchor="end" fill="${theme.textSoft}" font-size="12" font-family="Segoe UI, Arial, sans-serif">${escapeXml(share.generatedAt)}</text>
+      <text x="22" y="78" fill="${theme.scoreTone}" font-size="18" font-weight="900" font-family="Segoe UI, Arial, sans-serif">Pari recommande</text>
       <text x="22" y="108" fill="#ffffff" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${recommendation}</text>
       <rect x="22" y="120" width="164" height="24" rx="8" fill="${badgeFill}" stroke="${badgeStroke}" stroke-width="1"/>
-      <text x="104" y="137" text-anchor="middle" fill="${badgeText}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(exact?.badgeLabel || "Score premium")}</text>
+      <text x="104" y="137" text-anchor="middle" fill="${badgeText}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(exact?.badgeLabel || theme.label)}</text>
 
       <rect x="${innerW - 388}" y="62" width="366" height="60" rx="14" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)"/>
-      <text x="${innerW - 370}" y="86" fill="#8fa6c8" font-size="11" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.16em">SCORE EXACT</text>
-      <text x="${innerW - 370}" y="110" fill="#eef4ff" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${score}</text>
+      <text x="${innerW - 370}" y="86" fill="${theme.textSoft}" font-size="11" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.16em">SCORE EXACT</text>
+      <text x="${innerW - 370}" y="110" fill="${theme.textStrong}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${score}</text>
 
-      <rect x="${innerW - 388}" y="130" width="114" height="34" rx="10" fill="rgba(0,240,255,0.12)" stroke="rgba(0,240,255,0.28)"/>
-      <text x="${innerW - 331}" y="152" text-anchor="middle" fill="#9ff6ff" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">Conf ${confidence}%</text>
+      <rect x="${innerW - 388}" y="130" width="114" height="34" rx="10" fill="${theme.chipFill}" stroke="${theme.edgeGlow}" stroke-width="1"/>
+      <text x="${innerW - 331}" y="152" text-anchor="middle" fill="${theme.textStrong}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">Conf ${confidence}%</text>
       <rect x="${innerW - 264}" y="130" width="110" height="34" rx="10" fill="rgba(142,255,176,0.11)" stroke="rgba(142,255,176,0.28)"/>
       <text x="${innerW - 209}" y="152" text-anchor="middle" fill="#c5ffd9" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(matchStart)}</text>
       <rect x="${innerW - 142}" y="130" width="120" height="34" rx="10" fill="rgba(255,212,121,0.11)" stroke="rgba(255,212,121,0.28)"/>
       <text x="${innerW - 82}" y="152" text-anchor="middle" fill="#ffe6a0" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(odd)}</text>
 
-      <text x="22" y="183" fill="#c5d6f0" font-size="12.5" font-family="Segoe UI, Arial, sans-serif">${why}</text>
+      <text x="22" y="183" fill="${theme.textSoft}" font-size="12.5" font-family="Segoe UI, Arial, sans-serif">${why}</text>
     </g>`;
 }
 
@@ -1399,12 +1525,12 @@ function buildCouponImageSvg(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
   const riskRaw = truncateCouponLabel(String(payload.riskProfile || "balanced"), 20);
-  const includeExactScore = Boolean(payload.includeExactScore);
+  const theme = getCouponVisualTheme(payload);
   const picks = coupon.slice(0, 6);
   const count = Math.max(1, picks.length || 1);
-  const cardH = 228;
-  const gap = 18;
-  const headH = 270;
+  const cardH = theme.layout === "royal" ? 218 : theme.layout === "stacked" ? 212 : 228;
+  const gap = theme.layout === "royal" ? 14 : 18;
+  const headH = theme.layout === "royal" ? 252 : 270;
   const footH = 52;
   const width = 1200;
   const height = headH + footH + count * cardH + (count - 1) * gap;
@@ -1421,27 +1547,27 @@ function buildCouponImageSvg(payload = {}) {
     const odd = formatOddForTelegram(pick.cote);
     const matchStart = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
     const cx = innerW / 2;
-    const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore, pick.pari)) : "";
+    const exactLine = buildExactScoreImageLine(resolveImageExactScore(pick.exactScore, pick.pari));
     return `
       <g transform="translate(36, ${y})">
-        <rect x="0" y="0" width="${innerW}" height="${cardH}" rx="16" fill="rgba(8,12,22,0.94)" stroke="url(#imgStroke)" stroke-width="1.5"/>
-        <rect x="0" y="0" width="7" height="${cardH}" rx="4" fill="url(#imgAccent)"/>
+        <rect x="0" y="0" width="${innerW}" height="${cardH}" rx="16" fill="${theme.cardFill}" stroke="${theme.stroke}" stroke-width="1.5"/>
+        <rect x="0" y="0" width="7" height="${cardH}" rx="4" fill="${theme.accent}"/>
         <rect x="0" y="0" width="${innerW}" height="46" rx="16" fill="rgba(18,28,48,0.88)"/>
-        <line x1="14" y1="46" x2="${innerW - 14}" y2="46" stroke="rgba(0,240,255,0.2)"/>
-        <text x="20" y="30" fill="#9ecfff" font-size="14" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.06em">${i + 1}. ${league}</text>
-        <text x="${innerW - 18}" y="30" text-anchor="end" fill="#7a8fb8" font-size="12" font-family="Segoe UI, Arial, sans-serif">${matchStart}</text>
-        <text x="24" y="96" fill="#ffffff" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
+        <line x1="14" y1="46" x2="${innerW - 14}" y2="46" stroke="${theme.edgeGlow}"/>
+        <text x="20" y="30" fill="${theme.panelTitle}" font-size="14" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.06em">${i + 1}. ${league}</text>
+        <text x="${innerW - 18}" y="30" text-anchor="end" fill="${theme.textSoft}" font-size="12" font-family="Segoe UI, Arial, sans-serif">${matchStart}</text>
+        <text x="24" y="96" fill="${theme.textStrong}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
         <g transform="translate(${cx - 34}, 58)">
-          <polygon points="34,0 68,20 34,40 0,20" fill="rgba(0,240,255,0.12)" stroke="rgba(255,0,170,0.65)" stroke-width="2"/>
-          <text x="34" y="26" text-anchor="middle" fill="#00f0ff" font-size="17" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
+          <polygon points="34,0 68,20 34,40 0,20" fill="rgba(255,255,255,0.05)" stroke="${theme.accent}" stroke-width="2"/>
+          <text x="34" y="26" text-anchor="middle" fill="${theme.accent}" font-size="17" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
         </g>
-        <text x="${innerW - 24}" y="96" text-anchor="end" fill="#ffffff" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
-        <rect x="16" y="118" width="${innerW - 32}" height="92" rx="12" fill="rgba(4,8,18,0.92)" stroke="rgba(123,44,255,0.35)"/>
-        <text x="32" y="148" fill="#8fa6c8" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.12em">PARI ESPORTS</text>
-        <text x="32" y="176" fill="#eef4ff" font-size="18" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
-        <text x="${innerW - 32}" y="148" text-anchor="end" fill="#8fa6c8" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">COTE</text>
-        <text x="${innerW - 32}" y="182" text-anchor="end" fill="url(#imgOdd)" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
-        ${exactLine ? `<rect x="16" y="196" width="${innerW - 32}" height="18" rx="6" fill="rgba(255,255,255,0.05)"/><text x="28" y="210" fill="#d6e3ff" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
+        <text x="${innerW - 24}" y="96" text-anchor="end" fill="${theme.textStrong}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
+        <rect x="16" y="118" width="${innerW - 32}" height="92" rx="12" fill="rgba(4,8,18,0.92)" stroke="${theme.stroke}"/>
+        <text x="32" y="148" fill="${theme.textSoft}" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.12em">PARI ESPORTS</text>
+        <text x="32" y="176" fill="${theme.textStrong}" font-size="18" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
+        <text x="${innerW - 32}" y="148" text-anchor="end" fill="${theme.textSoft}" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">COTE</text>
+        <text x="${innerW - 32}" y="182" text-anchor="end" fill="${theme.odd}" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
+        ${exactLine ? `<rect x="16" y="196" width="${innerW - 32}" height="18" rx="6" fill="rgba(255,255,255,0.05)"/><text x="28" y="210" fill="${theme.textStrong}" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
       </g>`;
   });
 
@@ -1483,21 +1609,21 @@ function buildCouponImageSvg(payload = {}) {
       <path d="M0 48 L48 0 M-12 12 L12 -12 M36 60 L60 36" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
     </pattern>
   </defs>
-  <rect width="${width}" height="${height}" fill="url(#imgBg)"/>
-  <rect width="${width}" height="${height}" fill="url(#imgGlow)"/>
-  <rect width="${width}" height="${height}" fill="url(#imgFloor)"/>
-  <rect width="${width}" height="${height}" fill="url(#imgMesh)" opacity="0.9"/>
-  <rect x="24" y="18" width="${width - 48}" height="${headH - 36}" rx="20" fill="rgba(6,10,22,0.75)" stroke="url(#imgStroke)" stroke-width="1.2"/>
-  <rect x="36" y="30" width="168" height="30" rx="8" fill="rgba(0,240,255,0.12)" stroke="rgba(0,240,255,0.45)"/>
-  <text x="48" y="51" fill="#00f0ff" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.28em">FC ESPORTS</text>
-  <rect x="${width - 250}" y="30" width="176" height="30" rx="8" fill="rgba(255,215,120,0.12)" stroke="rgba(255,215,120,0.55)"/>
-  <text x="${width - 162}" y="51" text-anchor="middle" fill="#ffd77a" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">IMPERIAL EDITION</text>
-  <text x="48" y="96" fill="url(#imgHead)" font-size="34" font-weight="900" font-family="Segoe UI, Arial, sans-serif">SOLITFIFPRO225</text>
-  <text x="48" y="124" fill="#c5d6f0" font-size="17" font-family="Segoe UI, Arial, sans-serif">Ticket pro â€” Profil ${escapeXml(riskRaw)} Â· Sel. ${Number(summary.totalSelections) || coupon.length} Â· CombinÃ©e ${formatOddForTelegram(summary.combinedOdd)}</text>
-  <text x="48" y="148" fill="#7a8fb8" font-size="13" font-family="Segoe UI, Arial, sans-serif">GÃ©nÃ©rÃ© ${escapeXml(generatedAt)}</text>
+  <rect width="${width}" height="${height}" fill="${theme.bg}"/>
+  <rect width="${width}" height="${height}" fill="${theme.glow}"/>
+  <rect width="${width}" height="${height}" fill="${theme.floor}"/>
+  <rect width="${width}" height="${height}" fill="${theme.mesh}" opacity="0.9"/>
+  <rect x="24" y="18" width="${width - 48}" height="${headH - 36}" rx="20" fill="rgba(6,10,22,0.75)" stroke="${theme.stroke}" stroke-width="1.2"/>
+  <rect x="36" y="30" width="168" height="30" rx="8" fill="${theme.chipFill}" stroke="${theme.chipStroke}"/>
+  <text x="48" y="51" fill="${theme.panelTitle}" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.28em">${theme.label}</text>
+  <rect x="${width - 250}" y="30" width="176" height="30" rx="8" fill="${theme.chipFill}" stroke="${theme.chipStroke}"/>
+  <text x="${width - 162}" y="51" text-anchor="middle" fill="${theme.badgeText}" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">${theme.subtitle}</text>
+  <text x="48" y="96" fill="${theme.accent}" font-size="34" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${theme.title}</text>
+  <text x="48" y="124" fill="${theme.textStrong}" font-size="17" font-family="Segoe UI, Arial, sans-serif">Profil ${escapeXml(riskRaw)} · Sel. ${Number(summary.totalSelections) || coupon.length} · Combinee ${formatOddForTelegram(summary.combinedOdd)}</text>
+  <text x="48" y="148" fill="${theme.textSoft}" font-size="13" font-family="Segoe UI, Arial, sans-serif">Genere ${escapeXml(generatedAt)}</text>
   ${hero}
   ${cards.join("\n")}
-  <text x="48" y="${height - 26}" fill="#8fa1c4" font-size="14" font-family="Segoe UI, Arial, sans-serif">SignÃ© SOLITAIRE HACK Â· Esports Virtual</text>
+  <text x="48" y="${height - 26}" fill="${theme.textSoft}" font-size="14" font-family="Segoe UI, Arial, sans-serif">Signe SOLITAIRE HACK · Esports Virtual</text>
 </svg>`;
 }
 
@@ -1505,7 +1631,7 @@ function buildCouponStorySvg(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
   const riskRaw = truncateCouponLabel(String(payload.riskProfile || "balanced"), 18);
-  const includeExactScore = Boolean(payload.includeExactScore);
+  const theme = getCouponVisualTheme(payload);
   const picks = coupon.slice(0, 5);
   const width = 1080;
   const height = 1920;
@@ -1525,23 +1651,23 @@ function buildCouponStorySvg(payload = {}) {
     const conf = Number(pick.confiance) || 0;
     const risk = conf >= 75 ? "SAFE" : conf >= 60 ? "MODERE" : "RISQUE";
     const mid = cardW / 2;
-    const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore, pick.pari)) : "";
+    const exactLine = buildExactScoreImageLine(resolveImageExactScore(pick.exactScore, pick.pari));
     return `
       <g transform="translate(48, ${y})">
-        <rect x="0" y="0" width="${cardW}" height="${cardH}" rx="26" fill="rgba(6,10,20,0.92)" stroke="url(#stStroke)" stroke-width="2"/>
-        <rect x="0" y="0" width="8" height="${cardH}" rx="4" fill="url(#stAccent)"/>
-        <text x="24" y="44" fill="#00f0ff" font-size="22" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.04em">${i + 1}. ${league}</text>
-        <text x="${mid}" y="118" text-anchor="middle" fill="#ffffff" font-size="36" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
+        <rect x="0" y="0" width="${cardW}" height="${cardH}" rx="26" fill="${theme.cardFill}" stroke="${theme.stroke}" stroke-width="2"/>
+        <rect x="0" y="0" width="8" height="${cardH}" rx="4" fill="${theme.accent}"/>
+        <text x="24" y="44" fill="${theme.panelTitle}" font-size="22" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.04em">${i + 1}. ${league}</text>
+        <text x="${mid}" y="118" text-anchor="middle" fill="${theme.textStrong}" font-size="36" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
         <g transform="translate(${mid - 40}, 128)">
-          <polygon points="40,0 80,24 40,48 0,24" fill="rgba(255,0,170,0.15)" stroke="#00f0ff" stroke-width="2.5"/>
-          <text x="40" y="32" text-anchor="middle" fill="#ff4ddb" font-size="20" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
+          <polygon points="40,0 80,24 40,48 0,24" fill="rgba(255,255,255,0.05)" stroke="${theme.accent}" stroke-width="2.5"/>
+          <text x="40" y="32" text-anchor="middle" fill="${theme.accent}" font-size="20" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
         </g>
-        <text x="${mid}" y="210" text-anchor="middle" fill="#ffffff" font-size="36" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
-        <rect x="20" y="224" width="${cardW - 40}" height="36" rx="10" fill="rgba(0,240,255,0.08)" stroke="rgba(123,44,255,0.4)"/>
-        <text x="32" y="247" fill="#c8d9f5" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
-        <text x="${cardW - 32}" y="247" text-anchor="end" fill="url(#stOdd)" font-size="22" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
-        <text x="${cardW - 24}" y="44" text-anchor="end" fill="#ffc14d" font-size="20" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${conf}% ${risk}</text>
-        ${exactLine ? `<text x="32" y="262" fill="#d6e3ff" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
+        <text x="${mid}" y="210" text-anchor="middle" fill="${theme.textStrong}" font-size="36" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
+        <rect x="20" y="224" width="${cardW - 40}" height="36" rx="10" fill="rgba(0,240,255,0.08)" stroke="${theme.stroke}"/>
+        <text x="32" y="247" fill="${theme.textStrong}" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
+        <text x="${cardW - 32}" y="247" text-anchor="end" fill="${theme.odd}" font-size="22" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
+        <text x="${cardW - 24}" y="44" text-anchor="end" fill="${theme.badgeText}" font-size="20" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${conf}% ${risk}</text>
+        ${exactLine ? `<text x="32" y="262" fill="${theme.textStrong}" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
       </g>`;
   });
 
@@ -1577,17 +1703,17 @@ function buildCouponStorySvg(payload = {}) {
   </defs>
   <rect width="${width}" height="${height}" fill="url(#stBg)"/>
   <rect width="${width}" height="${height}" fill="url(#stSpot)"/>
-  <rect x="40" y="72" width="${width - 80}" height="200" rx="28" fill="rgba(8,12,24,0.82)" stroke="url(#stStroke)" stroke-width="1.5"/>
-  <text x="72" y="128" fill="url(#stTitle)" font-size="52" font-weight="900" font-family="Segoe UI, Arial, sans-serif">STORY ESPORTS</text>
-  <rect x="${width - 296}" y="92" width="214" height="34" rx="10" fill="rgba(255,215,120,0.12)" stroke="rgba(255,215,120,0.55)"/>
-  <text x="${width - 189}" y="115" text-anchor="middle" fill="#ffd77a" font-size="14" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">IMPERIAL EDITION</text>
-  <text x="72" y="168" fill="#00f0ff" font-size="22" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.35em">SOLITFIFPRO225</text>
-  <text x="72" y="210" fill="#d5e4ff" font-size="26" font-family="Segoe UI, Arial, sans-serif">Profil ${escapeXml(riskRaw)} Â· ${Number(summary.totalSelections) || coupon.length} sÃ©lections</text>
-  <text x="72" y="246" fill="#8fa6c8" font-size="22" font-family="Segoe UI, Arial, sans-serif">Cote ${formatOddForTelegram(summary.combinedOdd)} Â· ${escapeXml(generatedAt)}</text>
+  <rect x="40" y="72" width="${width - 80}" height="200" rx="28" fill="rgba(8,12,24,0.82)" stroke="${theme.stroke}" stroke-width="1.5"/>
+  <text x="72" y="128" fill="${theme.accent}" font-size="52" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${theme.title}</text>
+  <rect x="${width - 296}" y="92" width="214" height="34" rx="10" fill="${theme.chipFill}" stroke="${theme.chipStroke}"/>
+  <text x="${width - 189}" y="115" text-anchor="middle" fill="${theme.badgeText}" font-size="14" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">${theme.subtitle}</text>
+  <text x="72" y="168" fill="${theme.panelTitle}" font-size="22" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.35em">${theme.label}</text>
+  <text x="72" y="210" fill="${theme.textStrong}" font-size="26" font-family="Segoe UI, Arial, sans-serif">Profil ${escapeXml(riskRaw)} · ${Number(summary.totalSelections) || coupon.length} selections</text>
+  <text x="72" y="246" fill="${theme.textSoft}" font-size="22" font-family="Segoe UI, Arial, sans-serif">Cote ${formatOddForTelegram(summary.combinedOdd)} · ${escapeXml(generatedAt)}</text>
   ${buildCouponShareHeroSvg(payload, { width, kicker: "SHARE STORY" })}
   ${cards.join("\n")}
-  <text x="72" y="${height - 88}" fill="#a8b8d8" font-size="24" font-family="Segoe UI, Arial, sans-serif">SignÃ© SOLITAIRE HACK</text>
-  <text x="72" y="${height - 52}" fill="#6a7a9a" font-size="18" font-family="Segoe UI, Arial, sans-serif">Aucune combinaison n'est garantie gagnante.</text>
+  <text x="72" y="${height - 88}" fill="${theme.textStrong}" font-size="24" font-family="Segoe UI, Arial, sans-serif">Signe SOLITAIRE HACK</text>
+  <text x="72" y="${height - 52}" fill="${theme.textSoft}" font-size="18" font-family="Segoe UI, Arial, sans-serif">Aucune combinaison n'est garantie gagnante.</text>
 </svg>`;
 }
 
@@ -1595,12 +1721,12 @@ function buildCouponPremiumSvg(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
   const riskRaw = truncateCouponLabel(String(payload.riskProfile || "balanced"), 22);
-  const includeExactScore = Boolean(payload.includeExactScore);
+  const theme = getCouponVisualTheme(payload);
   const picks = coupon.slice(0, 8);
   const count = Math.max(1, picks.length || 1);
   const width = 1400;
   const headH = 286;
-  const cardH = 152;
+  const cardH = theme.layout === "royal" ? 158 : 152;
   const gap = 14;
   const footH = 54;
   const height = headH + footH + count * cardH + (count - 1) * gap;
@@ -1620,25 +1746,25 @@ function buildCouponPremiumSvg(payload = {}) {
       const startAt = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
       const q = Number(pick?.qualityScore || pick?.dataQuality || pick?.confiance || 0).toFixed(0);
       const hx = rowW / 2;
-      const exactLine = includeExactScore ? buildExactScoreLine(resolveImageExactScore(pick.exactScore, pick.pari)) : "";
+      const exactLine = buildExactScoreImageLine(resolveImageExactScore(pick.exactScore, pick.pari));
       return `
       <g transform="translate(32, ${y})">
-        <rect x="0" y="0" width="${rowW}" height="${cardH}" rx="14" fill="rgba(5,9,18,0.96)" stroke="url(#pmStroke)"/>
-        <rect x="0" y="0" width="6" height="${cardH}" rx="3" fill="url(#pmBar)"/>
-        <text x="16" y="28" fill="#8ab4ff" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.08em">${idx + 1}. ${league}</text>
-        <text x="${rowW - 16}" y="28" text-anchor="end" fill="#6a7a98" font-size="12" font-family="Segoe UI, Arial, sans-serif">${startAt}</text>
-        <text x="18" y="76" fill="#ffffff" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
+        <rect x="0" y="0" width="${rowW}" height="${cardH}" rx="14" fill="${theme.cardFill}" stroke="${theme.stroke}"/>
+        <rect x="0" y="0" width="6" height="${cardH}" rx="3" fill="${theme.accent}"/>
+        <text x="16" y="28" fill="${theme.panelTitle}" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.08em">${idx + 1}. ${league}</text>
+        <text x="${rowW - 16}" y="28" text-anchor="end" fill="${theme.textSoft}" font-size="12" font-family="Segoe UI, Arial, sans-serif">${startAt}</text>
+        <text x="18" y="76" fill="${theme.textStrong}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
         <g transform="translate(${hx - 28}, 44)">
-          <rect x="0" y="0" width="56" height="28" rx="8" fill="rgba(0,240,255,0.12)" stroke="rgba(255,0,170,0.6)" stroke-width="1.5"/>
-          <text x="28" y="20" text-anchor="middle" fill="#00f0ff" font-size="15" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
+          <rect x="0" y="0" width="56" height="28" rx="8" fill="rgba(255,255,255,0.05)" stroke="${theme.accent}" stroke-width="1.5"/>
+          <text x="28" y="20" text-anchor="middle" fill="${theme.accent}" font-size="15" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
         </g>
-        <text x="${rowW - 18}" y="76" text-anchor="end" fill="#ffffff" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
-        <rect x="14" y="92" width="${rowW - 28}" height="48" rx="10" fill="rgba(12,18,32,0.95)" stroke="rgba(123,44,255,0.3)"/>
-        <text x="26" y="118" fill="#dce6ff" font-size="16" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${bet}</text>
-        <text x="${rowW - 120}" y="122" text-anchor="end" fill="url(#pmOdd)" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
-        <text x="${rowW - 22}" y="112" text-anchor="end" fill="#8899bb" font-size="10" font-family="Segoe UI, Arial, sans-serif">CONF</text>
-        ${exactLine ? `<text x="26" y="144" fill="#d6e3ff" font-size="10" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
-        <text x="${rowW - 22}" y="128" text-anchor="end" fill="#8899bb" font-size="10" font-family="Segoe UI, Arial, sans-serif">${conf}% Â· Q${q}</text>
+        <text x="${rowW - 18}" y="76" text-anchor="end" fill="${theme.textStrong}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
+        <rect x="14" y="92" width="${rowW - 28}" height="48" rx="10" fill="rgba(12,18,32,0.95)" stroke="${theme.stroke}"/>
+        <text x="26" y="118" fill="${theme.textStrong}" font-size="16" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${bet}</text>
+        <text x="${rowW - 120}" y="122" text-anchor="end" fill="${theme.odd}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
+        <text x="${rowW - 22}" y="112" text-anchor="end" fill="${theme.textSoft}" font-size="10" font-family="Segoe UI, Arial, sans-serif">CONF</text>
+        ${exactLine ? `<text x="26" y="144" fill="${theme.textStrong}" font-size="10" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
+        <text x="${rowW - 22}" y="128" text-anchor="end" fill="${theme.textSoft}" font-size="10" font-family="Segoe UI, Arial, sans-serif">${conf}% · Q${q}</text>
       </g>`;
     })
     .join("\n");
@@ -1675,15 +1801,15 @@ function buildCouponPremiumSvg(payload = {}) {
   </defs>
   <rect width="${width}" height="${height}" fill="url(#pmBg)"/>
   <rect width="${width}" height="${height}" fill="url(#pmLite)"/>
-  <rect x="18" y="16" width="${width - 36}" height="${headH - 34}" rx="20" fill="rgba(6,10,22,0.78)" stroke="url(#pmStroke)" stroke-width="1.2"/>
-  <text x="40" y="58" fill="url(#pmHead)" font-size="38" font-weight="900" font-family="Segoe UI, Arial, sans-serif">PREMIUM ESPORTS TICKET</text>
-  <rect x="${width - 298}" y="34" width="208" height="32" rx="10" fill="rgba(255,215,120,0.12)" stroke="rgba(255,215,120,0.55)"/>
-  <text x="${width - 194}" y="56" text-anchor="middle" fill="#ffd77a" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">IMPERIAL EDITION</text>
-  <text x="40" y="92" fill="#d4e2ff" font-size="18" font-family="Segoe UI, Arial, sans-serif">SOLITFIFPRO225 Â· Profil ${escapeXml(riskRaw)} Â· ${Number(summary.totalSelections) || coupon.length} sel. Â· ${formatOddForTelegram(summary.combinedOdd)}</text>
-  <text x="40" y="120" fill="#7d8db0" font-size="14" font-family="Segoe UI, Arial, sans-serif">GÃ©nÃ©rÃ© ${escapeXml(generatedAt)} â€” rendu HD mobile &amp; desktop</text>
+  <rect x="18" y="16" width="${width - 36}" height="${headH - 34}" rx="20" fill="rgba(6,10,22,0.78)" stroke="${theme.stroke}" stroke-width="1.2"/>
+  <text x="40" y="58" fill="${theme.title === "ROYAL EDITION" ? "#ffdf8a" : theme.accent}" font-size="38" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${theme.title}</text>
+  <rect x="${width - 298}" y="34" width="208" height="32" rx="10" fill="${theme.chipFill}" stroke="${theme.chipStroke}"/>
+  <text x="${width - 194}" y="56" text-anchor="middle" fill="${theme.badgeText}" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">${theme.subtitle}</text>
+  <text x="40" y="92" fill="${theme.textStrong}" font-size="18" font-family="Segoe UI, Arial, sans-serif">${theme.label} · Profil ${escapeXml(riskRaw)} · ${Number(summary.totalSelections) || coupon.length} sel. · ${formatOddForTelegram(summary.combinedOdd)}</text>
+  <text x="40" y="120" fill="${theme.textSoft}" font-size="14" font-family="Segoe UI, Arial, sans-serif">Genere ${escapeXml(generatedAt)} — rendu HD mobile &amp; desktop</text>
   ${hero}
   ${rows}
-  <text x="40" y="${height - 22}" fill="#8a9ab8" font-size="14" font-family="Segoe UI, Arial, sans-serif">SignÃ© SOLITAIRE HACK â€” jeu responsable â€” combinaison non garantie</text>
+  <text x="40" y="${height - 22}" fill="${theme.textSoft}" font-size="14" font-family="Segoe UI, Arial, sans-serif">Signe SOLITAIRE HACK — jeu responsable — combinaison non garantie</text>
 </svg>`;
 }
 
@@ -3066,7 +3192,7 @@ app.get("/api/coupon", async (req, res) => {
   }
 });
 
-app.post("/api/coupon/validate", async (req, res) => {
+app.post("/api/coupon/validate", validateBody(couponValidateSchema), async (req, res) => {
   try {
     const driftThresholdPercent = Number(req.body?.driftThresholdPercent) || 6;
     const report = await validateCouponTicket(req.body || {}, { driftThresholdPercent });
@@ -3109,7 +3235,7 @@ app.get("/api/db/status", async (_req, res) => {
   }
 });
 
-app.get("/api/coupon/favorites", async (req, res) => {
+app.get("/api/coupon/favorites", validateQuery(watchlistQuerySchema), async (req, res) => {
   const userId = normalizeUserIdentifier(req.query.userId, "anonymous");
   try {
     const limit = Number(req.query.limit) || 20;
@@ -3293,7 +3419,7 @@ app.get("/api/coupon/:id", async (req, res) => {
   }
 });
 
-app.post("/api/coupon/favorite", async (req, res) => {
+app.post("/api/coupon/favorite", validateBody(couponFavoriteSchema), async (req, res) => {
   try {
     const couponId = req.body.couponId;
     const userId = req.body.userId || "anonymous";
@@ -3338,7 +3464,7 @@ app.post("/api/coupon/favorite", async (req, res) => {
   }
 });
 
-app.get("/api/watchlist", async (req, res) => {
+app.get("/api/watchlist", validateQuery(watchlistQuerySchema), async (req, res) => {
   const userId = normalizeUserIdentifier(req.query.userId, "default");
   try {
     const watchlistState = await getWatchlist(userId);
@@ -3367,7 +3493,7 @@ app.get("/api/watchlist", async (req, res) => {
   }
 });
 
-app.post("/api/watchlist", async (req, res) => {
+app.post("/api/watchlist", validateBody(watchlistSchema), async (req, res) => {
   const userId = normalizeUserIdentifier(req.body?.userId, "default");
   try {
     const existing = await getWatchlist(userId);
@@ -3447,7 +3573,7 @@ app.get("/api/mobile/openapi", (_req, res) => {
   res.sendFile(path.join(__dirname, "docs", "android-api.openapi.json"));
 });
 
-app.post("/api/mobile/devices/register", async (req, res) => {
+app.post("/api/mobile/devices/register", validateBody(mobileDeviceRegisterSchema), async (req, res) => {
   try {
     const deviceId = trimText(req.body?.deviceId, 255);
     if (!deviceId) {
@@ -3604,7 +3730,7 @@ app.get("/api/odds/alerts", async (_req, res) => {
   }
 });
 
-app.post("/api/coupon/generate", async (req, res) => {
+app.post("/api/coupon/generate", validateBody(couponGenerateSchema), async (req, res) => {
   try {
     const { size = 3, league = "all", risk = "balanced", stake = 1000 } = req.body;
     const data = await getPenaltyMatches();
@@ -3663,49 +3789,6 @@ app.post("/api/coupon/generate", async (req, res) => {
       error: {
         code: "COUPON_GENERATE_ERROR",
         message: "Impossible de generer le coupon.",
-        details: error.message
-      }
-    });
-  }
-});
-
-app.post("/api/coupon/validate", async (req, res) => {
-  try {
-    const { coupon } = req.body;
-    
-    const validation = {
-      isValid: true,
-      health: 85,
-      warnings: [],
-      risk: "medium"
-    };
-    
-    if (coupon && coupon.matches && coupon.matches.length > 0) {
-      coupon.matches.forEach(match => {
-        if (match.odds && match.odds < 1.3) {
-          validation.warnings.push(`Cote trÃ¨s basse pour ${match.homeTeam} vs ${match.awayTeam}`);
-          validation.health -= 5;
-        }
-      });
-    }
-    
-    validation.health = Math.max(0, validation.health);
-    
-    res.json({
-      success: true,
-      data: {
-        validation: validation
-      },
-      meta: {
-        timestamp: new Date().toISOString()
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: {
-        code: "COUPON_VALIDATE_ERROR",
-        message: "Impossible de valider le coupon.",
         details: error.message
       }
     });
@@ -4263,7 +4346,7 @@ app.post("/api/coupon/audit", async (req, res) => {
   }
 });
 
-app.post("/api/patterns/report", (req, res) => {
+app.post("/api/patterns/report", validateBody(patternsReportSchema), (req, res) => {
   try {
     const matches = Array.isArray(req.body?.matches) ? req.body.matches : [];
     const minRulePlayed = Number(req.body?.minRulePlayed) > 0 ? Number(req.body.minRulePlayed) : 5;
@@ -5168,7 +5251,7 @@ async function requestSlokChat({ baseUrl, apiKey, model, systemPrompt, userPromp
   throw new Error(errors.filter(Boolean).join(" | ") || "Erreur Slok API");
 }
 
-app.post("/api/chat", async (req, res) => {
+app.post("/api/chat", validateBody(chatSchema), async (req, res) => {
   try {
     if (!canUseChat(req)) {
       return res.status(429).json({
@@ -5403,7 +5486,7 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-app.post("/api/coupon/print-a4", (req, res) => {
+app.post("/api/coupon/print-a4", validateBody(printCouponSchema), (req, res) => {
   try {
     const coupon = Array.isArray(req.body?.coupon) ? req.body.coupon : [];
     if (!coupon.length) {
@@ -5460,12 +5543,8 @@ app.get("/api/chat", (_req, res) => {
   });
 });
 
-app.use("/api", (_req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route API introuvable.",
-  });
-});
+app.use("/api", apiNotFound);
+app.use(errorHandler);
 
 app.get("*", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
