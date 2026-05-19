@@ -2,6 +2,7 @@
   const MOBILE_BREAKPOINT = 760;
   let accountChip = null;
   let fetchWrapped = false;
+  let authStatePromise = null;
 
   function currentPageKey() {
     const path = window.location.pathname || "/";
@@ -28,7 +29,6 @@
       { key: "updates", href: "/updates.html", label: "Mises a jour" },
       { key: "follow", href: "/suivre.html", label: "Suivi" },
       { key: "auth", href: "/auth.html", label: "Compte" },
-      { key: "admin", href: "/admin.html", label: "Admin" },
       { key: "about", href: "/about.html", label: "Studio" },
       { key: "dev", href: "/developpeur.html", label: "Support" },
     ];
@@ -43,6 +43,41 @@
       })
       .join("");
     document.body.appendChild(nav);
+  }
+
+  function getAuthState() {
+    if (!authStatePromise) {
+      authStatePromise = fetch("/api/auth/me", { cache: "no-store" })
+        .then((response) => response.json())
+        .catch(() => null);
+    }
+    return authStatePromise;
+  }
+
+  async function enforceAuthGate() {
+    const page = currentPageKey();
+    const payload = await getAuthState();
+    if (!payload || payload.success === false) {
+      if (page === "auth") return true;
+      window.location.replace("/auth.html");
+      return false;
+    }
+
+    const user = payload.authenticated ? payload.user : null;
+    if (page === "auth") {
+      if (user) {
+        window.location.replace(user.role === "admin" ? "/admin.html" : "/");
+        return false;
+      }
+      return true;
+    }
+
+    if (!user) {
+      window.location.replace("/auth.html");
+      return false;
+    }
+
+    return true;
   }
 
   function buildAccountChip() {
@@ -60,8 +95,7 @@
     document.body.appendChild(chip);
     accountChip = chip;
 
-    fetch("/api/auth/me", { cache: "no-store" })
-      .then((response) => response.json())
+    getAuthState()
       .then((payload) => {
         if (!payload || payload.success === false) throw new Error(payload?.error?.message || "auth");
         const user = payload.authenticated ? payload.user : null;
@@ -271,9 +305,11 @@
     navigator.serviceWorker.register("/sw-global.js").catch(() => null);
   }
 
-  function init() {
+  async function init() {
     document.body.classList.add(`page-${currentPageKey()}`);
     disableLegacyBottomBars();
+    const allowed = await enforceAuthGate();
+    if (!allowed) return;
     buildBottomNav();
     buildAccountChip();
     installFetchObserver();

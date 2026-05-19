@@ -70,10 +70,62 @@ app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(createHelmetMiddleware({ reportOnly: config.cspReportOnly }));
 app.use(requestTimingLogger);
-app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json({ limit: config.jsonLimit }));
 app.use(express.urlencoded({ extended: false, limit: config.jsonLimit }));
 app.use(csrfProtection({ allowedOrigins: config.allowedOrigins }));
+
+function isHtmlPageRequest(req) {
+  if (req.method !== "GET") return false;
+  const requestPath = String(req.path || "/").toLowerCase();
+  return requestPath === "/" || requestPath.endsWith(".html");
+}
+
+app.use(async (req, res, next) => {
+  if (!isHtmlPageRequest(req)) {
+    return next();
+  }
+
+  const requestPath = String(req.path || "/").toLowerCase();
+  if (requestPath === "/auth.html") {
+    try {
+      const authContext = await getAuthContextFromRequest(req);
+      if (!authContext) {
+        return next();
+      }
+
+      return res.redirect(authContext.user.role === "admin" ? "/admin.html" : "/");
+    } catch (_error) {
+      return next();
+    }
+  }
+
+  if (requestPath === "/admin.html") {
+    try {
+      const authContext = await getAuthContextFromRequest(req);
+      if (!authContext) {
+        return res.redirect("/auth.html");
+      }
+      if (authContext.user.role !== "admin") {
+        return res.redirect("/");
+      }
+      return next();
+    } catch (_error) {
+      return res.redirect("/auth.html");
+    }
+  }
+
+  try {
+    const authContext = await getAuthContextFromRequest(req);
+    if (!authContext) {
+      return res.redirect("/auth.html");
+    }
+    return next();
+  } catch (_error) {
+    return res.redirect("/auth.html");
+  }
+});
+
+app.use(express.static(path.join(__dirname, "public")));
 
 app.use(async (req, res, next) => {
   if (!isProtectedPredictionPath(req.path)) {

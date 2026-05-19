@@ -4,8 +4,8 @@
  * SOLITAIRE HACK SIGNATURE
  */
 
-const CACHE_NAME = 'sfc25-global-v2';
-const STATIC_CACHE = 'sfc25-static-v2';
+const CACHE_NAME = 'sfc25-global-v3';
+const STATIC_CACHE = 'sfc25-static-v3';
 const IMAGE_CACHE = 'sfc25-images-v1';
 const API_CACHE = 'sfc25-api-v1';
 
@@ -21,9 +21,6 @@ const PRECACHE_ASSETS = [
   '/auth.html',
   '/auth.css',
   '/auth.js',
-  '/admin.html',
-  '/admin.css',
-  '/admin.js',
   '/mode-emploi.html',
   '/styles.css',
   '/global-enhancements.css',
