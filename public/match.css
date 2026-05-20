@@ -9,18 +9,77 @@
   --accent: #3be7ff;
   --accent-2: #8effb0;
   --warn: #ffd27a;
+  --success: #22c55e;
+  --error: #ef4444;
+  --warning: #f59e0b;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-.hidden { display: none !important; }
+.hidden {
+  display: none !important;
+}
+
+/* Indicateur de cohérence score exact */
+.score-coherence-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-left: 0.5rem;
+}
+
+.score-coherence-indicator.good {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--success);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.score-coherence-indicator.warning {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--warning);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.score-coherence-indicator.error {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--error);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.score-coherence-icon {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.score-coherence-indicator.good .score-coherence-icon {
+  background: var(--success);
+}
+
+.score-coherence-indicator.warning .score-coherence-icon {
+  background: var(--warning);
+}
+
+.score-coherence-indicator.error .score-coherence-icon {
+  background: var(--error);
+}
 
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
-html, body { overflow-x: hidden; }
+html,
+body {
+  overflow-x: hidden;
+}
 
 body {
   margin: 0;
@@ -461,9 +520,17 @@ h1 {
   font-size: 0.92rem;
 }
 
-.exact-score-elite .exact-score-reliability strong { color: #8effb0; }
-.exact-score-strong .exact-score-reliability strong { color: #ffd479; }
-.exact-score-watch .exact-score-reliability strong { color: #ff9e7b; }
+.exact-score-elite .exact-score-reliability strong {
+  color: #8effb0;
+}
+
+.exact-score-strong .exact-score-reliability strong {
+  color: #ffd479;
+}
+
+.exact-score-watch .exact-score-reliability strong {
+  color: #ff9e7b;
+}
 
 @media (max-width: 760px) {
   .exact-score-mainline {
@@ -562,7 +629,10 @@ body.low-data .panel#markets {
   background: rgba(13, 24, 44, 0.78);
 }
 
-.box strong { display: block; margin-bottom: 0.34rem; }
+.box strong {
+  display: block;
+  margin-bottom: 0.34rem;
+}
 
 .drift-title {
   margin: 0 0 0.35rem;
@@ -570,7 +640,10 @@ body.low-data .panel#markets {
   font-family: "Chakra Petch", sans-serif;
 }
 
-.drift-list { margin: 0; padding-left: 1rem; }
+.drift-list {
+  margin: 0;
+  padding-left: 1rem;
+}
 
 .coach-list {
   margin: 0;
@@ -586,26 +659,61 @@ body.low-data .panel#markets {
   padding: 0.52rem 0.58rem;
 }
 
-ul { margin: 0; padding-left: 1.1rem; }
-li { margin: 0.22rem 0; }
+ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+li {
+  margin: 0.22rem 0;
+}
 
 @media (max-width: 1024px) {
-  .chart-card canvas { height: 245px !important; }
+  .chart-card canvas {
+    height: 245px !important;
+  }
 }
 
 @media (max-width: 760px) {
   body {
     padding: calc(0.66rem + env(safe-area-inset-top)) 0.66rem calc(0.9rem + env(safe-area-inset-bottom));
   }
-  .hero, .panel { padding: 0.8rem; border-radius: 12px; }
-  .hero-tools { justify-content: flex-start; flex-wrap: wrap; }
-  .grid2, .chart-grid { grid-template-columns: 1fr; }
-  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .chart-card canvas { height: 230px !important; }
+
+  .hero,
+  .panel {
+    padding: 0.8rem;
+    border-radius: 12px;
+  }
+
+  .hero-tools {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .grid2,
+  .chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chart-card canvas {
+    height: 230px !important;
+  }
 }
 
 @media (max-width: 420px) {
-  h1 { font-size: 1.23rem; }
-  .chart-card canvas { height: 205px !important; }
-  .kpi strong { font-size: 1rem; }
+  h1 {
+    font-size: 1.23rem;
+  }
+
+  .chart-card canvas {
+    height: 205px !important;
+  }
+
+  .kpi strong {
+    font-size: 1rem;
+  }
 }
