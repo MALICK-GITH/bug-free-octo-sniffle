@@ -15,8 +15,6 @@ let pageRefreshIntervalId = null;
 let countdown = AUTO_REFRESH_SECONDS;
 let previousOdds = null;
 let loading = false;
-let authStatePromise = null;
-let currentAuthState = null;
 const IS_MOBILE = window.matchMedia("(max-width: 760px)").matches;
 let lastDetailsData = null;
 let coachModeEnabled = true;
@@ -28,14 +26,6 @@ function qs(name) {
 
 function formatOdd(value) {
   return typeof value === "number" ? value.toFixed(3) : "-";
-}
-
-function promptExactScoreImageChoice(label = "cette image") {
-  try {
-    return window.confirm(`Inclure le score exact dans ${label} ?\nOK = avec score exact\nAnnuler = sans score exact`);
-  } catch {
-    return false;
-  }
 }
 
 function toNumber(v, fallback = 0) {
@@ -126,44 +116,23 @@ function setPredictionPanelsContent(html) {
   }
 }
 
+function setDetailPanelsVisibility(visible) {
+  document.querySelectorAll(".match-detail-page > .panel").forEach((panel) => {
+    if (!panel || panel.id === "driftAlert") return;
+    panel.hidden = !visible && panel.id !== "master" ? true : false;
+  });
+}
+
 function renderLockedPredictionView(message) {
   lastDetailsData = null;
   previousOdds = null;
   setMatchTelegramButtonEnabled(false);
   renderDriftAlert([]);
-  document.getElementById("title").textContent = "Acces limite";
-  document.getElementById("sub").textContent = message;
-  setPredictionPanelsContent(`
-    <article class="locked-access-card">
-      <strong>Predictions verrouillees</strong>
-      <p>${escapeHtml(message)}</p>
-      <p>Tu peux consulter les matchs sur l'accueil, mais il te faut un quota actif pour ouvrir ce detail.</p>
-      <a class="auth-primary-btn" href="/auth.html">Voir mon compte</a>
-    </article>
-  `);
-}
-
-function isPredictionQuotaAvailable(authState) {
-  const user = authState?.authenticated ? authState.user : null;
-  if (!user) return false;
-  if (user.role === "admin") return true;
-  const quota = authState?.quota || null;
-  if (!quota) return false;
-  if (quota.unlimited) return true;
-  return Number(quota.remainingToday || 0) > 0;
-}
-
-function getAuthState() {
-  if (!authStatePromise) {
-    authStatePromise = fetch("/api/auth/me", { cache: "no-store" })
-      .then((response) => response.json())
-      .catch(() => null)
-      .then((payload) => {
-        currentAuthState = payload || null;
-        return currentAuthState;
-      });
-  }
-  return authStatePromise;
+  const title = document.getElementById("title");
+  const sub = document.getElementById("sub");
+  if (title) title.textContent = "Details indisponibles";
+  if (sub) sub.textContent = message;
+  setDetailPanelsVisibility(true);
 }
 
 function notifyAction(title, detail = "") {
@@ -1008,7 +977,7 @@ async function sendCurrentMatchToTelegram() {
   }
 }
 
-async function sendCurrentMatchImageToTelegram(includeExactScore = null) {
+async function sendCurrentMatchImageToTelegram() {
   const btn = document.getElementById("sendMatchTelegramImageBtn");
   if (!lastDetailsData) return;
   const selection = pickSingleSelectionFromDetails(lastDetailsData);
@@ -1023,15 +992,12 @@ async function sendCurrentMatchImageToTelegram(includeExactScore = null) {
   }
 
   try {
-    const exactScoreImage =
-      includeExactScore === null ? promptExactScoreImageChoice("l'image du match Telegram") : Boolean(includeExactScore);
     const payload = {
       coupon: [selection],
       summary: couponSummary([selection]),
       riskProfile: "single-match",
       sendImage: true,
       imageFormat: "png",
-      includeExactScore: exactScoreImage,
     };
     const res = await fetch("/api/coupon/send-telegram", {
       method: "POST",
@@ -1146,7 +1112,7 @@ async function downloadCurrentMatchPdf() {
   }
 }
 
-async function downloadCurrentMatchImage(includeExactScore = null) {
+async function downloadCurrentMatchImage() {
   if (!lastDetailsData) return;
   const selection = pickSingleSelectionFromDetails(lastDetailsData);
   if (!selection) {
@@ -1155,14 +1121,11 @@ async function downloadCurrentMatchImage(includeExactScore = null) {
   }
 
   try {
-    const exactScoreImage =
-      includeExactScore === null ? promptExactScoreImageChoice("l'image du match") : Boolean(includeExactScore);
     const payload = {
       coupon: [selection],
       summary: couponSummary([selection]),
       riskProfile: "single-match",
       format: "png",
-      includeExactScore: exactScoreImage,
     };
     const endpoints = ["/api/coupon/image"];
     let blob = null;
@@ -1433,16 +1396,7 @@ async function loadData(trigger = "manual") {
   if (loading || !currentMatchId) return;
   loading = true;
   try {
-    const authState = await getAuthState();
-    if (!isPredictionQuotaAvailable(authState)) {
-      renderLockedPredictionView(
-        authState?.authenticated
-          ? "Ton compte est actif, mais il n'a plus de quota pour afficher les details de prediction."
-          : "Connecte-toi pour voir les details de prediction."
-      );
-      return;
-    }
-
+    setDetailPanelsVisibility(true);
     const res = await fetch(`/api/matches/${encodeURIComponent(currentMatchId)}/details`, { cache: "no-store" });
     const data = await res.json();
     if (!res.ok || !data.success) {
@@ -1475,16 +1429,9 @@ async function loadData(trigger = "manual") {
   } catch (error) {
     lastDetailsData = null;
     setMatchTelegramButtonEnabled(false);
-    if (error?.message?.includes("Quota") || error?.message?.includes("quota") || error?.message?.includes("AUTH")) {
-      renderLockedPredictionView(
-        currentAuthState?.authenticated
-          ? "Ton compte n'a plus de quota pour afficher les details de prediction."
-          : "Connecte-toi pour voir les details de prediction."
-      );
-    } else {
-      document.getElementById("title").textContent = "Erreur de chargement";
-      document.getElementById("sub").textContent = error.message;
-    }
+    setDetailPanelsVisibility(true);
+    document.getElementById("title").textContent = "Erreur de chargement";
+    document.getElementById("sub").textContent = error.message;
     console.error("Erreur match.js:", error);
   } finally {
     loading = false;

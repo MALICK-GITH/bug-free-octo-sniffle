@@ -71,3 +71,40 @@ Si tu renseignes les variables `DB_HOST`, `DB_NAME`, `DB_USER` et `DB_PASSWORD`,
 
 - URL de production cible: `https://fifaxpred.onrender.com`
 - Si `/api/mobile/bootstrap` ou `/api/mobile/openapi` renvoient `404`, le deploiement Render n'est pas encore aligne sur la derniere version backend locale et doit etre redeploye avant handoff mobile.
+
+## Deploiement automatique
+
+Le lancement par defaut utilise un wrapper d'auto-mise-a-jour:
+
+```bash
+npm start
+```
+
+Ce mode:
+
+- demarre le serveur normalement
+- verifie regulierement si le depot Git a avance
+- fait `git pull --ff-only` quand une nouvelle version est disponible
+- relance automatiquement le processus serveur apres mise a jour
+- execute `npm install` si `package.json` ou `package-lock.json` a change
+
+Variables utiles:
+
+- `AUTO_UPDATE_ENABLED=1` active la mise a jour auto
+- `AUTO_UPDATE_DISABLED=1` la desactive
+- `AUTO_UPDATE_REMOTE=origin` choisit le remote Git a suivre
+- `AUTO_UPDATE_BRANCH=main` force une branche si besoin
+- `AUTO_UPDATE_INTERVAL_MINUTES=5` regle la frequence de verification
+- `AUTO_UPDATE_INSTALL=1` relance l'installation des dependances si necessaire
+
+Pour lancer le serveur sans auto-update:
+
+```bash
+npm run start:direct
+```
+
+Telegram fonctionne maintenant en mode automatique:
+
+- avec `TELEGRAM_BOT_TOKEN` seul, le serveur passe en polling
+- si tu ajoutes `TELEGRAM_WEBHOOK_URL`, il utilise le webhook
+- `TELEGRAM_WEBHOOK_SECRET` reste optionnel

@@ -56,6 +56,24 @@ sqliteDb.exec(`
 `);
 
 sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS telegram_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id TEXT NOT NULL UNIQUE,
+    username TEXT,
+    preferences_json TEXT,
+    last_coupon_json TEXT,
+    last_ladder_json TEXT,
+    last_match_id TEXT,
+    last_mode TEXT,
+    state_json TEXT,
+    pending_actions_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+sqliteDb.exec(`
   CREATE TABLE IF NOT EXISTS audit_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -212,6 +230,33 @@ const sqliteInsertCouponValidationStmt = sqliteDb.prepare(`
 const sqliteInsertTelegramLogStmt = sqliteDb.prepare(`
   INSERT INTO telegram_logs (kind, status, message, payload_json, response_json, error_text)
   VALUES (?, ?, ?, ?, ?, ?)
+`);
+
+const sqliteUpsertTelegramSessionStmt = sqliteDb.prepare(`
+  INSERT INTO telegram_sessions (
+    chat_id, username, preferences_json, last_coupon_json, last_ladder_json,
+    last_match_id, last_mode, state_json, pending_actions_json, updated_at, last_seen_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+  ON CONFLICT(chat_id) DO UPDATE SET
+    username = excluded.username,
+    preferences_json = excluded.preferences_json,
+    last_coupon_json = excluded.last_coupon_json,
+    last_ladder_json = excluded.last_ladder_json,
+    last_match_id = excluded.last_match_id,
+    last_mode = excluded.last_mode,
+    state_json = excluded.state_json,
+    pending_actions_json = excluded.pending_actions_json,
+    updated_at = datetime('now'),
+    last_seen_at = datetime('now')
+`);
+
+const sqliteSelectTelegramSessionStmt = sqliteDb.prepare(`
+  SELECT id, chat_id, username, preferences_json, last_coupon_json, last_ladder_json,
+         last_match_id, last_mode, state_json, pending_actions_json,
+         created_at, updated_at, last_seen_at
+  FROM telegram_sessions
+  WHERE chat_id = ?
+  LIMIT 1
 `);
 
 const sqliteInsertAuditReportStmt = sqliteDb.prepare(`
@@ -502,6 +547,25 @@ async function initMySql() {
       `);
 
       await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS telegram_sessions (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          chat_id VARCHAR(255) NOT NULL,
+          username VARCHAR(255) NULL,
+          preferences_json LONGTEXT NULL,
+          last_coupon_json LONGTEXT NULL,
+          last_ladder_json LONGTEXT NULL,
+          last_match_id VARCHAR(255) NULL,
+          last_mode VARCHAR(80) NULL,
+          state_json LONGTEXT NULL,
+          pending_actions_json LONGTEXT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uniq_telegram_sessions_chat_id (chat_id)
+        )
+      `);
+
+      await mysqlPool.query(`
         CREATE TABLE IF NOT EXISTS audit_reports (
           id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -671,6 +735,153 @@ async function saveTelegramLog(entry = {}) {
     entry.error ? String(entry.error) : null
   );
   return result.lastInsertRowid;
+}
+
+async function upsertTelegramSession(entry = {}) {
+  const chatId = String(entry.chatId || "").trim();
+  if (!chatId) {
+    throw new Error("chat_id requis");
+  }
+  const username = entry.username ? String(entry.username).trim() : null;
+  const preferences = normalizeObject(entry.preferences);
+  const lastCoupon = normalizeObject(entry.lastCoupon);
+  const lastLadder = normalizeObject(entry.lastLadder);
+  const lastMatchId = entry.lastMatchId ? String(entry.lastMatchId).trim() : null;
+  const lastMode = entry.lastMode ? String(entry.lastMode).trim() : null;
+  const state = normalizeObject(entry.state);
+  const pendingActions = Array.isArray(entry.pendingActions) ? entry.pendingActions.slice(0, 50) : [];
+
+  if (await canUseMySql()) {
+    await mysqlPool.execute(
+      `INSERT INTO telegram_sessions (
+         chat_id, username, preferences_json, last_coupon_json, last_ladder_json,
+         last_match_id, last_mode, state_json, pending_actions_json, last_seen_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON DUPLICATE KEY UPDATE
+         username = VALUES(username),
+         preferences_json = VALUES(preferences_json),
+         last_coupon_json = VALUES(last_coupon_json),
+         last_ladder_json = VALUES(last_ladder_json),
+         last_match_id = VALUES(last_match_id),
+         last_mode = VALUES(last_mode),
+         state_json = VALUES(state_json),
+         pending_actions_json = VALUES(pending_actions_json),
+         updated_at = CURRENT_TIMESTAMP,
+         last_seen_at = CURRENT_TIMESTAMP`,
+      [
+        chatId,
+        username,
+        toJson(preferences, {}),
+        toJson(lastCoupon, {}),
+        toJson(lastLadder, {}),
+        lastMatchId,
+        lastMode,
+        toJson(state, {}),
+        toJson(pendingActions, []),
+      ]
+    );
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, chat_id, username, preferences_json, last_coupon_json, last_ladder_json, last_match_id, last_mode, state_json, pending_actions_json, created_at, updated_at, last_seen_at
+       FROM telegram_sessions
+       WHERE chat_id = ?
+       LIMIT 1`,
+      [chatId]
+    );
+    const row = rows[0];
+    return {
+      id: row?.id || null,
+      chatId: row?.chat_id || chatId,
+      username: row?.username || username,
+      preferences: parseJsonSafe(row?.preferences_json, {}),
+      lastCoupon: parseJsonSafe(row?.last_coupon_json, {}),
+      lastLadder: parseJsonSafe(row?.last_ladder_json, {}),
+      lastMatchId: row?.last_match_id || lastMatchId,
+      lastMode: row?.last_mode || lastMode,
+      state: parseJsonSafe(row?.state_json, {}),
+      pendingActions: parseJsonSafe(row?.pending_actions_json, []),
+      createdAt: normalizeDate(row?.created_at),
+      updatedAt: normalizeDate(row?.updated_at),
+      lastSeenAt: normalizeDate(row?.last_seen_at),
+    };
+  }
+
+  sqliteUpsertTelegramSessionStmt.run(
+    chatId,
+    username,
+    toJson(preferences, {}),
+    toJson(lastCoupon, {}),
+    toJson(lastLadder, {}),
+    lastMatchId,
+    lastMode,
+    toJson(state, {}),
+    toJson(pendingActions, [])
+  );
+  const row = sqliteSelectTelegramSessionStmt.get(chatId);
+  return {
+    id: row?.id || null,
+    chatId: row?.chat_id || chatId,
+    username: row?.username || username,
+    preferences: parseJsonSafe(row?.preferences_json, {}),
+    lastCoupon: parseJsonSafe(row?.last_coupon_json, {}),
+    lastLadder: parseJsonSafe(row?.last_ladder_json, {}),
+    lastMatchId: row?.last_match_id || lastMatchId,
+    lastMode: row?.last_mode || lastMode,
+    state: parseJsonSafe(row?.state_json, {}),
+    pendingActions: parseJsonSafe(row?.pending_actions_json, []),
+    createdAt: row?.created_at || null,
+    updatedAt: row?.updated_at || null,
+    lastSeenAt: row?.last_seen_at || null,
+  };
+}
+
+async function getTelegramSession(chatId = "") {
+  const safeChatId = String(chatId || "").trim();
+  if (!safeChatId) return null;
+
+  if (await canUseMySql()) {
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, chat_id, username, preferences_json, last_coupon_json, last_ladder_json, last_match_id, last_mode, state_json, pending_actions_json, created_at, updated_at, last_seen_at
+       FROM telegram_sessions
+       WHERE chat_id = ?
+       LIMIT 1`,
+      [safeChatId]
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      chatId: row.chat_id,
+      username: row.username || null,
+      preferences: parseJsonSafe(row.preferences_json, {}),
+      lastCoupon: parseJsonSafe(row.last_coupon_json, {}),
+      lastLadder: parseJsonSafe(row.last_ladder_json, {}),
+      lastMatchId: row.last_match_id || null,
+      lastMode: row.last_mode || null,
+      state: parseJsonSafe(row.state_json, {}),
+      pendingActions: parseJsonSafe(row.pending_actions_json, []),
+      createdAt: normalizeDate(row.created_at),
+      updatedAt: normalizeDate(row.updated_at),
+      lastSeenAt: normalizeDate(row.last_seen_at),
+    };
+  }
+
+  const row = sqliteSelectTelegramSessionStmt.get(safeChatId);
+  if (!row) return null;
+  return {
+    id: row.id,
+    chatId: row.chat_id,
+    username: row.username || null,
+    preferences: parseJsonSafe(row.preferences_json, {}),
+    lastCoupon: parseJsonSafe(row.last_coupon_json, {}),
+    lastLadder: parseJsonSafe(row.last_ladder_json, {}),
+    lastMatchId: row.last_match_id || null,
+    lastMode: row.last_mode || null,
+    state: parseJsonSafe(row.state_json, {}),
+    pendingActions: parseJsonSafe(row.pending_actions_json, []),
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+    lastSeenAt: row.last_seen_at || null,
+  };
 }
 
 async function saveAuditReport(entry = {}) {
@@ -1442,6 +1653,7 @@ async function getDbStatus() {
     const [couponRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM coupon_generations");
     const [validationRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM coupon_validations");
     const [telegramRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM telegram_logs");
+    const [telegramSessionRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM telegram_sessions");
     const [auditRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM audit_reports");
     const [updateRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM update_history");
     const [favoriteRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM favorites");
@@ -1460,6 +1672,7 @@ async function getDbStatus() {
         coupon_generations: Number(couponRows?.[0]?.c) || 0,
         coupon_validations: Number(validationRows?.[0]?.c) || 0,
         telegram_logs: Number(telegramRows?.[0]?.c) || 0,
+        telegram_sessions: Number(telegramSessionRows?.[0]?.c) || 0,
         audit_reports: Number(auditRows?.[0]?.c) || 0,
         update_history: Number(updateRows?.[0]?.c) || 0,
         favorites: Number(favoriteRows?.[0]?.c) || 0,
@@ -1475,6 +1688,7 @@ async function getDbStatus() {
   const couponCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM coupon_generations").get().c;
   const validationCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM coupon_validations").get().c;
   const telegramCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM telegram_logs").get().c;
+  const telegramSessionCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM telegram_sessions").get().c;
   const auditCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM audit_reports").get().c;
   const updateCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM update_history").get().c;
   const favoriteCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM favorites").get().c;
@@ -1494,6 +1708,7 @@ async function getDbStatus() {
       coupon_generations: Number(couponCount) || 0,
       coupon_validations: Number(validationCount) || 0,
       telegram_logs: Number(telegramCount) || 0,
+      telegram_sessions: Number(telegramSessionCount) || 0,
       audit_reports: Number(auditCount) || 0,
       update_history: Number(updateCount) || 0,
       favorites: Number(favoriteCount) || 0,
@@ -1510,6 +1725,8 @@ module.exports = {
   saveCouponGeneration,
   saveCouponValidation,
   saveTelegramLog,
+  upsertTelegramSession,
+  getTelegramSession,
   saveAuditReport,
   getCouponHistory,
   getTelegramHistory,

@@ -223,8 +223,12 @@ function weightExactScoreProbability(profile, totalGoals, probability) {
   const goals = Number(totalGoals);
   const center = Number.isFinite(profile.goalCenter) ? profile.goalCenter : 2.5;
   const bias = Number(profile.goalBias || 0);
+  const weight = Number(profile.exactScoreWeight || 1);
   const delta = Number.isFinite(goals) ? goals - center : 0;
-  const factor = clamp(1 + delta * bias * 0.12, 0.45, 1.65);
+  const centerDistance = Math.abs(delta);
+  const centerFactor = clamp(1 - centerDistance / Math.max(1.6, center || 2.5), 0.5, 1.25);
+  const biasFactor = clamp(1 + delta * bias * 0.08, 0.55, 1.45);
+  const factor = clamp(weight * centerFactor * biasFactor, 0.35, 1.85);
   return Number((Number(probability) * factor).toFixed(6));
 }
 

@@ -19,10 +19,6 @@ const {
   chatSchema,
   printCouponSchema,
   updateHistorySchema,
-  authRegisterSchema,
-  authLoginSchema,
-  adminUserUpdateSchema,
-  adminUserCreateSchema,
 } = require("./server/utils/validation");
 const { registerSystemRoutes } = require("./server/routes/system");
 const { API_URL, getPenaltyMatches, getStructure, getMatchPredictionDetails, getCouponSelection, validateCouponTicket } = require("./services/liveFeed");
@@ -43,6 +39,8 @@ const {
   saveWatchlist,
   getWatchlist,
   registerMobileDevice,
+  upsertTelegramSession,
+  getTelegramSession: getStoredTelegramSession,
 } = require("./services/db");
 
 const authDb = require("./services/database");
@@ -65,6 +63,8 @@ const MOBILE_API_VERSION = config.mobileApiVersion;
 const ANDROID_MIN_SDK = config.androidMinSdk;
 const ANDROID_TARGET_SDK = config.androidTargetSdk;
 const ANDROID_PACKAGE_NAME = config.androidPackageName;
+const telegramSessionState = new Map();
+let activeServerPort = DEFAULT_PORT;
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -74,134 +74,7 @@ app.use(express.json({ limit: config.jsonLimit }));
 app.use(express.urlencoded({ extended: false, limit: config.jsonLimit }));
 app.use(csrfProtection({ allowedOrigins: config.allowedOrigins }));
 
-function isHtmlPageRequest(req) {
-  if (req.method !== "GET") return false;
-  const requestPath = String(req.path || "/").toLowerCase();
-  return requestPath === "/" || requestPath.endsWith(".html");
-}
-
-app.use(async (req, res, next) => {
-  if (!isHtmlPageRequest(req)) {
-    return next();
-  }
-
-  const requestPath = String(req.path || "/").toLowerCase();
-  if (requestPath === "/auth.html") {
-    try {
-      const authContext = await getAuthContextFromRequest(req);
-      if (!authContext) {
-        return next();
-      }
-
-      return res.redirect(authContext.user.role === "admin" ? "/admin.html" : "/");
-    } catch (_error) {
-      return next();
-    }
-  }
-
-  if (requestPath === "/admin.html") {
-    try {
-      const authContext = await getAuthContextFromRequest(req);
-      if (!authContext) {
-        return res.redirect("/auth.html");
-      }
-      if (authContext.user.role !== "admin") {
-        return res.redirect("/");
-      }
-      return next();
-    } catch (_error) {
-      return res.redirect("/auth.html");
-    }
-  }
-
-  try {
-    const authContext = await getAuthContextFromRequest(req);
-    if (!authContext) {
-      return res.redirect("/auth.html");
-    }
-    return next();
-  } catch (_error) {
-    return res.redirect("/auth.html");
-  }
-});
-
 app.use(express.static(path.join(__dirname, "public")));
-
-app.use(async (req, res, next) => {
-  if (!isProtectedPredictionPath(req.path)) {
-    return next();
-  }
-
-  try {
-    const authContext = await getAuthContextFromRequest(req);
-    if (!authContext) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: "AUTH_REQUIRED",
-          message: "Connecte-toi pour utiliser les predictions.",
-        },
-      });
-    }
-
-    const status = String(authContext.session.status || authContext.user.status || "").toLowerCase();
-    const subscriptionStatus = String(authContext.session.subscription_status || authContext.user.subscriptionStatus || "").toLowerCase();
-    if (status !== "active" || (!["active", "trialing"].includes(subscriptionStatus) && authContext.user.role !== "admin")) {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "ACCOUNT_BLOCKED",
-          message: "Ton compte est suspendu ou ton abonnement n'est pas actif.",
-        },
-      });
-    }
-
-    const quota = authContext.quota;
-    if (!quota?.unlimited && Number(quota.remainingToday) <= 0) {
-      return res.status(429).json({
-        success: false,
-        error: buildQuotaError(quota),
-      });
-    }
-
-    req.authContext = authContext;
-    res.locals.authContext = authContext;
-    res.locals.predictionQuotaBefore = quota?.remainingToday ?? null;
-    res.on("finish", async () => {
-      if (res.statusCode >= 400) return;
-      try {
-        const quotaAfter = authContext.quota?.unlimited
-          ? null
-          : Math.max(0, Number(authContext.quota.remainingToday) - 1);
-        await authDb.recordPredictionUsage({
-          userId: authContext.user.userId,
-          endpoint: `${req.method} ${req.path}`,
-          matchId: req.params?.matchId || req.params?.id || req.query?.matchId || null,
-          costUnits: 1,
-          planKey: authContext.user.planKey,
-          quotaBefore: authContext.quota?.remainingToday ?? null,
-          quotaAfter,
-          allowed: true,
-          meta: {
-            ip: req.ip || req.socket?.remoteAddress || null,
-            userAgent: req.get("user-agent") || null,
-          },
-        });
-      } catch (_error) {}
-    });
-
-    return next();
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "AUTH_CONTEXT_ERROR",
-        message: "Impossible de verifier ton acces.",
-        details: error.message,
-      },
-    });
-  }
-});
 
 registerSystemRoutes(app, { startedAt: SERVER_STARTED_AT, getDbStatus, dbService: legacyDbService });
 
@@ -503,29 +376,6 @@ function normalizePlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
-const AUTH_COOKIE_NAME = "sf_session";
-const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
-const PROTECTED_PREDICTION_PATHS = [
-  /^\/api\/predictions(?:\/|$)/,
-  /^\/api\/odds\/\d+$/,
-  /^\/api\/matches\/\d+\/details$/,
-  /^\/api\/match\/\d+\/coach$/,
-  /^\/api\/match\/\d+\/exact-score$/,
-  /^\/api\/coupon$/,
-  /^\/api\/coupon\/generate$/,
-  /^\/api\/coupon\/validate$/,
-  /^\/api\/coupon\/audit$/,
-  /^\/api\/coupon\/print-a4$/,
-  /^\/api\/coupon\/pdf(?:\/|$)/,
-  /^\/api\/coupon\/image(?:\/|$)/,
-  /^\/api\/coupon\/ladder$/,
-  /^\/api\/coupon\/multi$/,
-  /^\/api\/coupon\/send-telegram(?:-pack)?$/,
-  /^\/api\/telegram\/send-coupon$/,
-  /^\/api\/pdf\/coupon$/,
-  /^\/api\/download\/coupon$/,
-];
-
 function parseCookies(header = "") {
   return String(header || "")
     .split(";")
@@ -539,128 +389,6 @@ function parseCookies(header = "") {
       if (key) acc[key] = decodeURIComponent(value);
       return acc;
     }, {});
-}
-
-function setCookie(res, name, value, options = {}) {
-  const parts = [`${name}=${encodeURIComponent(value)}`];
-  if (options.maxAge != null) parts.push(`Max-Age=${Math.floor(options.maxAge)}`);
-  if (options.path) parts.push(`Path=${options.path}`);
-  if (options.httpOnly) parts.push("HttpOnly");
-  if (options.sameSite) parts.push(`SameSite=${options.sameSite}`);
-  if (options.secure) parts.push("Secure");
-  if (options.domain) parts.push(`Domain=${options.domain}`);
-  const existing = res.getHeader("Set-Cookie");
-  const next = Array.isArray(existing) ? existing.concat(parts.join("; ")) : existing ? [existing, parts.join("; ")] : [parts.join("; ")];
-  res.setHeader("Set-Cookie", next);
-}
-
-function clearAuthCookie(res) {
-  setCookie(res, AUTH_COOKIE_NAME, "", {
-    maxAge: 0,
-    path: "/",
-    httpOnly: true,
-    sameSite: "Lax",
-  });
-}
-
-function getSessionTokenFromRequest(req) {
-  const cookies = parseCookies(req.headers?.cookie || "");
-  const bearer = String(req.headers?.authorization || "").trim();
-  if (cookies[AUTH_COOKIE_NAME]) return cookies[AUTH_COOKIE_NAME];
-  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
-  return "";
-}
-
-function serializeAuthAccount(account = {}, quota = null) {
-  return {
-    userId: account.user_id || account.userId || "",
-    email: account.email || "",
-    username: account.username || "",
-    role: account.role || "user",
-    planKey: account.plan_key || account.planKey || "free",
-    status: account.status || "active",
-    subscriptionStatus: account.subscription_status || account.subscriptionStatus || "active",
-    quotaOverrideDaily: account.quota_override_daily ?? account.quotaOverrideDaily ?? null,
-    quotaOverrideMonthly: account.quota_override_monthly ?? account.quotaOverrideMonthly ?? null,
-    lastLoginAt: account.last_login_at || account.lastLoginAt || null,
-    lastActive: account.last_active || account.lastActive || null,
-    quota,
-  };
-}
-
-function serializeAdminAccount(account = {}, quota = null) {
-  return {
-    ...serializeAuthAccount(account, quota),
-    planName: account.plan_name || account.planName || "",
-    planDailyQuota: account.daily_prediction_quota ?? account.planDailyQuota ?? 0,
-    planMonthlyQuota: account.monthly_prediction_quota ?? account.planMonthlyQuota ?? 0,
-    planUnlimited: Boolean(account.is_unlimited ?? account.planUnlimited ?? false),
-  };
-}
-
-async function getAuthContextFromRequest(req) {
-  const token = getSessionTokenFromRequest(req);
-  if (!token) return null;
-  const session = await authDb.getAuthSession(token);
-  if (!session) return null;
-
-  try {
-    await authDb.touchAuthSession(token, session.user_id);
-  } catch (_error) {}
-
-  const user = {
-    user_id: session.user_id,
-    email: session.email,
-    username: session.username,
-    role: session.role,
-    plan_key: session.plan_key,
-    status: session.status,
-    subscription_status: session.subscription_status,
-    quota_override_daily: session.quota_override_daily,
-    quota_override_monthly: session.quota_override_monthly,
-    last_login_at: session.last_login_at,
-    last_active: session.last_active,
-  };
-  const quota = await authDb.getAuthQuotaState(user.user_id);
-  return {
-    token,
-    session,
-    user: serializeAuthAccount(user, quota),
-    quota,
-  };
-}
-
-function isProtectedPredictionPath(pathname = "") {
-  return PROTECTED_PREDICTION_PATHS.some((pattern) => pattern.test(String(pathname || "")));
-}
-
-function buildQuotaError(quota = null) {
-  const remaining = quota?.remainingToday;
-  const dailyQuota = quota?.dailyQuota;
-  return {
-    code: "QUOTA_EXCEEDED",
-    message:
-      dailyQuota == null
-        ? "Tu as atteint ton quota de predictions."
-        : `Quota atteint: ${remaining ?? 0}/${dailyQuota} predictions restantes aujourd'hui.`,
-    quota: quota
-      ? {
-          dailyQuota: quota.dailyQuota,
-          usedToday: quota.usedToday,
-          remainingToday: quota.remainingToday,
-          unlimited: quota.unlimited,
-          planKey: quota.user?.plan_key || quota.user?.planKey || "free",
-        }
-      : null,
-  };
-}
-
-function buildAuthQuotaMeta(authContext = null) {
-  if (!authContext) return null;
-  return {
-    user: serializeAuthAccount(authContext.user, authContext.quota),
-    quota: authContext.quota,
-  };
 }
 
 function buildMobileBootstrapData(dbStatus = {}) {
@@ -678,9 +406,8 @@ function buildMobileBootstrapData(dbStatus = {}) {
       readyForPrototype: true,
       readyForProductionRelease: false,
       summary:
-        "Le backend est exploitable pour une app Android prototype, mais il manque encore auth, push reel, billing et durcissement production pour une sortie Play Store propre.",
+        "Le backend est exploitable pour une app Android prototype, mais il manque encore push reel, billing et durcissement production pour une sortie Play Store propre.",
       releaseBlockers: [
-        "Authentification utilisateur avec tokens/session",
         "Notifications push reelles via Firebase Cloud Messaging",
         "Verification serveur des abonnements Google Play",
         "HTTPS, rotation des secrets et configuration production",
@@ -704,7 +431,6 @@ function buildMobileBootstrapData(dbStatus = {}) {
     },
     android: {
       recommendedModules: [
-        "auth",
         "matches",
         "match-detail",
         "coupon-builder",
@@ -918,7 +644,7 @@ function buildSiteKnowledgeBlock() {
     "- Coupon: generation optimisee par risque (safe/balanced/aggressive), validation ticket, remplacement selections faibles.",
     "- Exports image: PNG (nettete) et JPG (leger) pour standard, premium et story; duo PNG+JPG en un flux; Telegram image suit le format choisi sur la page coupon.",
     "- Exports: PDF coupon (resume/rapide/detaille), impression A4, rapport pro, journal performance.",
-    "- Telegram: envoi texte, image (PNG ou JPG selon UI), pack (texte+image+PDF), ladder.",
+    "- Telegram: envoi texte, image (PNG ou JPG selon UI), pack (texte+image+PDF), ladder, et webhook autonome pour piloter le moteur sans ouvrir le site.",
     "- Regle metier critique: aucun coupon garanti gagnant; filtrer de preference les matchs non demarres.",
     "- CONTROLE IA (priorite): le site t'envoie snapshot + liste d'actions disponibles. Tu orientes l'utilisateur et tu sais que le backend declenche des actions securisees (navigation, refresh, site_control) quand l'utilisateur formule une intention claire.",
     "- Commandes reconnues (non exhaustif): accueil, page coupon, guide, actualise, image png/jpg, duo png jpg, copier coupon, reinitialiser coupon, generer/valider/telegram/pdf/story/premium, modes match (live, turbo, termines).",
@@ -1481,11 +1207,7 @@ function buildTelegramCouponText(payload = {}) {
       `Conf: ${Number(summary.averageConfidence) || 0}%`,
       `Score Telegram: ${telegramConfidenceScore}/100`,
       heroSummary,
-      ...top.map((p, i) => {
-        const exactLine = buildExactScoreLine(resolveImageExactScore(p?.exactScore, p?.pari));
-        const suffix = exactLine ? ` | ${exactLine}` : "";
-        return `${i + 1}) ${p?.teamHome || "E1"} vs ${p?.teamAway || "E2"} | ${formatOddForTelegram(p?.cote)}${suffix}`;
-      }),
+      ...top.map((p, i) => `${i + 1}) ${p?.teamHome || "E1"} vs ${p?.teamAway || "E2"} | ${formatOddForTelegram(p?.cote)}`),
       "Signe: SOLITAIRE HACK",
     ];
     return lines.slice(0, 7).join("\n");
@@ -1503,11 +1225,9 @@ function buildTelegramCouponText(payload = {}) {
   ];
 
   coupon.forEach((pick, index) => {
-    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
-    const exactSuffix = exactLine ? ` | ${exactLine}` : "";
     lines.push(`${index + 1}. ${pick.teamHome || "Equipe 1"} vs ${pick.teamAway || "Equipe 2"}`);
     lines.push(`Ligue: ${pick.league || "Non specifiee"}`);
-    lines.push(`Pari: ${pick.pari || "-"}${exactSuffix}`);
+    lines.push(`Pari: ${pick.pari || "-"}`);
     lines.push(`Cote: ${formatOddForTelegram(pick.cote)} | Confiance: ${Number(pick.confiance) || 0}%`);
     lines.push("");
   });
@@ -1531,91 +1251,13 @@ function truncateCouponLabel(text = "", max = 44) {
   return `${s.slice(0, Math.max(0, max - 1))}â€¦`;
 }
 
-function resolveImageExactScore(exactScore, recommendation = "") {
-  const normalized =
-    exactScore && typeof exactScore === "object" && "available" in exactScore
-      ? exactScore.available
-        ? exactScore.value
-        : null
-      : exactScore;
-  if (!normalized || typeof normalized !== "object") return null;
-  const selected = pickAlignedExactScore(normalized, recommendation);
-  if (!selected || typeof selected.score !== "string") return null;
-  return {
-    score: selected.score,
-    reliability: Number.isFinite(normalized.reliability) ? normalized.reliability : null,
-    fitScore: Number.isFinite(normalized.fitScore) ? normalized.fitScore : null,
-    marketSupport: Number.isFinite(normalized.marketSupport) ? normalized.marketSupport : null,
-  };
-}
-
-function buildExactScoreLine(exactScore) {
-  if (!exactScore) return "";
-  const parts = [`Score exact: ${exactScore.score}`];
-  if (Number.isFinite(exactScore.reliability)) parts.push(`fiabilite ${Math.round(exactScore.reliability)}/100`);
-  if (Number.isFinite(exactScore.fitScore)) parts.push(`fit ${Math.round(exactScore.fitScore)}/100`);
-  if (Number.isFinite(exactScore.marketSupport)) parts.push(`marches ${Math.round(exactScore.marketSupport)}/100`);
-  return escapeXml(parts.join(" | "));
-}
-
-function buildExactScoreImageLine(exactScore) {
-  if (!exactScore) return "";
-  const parts = [`Exact: ${exactScore.score}`];
-  if (Number.isFinite(exactScore.reliability)) parts.push(`Fiab ${Math.round(exactScore.reliability)}/100`);
-  if (Number.isFinite(exactScore.fitScore)) parts.push(`Fit ${Math.round(exactScore.fitScore)}/100`);
-  return escapeXml(parts.join(" | "));
-}
-
-function describeExactScoreBias(bias) {
-  if (!bias) return "Projection multi-signaux sans biais de pari.";
-  if (bias.outcome === "home") return "La reco pousse vers le domicile, donc le score exact reste oriente cote equipe maison.";
-  if (bias.outcome === "away") return "La reco pousse vers l'exterieur, donc le score exact suit la tendance visiteuse.";
-  if (bias.outcome === "draw") return "La reco vise le nul, donc le score exact privilegie un scenario serre.";
-  if (bias.total === "over") return "La reco vise un match ouvert, donc le score exact garde plus de volume offensif.";
-  if (bias.total === "under") return "La reco vise un match ferme, donc le score exact reste compact.";
-  return "Projection multi-signaux sans biais de pari.";
-}
-
-function buildExactScoreContext(exactScore, recommendation = "", confidence = null) {
-  const normalized =
-    exactScore && typeof exactScore === "object" && "available" in exactScore
-      ? exactScore.available
-        ? exactScore.value
-        : null
-      : exactScore;
-  if (!normalized || typeof normalized !== "object") return null;
-
-  const bias = inferExactScoreBias(recommendation);
-  const selected = pickAlignedExactScore(normalized, recommendation);
-  if (!selected || typeof selected.score !== "string") return null;
-
-  const aligned = !bias || exactScoreMatchesBias(selected.score, bias);
-  const badgeTone = bias ? (aligned ? "good" : "watch") : "neutral";
-  const badgeLabel = bias ? (aligned ? "Aligné avec la reco" : "A surveiller") : "Score premium";
-
-  return {
-    score: selected.score,
-    reliability: Number.isFinite(normalized.reliability) ? normalized.reliability : null,
-    fitScore: Number.isFinite(normalized.fitScore) ? normalized.fitScore : null,
-    marketSupport: Number.isFinite(normalized.marketSupport) ? normalized.marketSupport : null,
-    badgeTone,
-    badgeLabel,
-    reason: describeExactScoreBias(bias),
-    recommendation: String(recommendation || "").trim(),
-    confidence: Number.isFinite(Number(confidence)) ? Number(confidence) : null,
-    aligned,
-  };
-}
-
 function getCouponShareLead(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
   const lead = coupon[0] || {};
-  const exact = buildExactScoreContext(lead.exactScore, lead.pari, lead.confiance);
   return {
     lead,
     summary,
-    exact,
     generatedAt: formatDateTime(new Date()),
     matchStart: formatMatchStartTimeUnix(lead.startTimeUnix),
     confidence: Number.isFinite(Number(lead.confiance))
@@ -1627,27 +1269,22 @@ function getCouponShareLead(payload = {}) {
 function buildCouponShareHeroLines(payload = {}) {
   const share = getCouponShareLead(payload);
   const lead = share.lead;
-  const exact = share.exact;
   const recommendation = String(lead.pari || "Aucun").trim();
-  const badge = exact?.badgeLabel || "Score premium";
-  const badgeReason = exact?.reason || "Projection multi-signaux.";
   return [
-    "SCORE EXACT PREMIUM",
+    "PROJECTION PREMIUM",
     `Pari recommande: ${recommendation}`,
-    `Score exact: ${exact?.score || "-"}`,
-    `Badge: ${badge}`,
     `Confiance: ${Number(share.confidence || 0).toFixed(1)}%`,
     `Heure match: ${share.matchStart}`,
-    `Pourquoi: ${badgeReason}`,
+    `Ligue: ${lead.league || "Non specifiee"}`,
+    "Aucune projection detaillee n'est affichee dans les exports.",
   ];
 }
 
 function buildCouponShareHeroSummaryLine(payload = {}) {
   const share = getCouponShareLead(payload);
   const lead = share.lead;
-  const exact = share.exact;
   const confidence = Number(share.confidence || 0).toFixed(1);
-  return `Reco: ${lead.pari || "-"} | Score exact: ${exact?.score || "-"} | Conf: ${confidence}% | Heure: ${share.matchStart || "-"}`;
+  return `Reco: ${lead.pari || "-"} | Conf: ${confidence}% | Heure: ${share.matchStart || "-"}`;
 }
 
 function normalizeCouponVisualMode(payload = {}) {
@@ -1766,30 +1403,14 @@ function getCouponVisualTheme(payload = {}) {
 function buildCouponShareHeroSvg(payload = {}, options = {}) {
   const share = getCouponShareLead(payload);
   const lead = share.lead;
-  const exact = share.exact;
   const width = Number(options.width) || 1200;
   const innerW = width - 72;
   const theme = getCouponVisualTheme(payload);
-  const badgeTone = exact?.badgeTone || "neutral";
-  const badgeFill =
-    badgeTone === "good"
-      ? "rgba(142,255,176,0.14)"
-      : badgeTone === "watch"
-        ? "rgba(255,154,120,0.14)"
-        : theme.badgeFill;
-  const badgeStroke =
-    badgeTone === "good"
-      ? "rgba(142,255,176,0.42)"
-      : badgeTone === "watch"
-        ? "rgba(255,154,120,0.42)"
-        : theme.chipStroke;
-  const badgeText = badgeTone === "good" ? "#8effb0" : badgeTone === "watch" ? "#ffad8e" : theme.badgeText;
   const recommendation = escapeXml(truncateCouponLabel(lead.pari || "Aucun pari", 56));
-  const why = escapeXml(truncateCouponLabel(exact?.reason || "Projection multi-signaux.", 92));
-  const score = escapeXml(exact?.score || "-");
   const confidence = Number(share.confidence || 0).toFixed(1);
   const matchStart = escapeXml(share.matchStart || "-");
   const odd = formatOddForTelegram(lead.cote);
+  const league = escapeXml(truncateCouponLabel(lead.league || "Ligue", 34));
 
   return `
     <g transform="translate(36, 78)">
@@ -1799,21 +1420,21 @@ function buildCouponShareHeroSvg(payload = {}, options = {}) {
       <text x="${innerW - 18}" y="31" text-anchor="end" fill="${theme.textSoft}" font-size="12" font-family="Segoe UI, Arial, sans-serif">${escapeXml(share.generatedAt)}</text>
       <text x="22" y="78" fill="${theme.scoreTone}" font-size="18" font-weight="900" font-family="Segoe UI, Arial, sans-serif">Pari recommande</text>
       <text x="22" y="108" fill="#ffffff" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${recommendation}</text>
-      <rect x="22" y="120" width="164" height="24" rx="8" fill="${badgeFill}" stroke="${badgeStroke}" stroke-width="1"/>
-      <text x="104" y="137" text-anchor="middle" fill="${badgeText}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(exact?.badgeLabel || theme.label)}</text>
+      <rect x="22" y="120" width="170" height="24" rx="8" fill="${theme.badgeFill}" stroke="${theme.chipStroke}" stroke-width="1"/>
+      <text x="107" y="137" text-anchor="middle" fill="${theme.badgeText}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">LECTURE COUPON</text>
 
       <rect x="${innerW - 388}" y="62" width="366" height="60" rx="14" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)"/>
-      <text x="${innerW - 370}" y="86" fill="${theme.textSoft}" font-size="11" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.16em">SCORE EXACT</text>
-      <text x="${innerW - 370}" y="110" fill="${theme.textStrong}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${score}</text>
+      <text x="${innerW - 370}" y="86" fill="${theme.textSoft}" font-size="11" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.16em">INDICATEURS</text>
+      <text x="${innerW - 370}" y="110" fill="${theme.textStrong}" font-size="24" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${confidence}% confiance</text>
 
       <rect x="${innerW - 388}" y="130" width="114" height="34" rx="10" fill="${theme.chipFill}" stroke="${theme.edgeGlow}" stroke-width="1"/>
-      <text x="${innerW - 331}" y="152" text-anchor="middle" fill="${theme.textStrong}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">Conf ${confidence}%</text>
+      <text x="${innerW - 331}" y="152" text-anchor="middle" fill="${theme.textStrong}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${matchStart}</text>
       <rect x="${innerW - 264}" y="130" width="110" height="34" rx="10" fill="rgba(142,255,176,0.11)" stroke="rgba(142,255,176,0.28)"/>
-      <text x="${innerW - 209}" y="152" text-anchor="middle" fill="#c5ffd9" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(matchStart)}</text>
+      <text x="${innerW - 209}" y="152" text-anchor="middle" fill="#c5ffd9" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
       <rect x="${innerW - 142}" y="130" width="120" height="34" rx="10" fill="rgba(255,212,121,0.11)" stroke="rgba(255,212,121,0.28)"/>
-      <text x="${innerW - 82}" y="152" text-anchor="middle" fill="#ffe6a0" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${escapeXml(odd)}</text>
+      <text x="${innerW - 82}" y="152" text-anchor="middle" fill="#ffe6a0" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${league}</text>
 
-      <text x="22" y="183" fill="${theme.textSoft}" font-size="12.5" font-family="Segoe UI, Arial, sans-serif">${why}</text>
+      <text x="22" y="183" fill="${theme.textSoft}" font-size="12.5" font-family="Segoe UI, Arial, sans-serif">Aucune projection detaillee n'est affichee dans les visuels exportes.</text>
     </g>`;
 }
 
@@ -1843,7 +1464,6 @@ function buildCouponImageSvg(payload = {}) {
     const odd = formatOddForTelegram(pick.cote);
     const matchStart = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
     const cx = innerW / 2;
-    const exactLine = buildExactScoreImageLine(resolveImageExactScore(pick.exactScore, pick.pari));
     return `
       <g transform="translate(36, ${y})">
         <rect x="0" y="0" width="${innerW}" height="${cardH}" rx="16" fill="${theme.cardFill}" stroke="${theme.stroke}" stroke-width="1.5"/>
@@ -1863,7 +1483,6 @@ function buildCouponImageSvg(payload = {}) {
         <text x="32" y="176" fill="${theme.textStrong}" font-size="18" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
         <text x="${innerW - 32}" y="148" text-anchor="end" fill="${theme.textSoft}" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">COTE</text>
         <text x="${innerW - 32}" y="182" text-anchor="end" fill="${theme.odd}" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
-        ${exactLine ? `<rect x="16" y="196" width="${innerW - 32}" height="18" rx="6" fill="rgba(255,255,255,0.05)"/><text x="28" y="210" fill="${theme.textStrong}" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
       </g>`;
   });
 
@@ -1947,7 +1566,6 @@ function buildCouponStorySvg(payload = {}) {
     const conf = Number(pick.confiance) || 0;
     const risk = conf >= 75 ? "SAFE" : conf >= 60 ? "MODERE" : "RISQUE";
     const mid = cardW / 2;
-    const exactLine = buildExactScoreImageLine(resolveImageExactScore(pick.exactScore, pick.pari));
     return `
       <g transform="translate(48, ${y})">
         <rect x="0" y="0" width="${cardW}" height="${cardH}" rx="26" fill="${theme.cardFill}" stroke="${theme.stroke}" stroke-width="2"/>
@@ -1963,7 +1581,6 @@ function buildCouponStorySvg(payload = {}) {
         <text x="32" y="247" fill="${theme.textStrong}" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
         <text x="${cardW - 32}" y="247" text-anchor="end" fill="${theme.odd}" font-size="22" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
         <text x="${cardW - 24}" y="44" text-anchor="end" fill="${theme.badgeText}" font-size="20" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${conf}% ${risk}</text>
-        ${exactLine ? `<text x="32" y="262" fill="${theme.textStrong}" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
       </g>`;
   });
 
@@ -2042,7 +1659,6 @@ function buildCouponPremiumSvg(payload = {}) {
       const startAt = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
       const q = Number(pick?.qualityScore || pick?.dataQuality || pick?.confiance || 0).toFixed(0);
       const hx = rowW / 2;
-      const exactLine = buildExactScoreImageLine(resolveImageExactScore(pick.exactScore, pick.pari));
       return `
       <g transform="translate(32, ${y})">
         <rect x="0" y="0" width="${rowW}" height="${cardH}" rx="14" fill="${theme.cardFill}" stroke="${theme.stroke}"/>
@@ -2059,7 +1675,6 @@ function buildCouponPremiumSvg(payload = {}) {
         <text x="26" y="118" fill="${theme.textStrong}" font-size="16" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${bet}</text>
         <text x="${rowW - 120}" y="122" text-anchor="end" fill="${theme.odd}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
         <text x="${rowW - 22}" y="112" text-anchor="end" fill="${theme.textSoft}" font-size="10" font-family="Segoe UI, Arial, sans-serif">CONF</text>
-        ${exactLine ? `<text x="26" y="144" fill="${theme.textStrong}" font-size="10" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${exactLine}</text>` : ""}
         <text x="${rowW - 22}" y="128" text-anchor="end" fill="${theme.textSoft}" font-size="10" font-family="Segoe UI, Arial, sans-serif">${conf}% · Q${q}</text>
       </g>`;
     })
@@ -2194,8 +1809,7 @@ function buildCouponPdfSummaryLines(payload = {}) {
   coupon.forEach((pick, i) => {
     lines.push(`${i + 1}. ${pick.teamHome || "Equipe 1"} vs ${pick.teamAway || "Equipe 2"}`);
     lines.push(`   Ligue: ${pick.league || "Non specifiee"}`);
-    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
-    lines.push(`   Pari: ${pick.pari || "-"}${exactLine ? ` | ${exactLine}` : ""}`);
+    lines.push(`   Pari: ${pick.pari || "-"}`);
     lines.push(`   Cote: ${formatOddForTelegram(pick.cote)} | Confiance: ${Number(pick.confiance) || 0}%`);
     lines.push("");
   });
@@ -2216,12 +1830,7 @@ function buildCouponPdfQuickLines(payload = {}) {
     "",
   ];
   coupon.slice(0, 14).forEach((pick, i) => {
-    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
-    lines.push(
-      `${i + 1}) ${pick?.teamHome || "Equipe 1"} vs ${pick?.teamAway || "Equipe 2"} | ${pick?.pari || "-"}${exactLine ? ` | ${exactLine}` : ""} | ${formatOddForTelegram(
-        pick?.cote
-      )}`
-    );
+    lines.push(`${i + 1}) ${pick?.teamHome || "Equipe 1"} vs ${pick?.teamAway || "Equipe 2"} | ${pick?.pari || "-"} | ${formatOddForTelegram(pick?.cote)}`);
   });
   lines.push("");
   lines.push("Signe: SOLITAIRE HACK");
@@ -2274,10 +1883,9 @@ function buildCouponPdfDetailedLines(payload = {}) {
     const valueIndex = odd > 0 ? Number((conf / odd).toFixed(2)) : 0;
     const confidenceBand = conf >= 75 ? "SAFE" : conf >= 60 ? "MOYEN" : "ELEVE";
     const source = String(pick?.source || "MIXTE");
-    const exactLine = buildExactScoreLine(resolveImageExactScore(pick?.exactScore, pick?.pari));
     lines.push(`${i + 1}. ${pick?.teamHome || "Equipe 1"} vs ${pick?.teamAway || "Equipe 2"}`);
     lines.push(`   Ligue: ${pick?.league || "Non specifiee"}`);
-    lines.push(`   Pari: ${pick?.pari || "-"}${exactLine ? ` | ${exactLine}` : ""}`);
+    lines.push(`   Pari: ${pick?.pari || "-"}`);
     lines.push(`   Cote: ${formatOddForTelegram(odd)} | Confiance: ${conf.toFixed(1)}% | Bande: ${confidenceBand}`);
     lines.push(`   Value Index (Confiance/Cote): ${valueIndex} | Source: ${source}`);
     lines.push("");
@@ -2351,26 +1959,16 @@ function buildPrintableCouponHtml(payload = {}) {
   const combinedOdd = formatOddForTelegram(summary.combinedOdd);
   const avgConf = Number(summary.averageConfidence) || 0;
   const share = getCouponShareLead(payload);
-  const exact = share.exact;
-  const heroBadgeTone =
-    exact?.badgeTone === "good" ? "good" : exact?.badgeTone === "watch" ? "watch" : "neutral";
-  const heroBadgeLabel = escapeXml(exact?.badgeLabel || "Score premium");
-  const heroReason = escapeXml(exact?.reason || "Projection multi-signaux.");
   const heroRecommendation = escapeXml(share.lead?.pari || "Aucun");
-  const heroScore = escapeXml(exact?.score || "-");
   const heroConfidence = Number(share.confidence || 0).toFixed(1);
   const heroMatchStart = escapeXml(share.matchStart || "-");
-  const heroBadgeClass = heroBadgeTone === "good" ? "is-good" : heroBadgeTone === "watch" ? "is-watch" : "is-neutral";
 
   const shareText = [
     "FC25 Coupon",
     `Date ${generatedAt}`,
     `Profil ${riskProfile}`,
     `Cote ${combinedOdd}`,
-    ...coupon.slice(0, 8).map((p, i) => {
-      const exactLine = buildExactScoreLine(resolveImageExactScore(p?.exactScore, p?.pari));
-      return `${i + 1}. ${p?.teamHome || "Equipe 1"} vs ${p?.teamAway || "Equipe 2"} | ${p?.pari || "-"}${exactLine ? ` | ${exactLine}` : ""} | ${formatOddForTelegram(p?.cote)}`;
-    }),
+    ...coupon.slice(0, 8).map((p, i) => `${i + 1}. ${p?.teamHome || "Equipe 1"} vs ${p?.teamAway || "Equipe 2"} | ${p?.pari || "-"} | ${formatOddForTelegram(p?.cote)}`),
   ].join(" | ");
   const qrUrl = `https://quickchart.io/qr?size=190&text=${encodeURIComponent(shareText)}`;
 
@@ -2383,14 +1981,13 @@ function buildPrintableCouponHtml(payload = {}) {
       const odd = formatOddForTelegram(p?.cote);
       const conf = Number(p?.confiance) || 0;
       const startAt = escapeXml(formatMatchStartTimeUnix(p?.startTimeUnix));
-      const exactLine = buildExactScoreLine(resolveImageExactScore(p?.exactScore, p?.pari));
       return `
         <tr>
           <td>${i + 1}</td>
           <td>${home} vs ${away}</td>
           <td>${league}</td>
           <td>${startAt}</td>
-          <td>${pari}${exactLine ? `<br/><span class="exact-line">${exactLine}</span>` : ""}</td>
+          <td>${pari}</td>
           <td>${odd}</td>
           <td>${conf.toFixed(1)}%</td>
         </tr>
@@ -2512,16 +2109,12 @@ function buildPrintableCouponHtml(payload = {}) {
     </div>
     <section class="share-hero">
       <div>
-        <p class="share-hero-title">Score Exact Premium</p>
+        <p class="share-hero-title">Projection Premium</p>
         <p class="share-hero-reco">${heroRecommendation}</p>
-        <span class="share-hero-badge ${heroBadgeClass}">${heroBadgeLabel}</span>
-        <p class="share-hero-note">${heroReason}</p>
+        <span class="share-hero-badge is-neutral">Sans projection detaillee</span>
+        <p class="share-hero-note">Les exportations restent concentrees sur la recommandation, la confiance et le contexte du match.</p>
       </div>
       <div class="share-hero-grid">
-        <article class="share-hero-stat">
-          <span>Score exact</span>
-          <strong>${heroScore}</strong>
-        </article>
         <article class="share-hero-stat">
           <span>Confiance</span>
           <strong>${heroConfidence}%</strong>
@@ -2529,6 +2122,10 @@ function buildPrintableCouponHtml(payload = {}) {
         <article class="share-hero-stat">
           <span>Heure match</span>
           <strong>${heroMatchStart}</strong>
+        </article>
+        <article class="share-hero-stat">
+          <span>Reco</span>
+          <strong>${heroRecommendation}</strong>
         </article>
         <article class="share-hero-stat">
           <span>Cote</span>
@@ -3342,7 +2939,6 @@ app.get("/api/predictions", async (_req, res) => {
         predictions,
         total: predictions.length,
       },
-      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -3408,7 +3004,6 @@ app.get("/api/predictions/top", async (_req, res) => {
         predictions: topPredictions,
         total: topPredictions.length
       },
-      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString()
       }
@@ -3435,7 +3030,6 @@ app.get("/api/predictions/:matchId", async (req, res) => {
       data: {
         prediction: details
       },
-      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString()
       }
@@ -3454,40 +3048,8 @@ app.get("/api/predictions/:matchId", async (req, res) => {
 
 app.get("/api/matches/:id/details", async (req, res) => {
   try {
-    const authContext = res.locals.authContext || (await getAuthContextFromRequest(req));
-    if (!authContext) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: "AUTH_REQUIRED",
-          message: "Connecte-toi pour utiliser les predictions.",
-        },
-      });
-    }
-
-    const status = String(authContext.session.status || authContext.user.status || "").toLowerCase();
-    const subscriptionStatus = String(authContext.session.subscription_status || authContext.user.subscriptionStatus || "").toLowerCase();
-    if (status !== "active" || (!["active", "trialing"].includes(subscriptionStatus) && authContext.user.role !== "admin")) {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "ACCOUNT_BLOCKED",
-          message: "Ton compte est suspendu ou ton abonnement n'est pas actif.",
-        },
-      });
-    }
-
-    const quota = authContext.quota;
-    if (!quota?.unlimited && Number(quota.remainingToday) <= 0) {
-      return res.status(429).json({
-        success: false,
-        error: buildQuotaError(quota),
-      });
-    }
-
-    res.locals.authContext = authContext;
     const details = await getMatchPredictionDetails(req.params.id);
-    res.json({ success: true, source: API_URL, auth: buildAuthQuotaMeta(res.locals.authContext || null), ...details });
+    res.json({ success: true, source: API_URL, ...details });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -3513,7 +3075,8 @@ app.get("/api/coupon", async (req, res) => {
         coupon: Array.isArray(coupon?.coupon) ? coupon.coupon : [],
       });
     } catch (_dbError) {}
-    res.json({ success: true, source: API_URL, auth: buildAuthQuotaMeta(res.locals.authContext || null), ...coupon });
+    res.json({ success: true, source: API_URL, ...coupon });
+
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -3535,7 +3098,7 @@ app.post("/api/coupon/validate", validateBody(couponValidateSchema), async (req,
         report,
       });
     } catch (_dbError) {}
-    res.json({ success: true, source: API_URL, auth: buildAuthQuotaMeta(res.locals.authContext || null), ...report });
+    res.json({ success: true, source: API_URL, ...report });
   } catch (error) {
     try {
       await saveCouponValidation({
@@ -3934,343 +3497,6 @@ app.post("/api/watchlist", validateBody(watchlistSchema), async (req, res) => {
   }
 });
 
-app.get("/api/auth/plans", async (_req, res) => {
-  try {
-    const plans = await authDb.getPlans();
-    res.json({
-      success: true,
-      plans,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: {
-        code: "AUTH_PLANS_ERROR",
-        message: "Impossible de recuperer les plans.",
-        details: error.message,
-      },
-    });
-  }
-});
-
-app.get("/api/auth/me", async (req, res) => {
-  try {
-    const authContext = await getAuthContextFromRequest(req);
-    const plans = await authDb.getPlans();
-
-    if (!authContext) {
-      return res.json({
-        success: true,
-        authenticated: false,
-        user: null,
-        quota: null,
-        plans,
-      });
-    }
-
-    return res.json({
-      success: true,
-      authenticated: true,
-      user: authContext.user,
-      quota: authContext.quota,
-      plans,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: {
-        code: "AUTH_ME_ERROR",
-        message: "Impossible de recuperer le profil courant.",
-        details: error.message,
-      },
-    });
-  }
-});
-
-app.post("/api/auth/register", validateBody(authRegisterSchema), async (req, res) => {
-  try {
-    const account = await authDb.saveAuthUser({
-      email: req.body?.email,
-      username: req.body?.username,
-      password: req.body?.password,
-      planKey: req.body?.planKey || "free",
-      role: "user",
-    });
-    const session = await authDb.createAuthSession(account.user_id, {
-      ipAddress: req.ip || null,
-      userAgent: req.get("user-agent") || null,
-      daysValid: 30,
-    });
-    setCookie(res, AUTH_COOKIE_NAME, session.token, {
-      maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: req.secure,
-    });
-    const quota = await authDb.getAuthQuotaState(account.user_id);
-
-    return res.status(201).json({
-      success: true,
-      message: "Compte cree.",
-      authenticated: true,
-      user: serializeAuthAccount(account, quota),
-      quota,
-      plans: await authDb.getPlans(),
-    });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: {
-        code: "AUTH_REGISTER_ERROR",
-        message: error.message,
-      },
-    });
-  }
-});
-
-app.post("/api/auth/login", validateBody(authLoginSchema), async (req, res) => {
-  try {
-    const email = String(req.body?.email || "").trim();
-    const password = String(req.body?.password || "");
-    const account = await authDb.getAuthUserByEmail(email);
-    if (!account) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: "INVALID_CREDENTIALS",
-          message: "Identifiants invalides.",
-        },
-      });
-    }
-
-    if (String(account.status || "").toLowerCase() !== "active") {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "ACCOUNT_BLOCKED",
-          message: "Ce compte est bloque.",
-        },
-      });
-    }
-
-    const valid = authDb.verifyAuthPassword(password, account.password_hash);
-    if (!valid) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: "INVALID_CREDENTIALS",
-          message: "Identifiants invalides.",
-        },
-      });
-    }
-
-    const updated = await authDb.updateAuthUser(account.user_id, {
-      status: "active",
-    });
-    const session = await authDb.createAuthSession(account.user_id, {
-      ipAddress: req.ip || null,
-      userAgent: req.get("user-agent") || null,
-      daysValid: 30,
-    });
-    setCookie(res, AUTH_COOKIE_NAME, session.token, {
-      maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: req.secure,
-    });
-    const quota = await authDb.getAuthQuotaState(account.user_id);
-
-    return res.json({
-      success: true,
-      authenticated: true,
-      message: "Connexion reussie.",
-      user: serializeAuthAccount(updated || account, quota),
-      quota,
-      plans: await authDb.getPlans(),
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "AUTH_LOGIN_ERROR",
-        message: error.message,
-      },
-    });
-  }
-});
-
-app.post("/api/auth/logout", async (req, res) => {
-  try {
-    const token = getSessionTokenFromRequest(req);
-    if (token) {
-      await authDb.revokeAuthSession(token);
-    }
-    clearAuthCookie(res);
-    return res.json({
-      success: true,
-      message: "Deconnecte.",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "AUTH_LOGOUT_ERROR",
-        message: error.message,
-      },
-    });
-  }
-});
-
-app.post("/api/admin/users", validateBody(adminUserCreateSchema), async (req, res) => {
-  try {
-    const authContext = await getAuthContextFromRequest(req);
-    if (!authContext || authContext.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "ADMIN_REQUIRED",
-          message: "Acces administrateur requis.",
-        },
-      });
-    }
-
-    const account = await authDb.saveAuthUser({
-      email: req.body?.email,
-      username: req.body?.username,
-      password: req.body?.password,
-      role: req.body?.role || "user",
-      planKey: req.body?.planKey || "free",
-      quotaOverrideDaily: req.body?.quotaOverrideDaily ?? null,
-      quotaOverrideMonthly: req.body?.quotaOverrideMonthly ?? null,
-    });
-
-    const updated = await authDb.updateAuthUser(account.user_id, {
-      status: req.body?.status || "active",
-      subscriptionStatus: req.body?.subscriptionStatus || "active",
-      quotaOverrideDaily: req.body?.quotaOverrideDaily ?? null,
-      quotaOverrideMonthly: req.body?.quotaOverrideMonthly ?? null,
-      role: req.body?.role || "user",
-      planKey: req.body?.planKey || "free",
-    });
-    const quota = await authDb.getAuthQuotaState(updated.user_id);
-    return res.status(201).json({
-      success: true,
-      user: serializeAdminAccount(updated, quota),
-    });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: {
-        code: "ADMIN_CREATE_ERROR",
-        message: error.message,
-      },
-    });
-  }
-});
-
-app.get("/api/admin/users", async (req, res) => {
-  try {
-    const authContext = await getAuthContextFromRequest(req);
-    if (!authContext || authContext.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "ADMIN_REQUIRED",
-          message: "Acces administrateur requis.",
-        },
-      });
-    }
-
-    const limit = Math.max(1, Math.min(200, Number(req.query?.limit) || 100));
-    const users = await authDb.listAuthUsers(limit);
-    const plans = await authDb.getPlans();
-    return res.json({
-      success: true,
-      users: users.map((user) => serializeAdminAccount(user, null)),
-      plans,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: "ADMIN_USERS_ERROR",
-        message: error.message,
-      },
-    });
-  }
-});
-
-app.patch("/api/admin/users/:userId", validateBody(adminUserUpdateSchema), async (req, res) => {
-  try {
-    const authContext = await getAuthContextFromRequest(req);
-    if (!authContext || authContext.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "ADMIN_REQUIRED",
-          message: "Acces administrateur requis.",
-        },
-      });
-    }
-
-    const user = await authDb.updateAuthUser(req.params.userId, {
-      email: req.body?.email,
-      username: req.body?.username,
-      password: req.body?.password,
-      role: req.body?.role,
-      planKey: req.body?.planKey,
-      status: req.body?.status,
-      subscriptionStatus: req.body?.subscriptionStatus,
-      quotaOverrideDaily: req.body?.quotaOverrideDaily,
-      quotaOverrideMonthly: req.body?.quotaOverrideMonthly,
-    });
-    const quota = await authDb.getAuthQuotaState(user.user_id);
-    return res.json({
-      success: true,
-      user: serializeAdminAccount(user, quota),
-    });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: {
-        code: "ADMIN_UPDATE_ERROR",
-        message: error.message,
-      },
-    });
-  }
-});
-
-app.delete("/api/admin/users/:userId", async (req, res) => {
-  try {
-    const authContext = await getAuthContextFromRequest(req);
-    if (!authContext || authContext.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "ADMIN_REQUIRED",
-          message: "Acces administrateur requis.",
-        },
-      });
-    }
-
-    const deleted = await authDb.deleteAuthUser(req.params.userId);
-    return res.json({
-      success: true,
-      deleted: deleted ? serializeAdminAccount(deleted, null) : null,
-    });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: {
-        code: "ADMIN_DELETE_ERROR",
-        message: error.message,
-      },
-    });
-  }
-});
-
 app.get("/api/mobile/bootstrap", async (_req, res) => {
   try {
     const dbStatus = await getDbStatus();
@@ -4503,7 +3729,6 @@ app.post("/api/coupon/generate", validateBody(couponGenerateSchema), async (req,
       data: {
         coupon,
       },
-      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -4574,7 +3799,6 @@ app.post("/api/coupon/ladder", async (req, res) => {
       data: {
         ladder,
       },
-      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -4658,7 +3882,6 @@ app.post("/api/coupon/multi", async (req, res) => {
       data: {
         strategies,
       },
-      auth: buildAuthQuotaMeta(res.locals.authContext || null),
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -4879,7 +4102,7 @@ app.get("/api/match/:id/exact-score", async (req, res) => {
       success: false,
       error: {
         code: "EXACT_SCORE_ERROR",
-        message: "Impossible de recuperer le score exact.",
+        message: "Impossible de recuperer la projection detaillee.",
         details: error.message
       }
     });
@@ -5294,6 +4517,448 @@ async function sendTelegramPhoto(botToken, chatId, photoBlob, fileName, caption 
   return data?.result?.message_id || null;
 }
 
+async function answerTelegramCallback(botToken, callbackQueryId, text = "") {
+  const callbackId = String(callbackQueryId || "").trim();
+  if (!botToken || !callbackId) return null;
+  const payload = {
+    callback_query_id: callbackId,
+    text: String(text || "").slice(0, 200),
+    show_alert: false,
+  };
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.description || "API Telegram indisponible.");
+  }
+  return true;
+}
+
+const TELEGRAM_SESSION_DEFAULTS = {
+  preferences: {
+    size: 3,
+    league: "all",
+    risk: "balanced",
+    stake: 1000,
+  },
+  lastCoupon: null,
+  lastLadder: null,
+  lastMatchId: null,
+  lastMode: null,
+  state: {},
+  pendingActions: [],
+};
+
+function buildTelegramSessionSnapshot(chatId, meta = {}, stored = null) {
+  const preferences = {
+    ...TELEGRAM_SESSION_DEFAULTS.preferences,
+    ...(stored?.preferences || {}),
+  };
+  return {
+    chatId: String(chatId || stored?.chatId || "").trim(),
+    username: meta?.username || stored?.username || null,
+    preferences,
+    lastCoupon: stored?.lastCoupon || null,
+    lastLadder: stored?.lastLadder || null,
+    lastMatchId: stored?.lastMatchId || null,
+    lastMode: stored?.lastMode || null,
+    state: stored?.state && typeof stored.state === "object" ? stored.state : {},
+    pendingActions: Array.isArray(stored?.pendingActions) ? stored.pendingActions : [],
+    updatedAt: stored?.updatedAt || new Date().toISOString(),
+    createdAt: stored?.createdAt || null,
+    lastSeenAt: stored?.lastSeenAt || null,
+  };
+}
+
+async function loadTelegramSession(chatId, meta = {}) {
+  const key = String(chatId || "").trim();
+  if (!key) return null;
+  if (telegramSessionState.has(key)) {
+    const cached = telegramSessionState.get(key);
+    const mergedCached = buildTelegramSessionSnapshot(key, meta, cached);
+    telegramSessionState.set(key, mergedCached);
+    return mergedCached;
+  }
+
+  const stored = await getStoredTelegramSession(key).catch(() => null);
+  const session = buildTelegramSessionSnapshot(key, meta, stored);
+  telegramSessionState.set(key, session);
+  return session;
+}
+
+async function persistTelegramSession(session, meta = {}) {
+  const key = String(session?.chatId || meta?.chatId || "").trim();
+  if (!key) return null;
+  const payload = buildTelegramSessionSnapshot(key, meta, session);
+  const saved = await upsertTelegramSession({
+    chatId: payload.chatId,
+    username: payload.username,
+    preferences: payload.preferences,
+    lastCoupon: payload.lastCoupon,
+    lastLadder: payload.lastLadder,
+    lastMatchId: payload.lastMatchId,
+    lastMode: payload.lastMode,
+    state: payload.state,
+    pendingActions: payload.pendingActions,
+  }).catch(() => null);
+  const finalSession = buildTelegramSessionSnapshot(key, meta, saved || payload);
+  telegramSessionState.set(key, finalSession);
+  return finalSession;
+}
+
+function getLocalApiBaseUrl() {
+  const port = Number(activeServerPort || process.env.PORT || DEFAULT_PORT || 3000);
+  return `http://127.0.0.1:${port}`;
+}
+
+async function callLocalApi(path, { method = "GET", body = null, headers = {}, timeoutMs = 12000 } = {}) {
+  const url = `${getLocalApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const requestHeaders = { ...headers };
+    if (body) requestHeaders["Content-Type"] = "application/json";
+    const response = await fetch(url, {
+      method,
+      headers: requestHeaders,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.success) {
+      throw new Error(data?.message || data?.error?.message || data?.error || `HTTP ${response.status}`);
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function sendTelegramMessage(botToken, chatId, text, options = {}) {
+  const payload = {
+    chat_id: chatId,
+    text: String(text || "").slice(0, 3900),
+    disable_web_page_preview: true,
+    ...options,
+  };
+  if (options?.reply_markup && typeof options.reply_markup === "object") {
+    payload.reply_markup = options.reply_markup;
+  }
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.description || "API Telegram indisponible.");
+  }
+  return data?.result?.message_id || null;
+}
+
+function normalizeTelegramFilter(text = "") {
+  return normalizeLookupText(String(text || ""));
+}
+
+function extractTelegramMode(text = "") {
+  const normalized = normalizeTelegramFilter(text);
+  if (normalized.includes("pack")) return "pack";
+  if (normalized.includes("premium")) return "premium";
+  if (normalized.includes("story") || normalized.includes("snap")) return "story";
+  if (normalized.includes("image")) return "image";
+  if (normalized.includes("pdf")) return "pdf";
+  if (normalized.includes("validate") || normalized.includes("validation")) return "validate";
+  if (normalized.includes("history")) return "history";
+  if (normalized.includes("watchlist")) return "watchlist";
+  if (normalized.includes("journal")) return "journal";
+  if (normalized.includes("multi")) return "multi";
+  if (normalized.includes("ladder") || normalized.includes("echelle")) return "ladder";
+  if (normalized.includes("status") || normalized.includes("etat")) return "status";
+  if (normalized.includes("help") || normalized.includes("menu") || normalized.includes("commandes")) return "help";
+  return null;
+}
+
+function extractTelegramSize(text = "", fallback = 3) {
+  const normalized = normalizeTelegramFilter(text);
+  const match = normalized.match(/\b([1-9]|1[0-2])\b/);
+  return match ? Math.max(1, Math.min(12, Number(match[1]))) : fallback;
+}
+
+function extractTelegramRisk(text = "", fallback = "balanced") {
+  const normalized = normalizeTelegramFilter(text);
+  if (normalized.includes("ultra safe") || normalized.includes("ultrasafe")) return "safe";
+  if (normalized.includes("safe") || normalized.includes("prudent") || normalized.includes("conservateur")) return "safe";
+  if (normalized.includes("aggressive") || normalized.includes("agressif") || normalized.includes("attaque")) return "aggressive";
+  if (normalized.includes("balanced") || normalized.includes("equilibre") || normalized.includes("standard")) return "balanced";
+  return fallback;
+}
+
+function extractTelegramLeague(text = "") {
+  const raw = String(text || "");
+  const eq = raw.match(/(?:league|ligue)\s*[:=]\s*([^\n]+)/i);
+  if (eq?.[1]) return eq[1].trim();
+  return /all|toutes|tous/i.test(raw) ? "all" : "";
+}
+
+function extractTelegramStake(text = "", fallback = 1000) {
+  const raw = String(text || "");
+  const match = raw.match(/(?:stake|mise)\s*[:=]\s*(\d+(?:[.,]\d+)?)/i);
+  if (match?.[1]) return Math.max(0, Number(match[1].replace(",", ".")));
+  return fallback;
+}
+
+function extractTelegramMatchId(text = "") {
+  const raw = String(text || "").trim();
+  const direct = raw.match(/(?:match|details?|id)\s*[:#=]?\s*([a-z0-9_-]{3,})/i);
+  if (direct?.[1]) return direct[1];
+  const slash = raw.match(/^\/(?:match|details)\s+([a-z0-9_-]{3,})/i);
+  if (slash?.[1]) return slash[1];
+  return "";
+}
+
+function resolveTelegramCallbackCommand(data = "", session = null) {
+  const normalized = normalizeTelegramFilter(data).replace(/^tg[:\s-]*/, "").trim();
+  if (!normalized) return "";
+  if (normalized === "dashboard") return "/dashboard";
+  if (normalized === "status") return "/status";
+  if (normalized === "live") return "/live";
+  if (normalized === "upcoming") return "/upcoming";
+  if (normalized === "finished") return "/finished";
+  if (normalized === "history") return "/history";
+  if (normalized === "watchlist") return "/watchlist";
+  if (normalized === "journal") return "/journal";
+  if (normalized === "coupon") return "/coupon";
+  if (normalized === "image") return "/coupon image";
+  if (normalized === "pdf") return "/coupon pdf";
+  if (normalized === "pack") return "/coupon pack";
+  if (normalized === "validate") return "/coupon validate";
+  if (normalized === "lastmatch") {
+    const matchId = String(session?.lastMatchId || "").trim();
+    return matchId ? `/match ${matchId}` : "/match";
+  }
+  return `/${normalized.replace(/^\/+/, "")}`;
+}
+
+function buildTelegramHelpText() {
+  return [
+    "SOLITFIFPRO225 | Telegram Control Hub",
+    "Tu peux utiliser le bot sans ouvrir le site.",
+    "",
+    "Menu rapide: /dashboard ou les boutons inline pour tout piloter.",
+    "",
+    "Commandes rapides:",
+    "/start ou /help - menu complet",
+    "/dashboard - resume complet du site",
+    "/status - sante du systeme",
+    "/live - matchs live",
+    "/upcoming - matchs a venir",
+    "/finished - matchs termines",
+    "/match ID - details d'un match",
+    "/coupon size=3 risk=balanced league=all - generer un coupon",
+    "/coupon image - envoyer l'image du dernier coupon",
+    "/coupon pdf - envoyer le PDF du dernier coupon",
+    "/coupon pack - texte + image + PDF",
+    "/coupon validate - verifier le ticket",
+    "/ladder - coupler 60/30/10",
+    "/multi - comparer plusieurs profils",
+    "/history - historique coupon",
+    "/watchlist - watchlist Telegram",
+    "/journal - journal performance",
+    "",
+    "Astuce: en texte libre, tu peux aussi demander une analyse ou une action.",
+  ].join("\n");
+}
+
+function buildTelegramStatusText(data = {}) {
+  const health = data?.health || {};
+  const db = data?.db || {};
+  const coupons = data?.couponStats?.data?.stats || data?.couponStats?.data || {};
+  return [
+    "STATUT SOLITFIFPRO225",
+    `Serveur: ${health?.success === false ? "KO" : "OK"}`,
+    `Uptime: ${health?.uptimeSec ?? 0}s`,
+    `DB: ${db?.status || health?.database?.status || "unknown"}`,
+    `Coupons: ${coupons?.total ?? 0}`,
+    `Win rate: ${coupons?.winRate ?? 0}%`,
+    `Profit: ${coupons?.profit ?? 0}`,
+  ].join("\n");
+}
+
+function buildTelegramMenuKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        { text: "Dashboard", callback_data: "tg:dashboard" },
+        { text: "Statut", callback_data: "tg:status" },
+      ],
+      [
+        { text: "Live", callback_data: "tg:live" },
+        { text: "A venir", callback_data: "tg:upcoming" },
+        { text: "Termines", callback_data: "tg:finished" },
+      ],
+      [
+        { text: "Coupon", callback_data: "tg:coupon" },
+        { text: "Image", callback_data: "tg:image" },
+        { text: "PDF", callback_data: "tg:pdf" },
+      ],
+      [
+        { text: "Pack", callback_data: "tg:pack" },
+        { text: "Valider", callback_data: "tg:validate" },
+        { text: "Historique", callback_data: "tg:history" },
+      ],
+      [
+        { text: "Watchlist", callback_data: "tg:watchlist" },
+        { text: "Journal", callback_data: "tg:journal" },
+        { text: "Match", callback_data: "tg:lastmatch" },
+      ],
+    ],
+  };
+}
+
+function buildTelegramDashboardText(data = {}) {
+  const health = data?.health || {};
+  const db = data?.db || {};
+  const couponStats = data?.couponStats?.data?.stats || data?.couponStats?.data || {};
+  const session = data?.session || {};
+  const liveCount = Number(data?.liveCount ?? data?.live?.count ?? data?.live?.matches?.length ?? 0);
+  const upcomingCount = Number(data?.upcomingCount ?? data?.upcoming?.count ?? data?.upcoming?.matches?.length ?? 0);
+  const finishedCount = Number(data?.finishedCount ?? data?.finished?.count ?? data?.finished?.matches?.length ?? 0);
+  const preferenceLine = [
+    `Taille ${session?.preferences?.size ?? 3}`,
+    `Risque ${session?.preferences?.risk || "balanced"}`,
+    `Ligue ${session?.preferences?.league || "all"}`,
+    `Mise ${session?.preferences?.stake ?? 1000}`,
+  ].join(" | ");
+  const lastCoupon = session?.lastCoupon?.summary || session?.lastCoupon?.coupon?.[0] || null;
+  const lastCouponLine = lastCoupon
+    ? `Dernier coupon: ${Number(session?.lastCoupon?.summary?.totalSelections || session?.lastCoupon?.coupon?.length || 0)} selection(s) | Cote ${formatOddForTelegram(session?.lastCoupon?.summary?.combinedOdd)}`
+    : "Dernier coupon: aucun";
+  return [
+    "TABLEAU DE BORD TELEGRAM",
+    `Serveur: ${health?.success === false ? "KO" : "OK"}`,
+    `DB: ${db?.status || health?.database?.status || "unknown"}`,
+    `Live / A venir / Termines: ${liveCount} / ${upcomingCount} / ${finishedCount}`,
+    `Coupons: ${couponStats?.total ?? 0} | Win rate: ${couponStats?.winRate ?? 0}% | Profit: ${couponStats?.profit ?? 0}`,
+    `Session: ${preferenceLine}`,
+    `Mode: ${session?.lastMode || "aucun"} | Dernier match: ${session?.lastMatchId || "aucun"}`,
+    lastCouponLine,
+    "",
+    "Utilise les boutons ci-dessous pour naviguer.",
+  ].join("\n");
+}
+
+function buildTelegramMatchListText(title, matches = [], limit = 8) {
+  const rows = Array.isArray(matches) ? matches.slice(0, limit) : [];
+  if (!rows.length) return `${title}\nAucun match trouve.`;
+  const lines = [title];
+  rows.forEach((match, index) => {
+    const start = formatDateTime(match?.startTimeUnix ? Number(match.startTimeUnix) * 1000 : match?.startTime ? Number(match.startTime) * 1000 : null);
+    lines.push(
+      `${index + 1}. ${match?.homeTeam || match?.teamHome || "Equipe 1"} vs ${match?.awayTeam || match?.teamAway || "Equipe 2"} | ${match?.league || "Ligue"} | ${match?.status || "-"} | ${start}`
+    );
+  });
+  return lines.join("\n");
+}
+
+function buildTelegramMatchDetailsText(details = {}) {
+  const match = details?.match || {};
+  const prediction = details?.prediction || {};
+  const master = prediction?.maitre?.decision_finale || {};
+  const top3 = prediction?.analyse_avancee?.top_3_recommandations || [];
+  const exact = details?.exactScore?.primary?.score || details?.exactScore?.primary?.score || "-";
+  const league = details?.leagueProfile?.title || match?.league || "-";
+  const lines = [
+    `MATCH ${match?.teamHome || "Equipe 1"} vs ${match?.teamAway || "Equipe 2"}`,
+    `Ligue: ${league}`,
+    `Debut: ${formatDateTime(match?.startTimeUnix ? Number(match.startTimeUnix) * 1000 : match?.startTime ? Number(match.startTime) * 1000 : null)}`,
+    `Pari maitre: ${master?.pari_choisi || "N/A"}`,
+    `Confiance: ${master?.confiance_numerique ?? 0}%`,
+  ];
+  if (exact && exact !== "-") {
+    lines.push(`Projection detaillee: ${exact}`);
+  }
+  if (Array.isArray(top3) && top3.length) {
+    lines.push("Top 3:");
+    top3.slice(0, 3).forEach((item, index) => {
+      lines.push(`  ${index + 1}. ${item?.pari || "-"} | ${Number(item?.confiance || 0).toFixed(1)}%`);
+    });
+  }
+  return lines.join("\n");
+}
+
+function couponPayloadFromSelection(selection = {}, context = {}) {
+  const match = selection?.match || selection;
+  const recommendation = selection?.prediction?.recommendation || selection?.pari || "";
+  return {
+    coupon: [
+      {
+        matchId: selection?.matchId || match?.matchId || match?.id || "",
+        teamHome: selection?.homeTeam || selection?.teamHome || match?.homeTeam || match?.teamHome || "Equipe 1",
+        teamAway: selection?.awayTeam || selection?.teamAway || match?.awayTeam || match?.teamAway || "Equipe 2",
+        league: selection?.league || match?.league || "Ligue",
+        pari: recommendation || selection?.pari || "1",
+        cote: Number(selection?.odds || selection?.cote || match?.odds || 1.5) || 1.5,
+        confiance: Number(selection?.prediction?.confidence || selection?.confiance || 75) || 75,
+        startTimeUnix: Number(selection?.startTime || match?.startTime || match?.startTimeUnix || 0) || null,
+        exactScore: selection?.exactScore || context?.exactScore || null,
+      },
+    ],
+    summary: {
+      totalSelections: 1,
+      combinedOdd: Number(selection?.odds || selection?.cote || match?.odds || 1.5) || 1.5,
+      averageConfidence: Number(selection?.prediction?.confidence || selection?.confiance || 75) || 75,
+    },
+    insights: {},
+    riskProfile: context?.riskProfile || "balanced",
+  };
+}
+
+async function ensureTelegramCoupon(session, params = {}, force = false) {
+  if (!session) return null;
+  const nextSize = Math.max(1, Math.min(12, Number(params?.size || session.preferences?.size || 3)));
+  const nextLeague = String(params?.league || session.preferences?.league || "all");
+  const nextRisk = String(params?.risk || session.preferences?.risk || "balanced");
+  const nextStake = Math.max(0, Number(params?.stake || session.preferences?.stake || 1000));
+  session.preferences = {
+    ...session.preferences,
+    size: nextSize,
+    league: nextLeague,
+    risk: nextRisk,
+    stake: nextStake,
+  };
+  if (!force && session.lastCoupon?.coupon?.length) {
+    return session.lastCoupon;
+  }
+  const couponData = await callLocalApi(`/api/coupon?size=${encodeURIComponent(nextSize)}&league=${encodeURIComponent(nextLeague)}&risk=${encodeURIComponent(nextRisk)}`);
+  session.lastCoupon = couponData;
+  session.updatedAt = new Date().toISOString();
+  return couponData;
+}
+
+async function sendTelegramCouponMedia(botToken, chatId, couponData, { mode = "default", format = "png" } = {}) {
+  if (!couponData?.coupon?.length) return null;
+  const normalizedMode = String(mode || "default").toLowerCase();
+  const useStory = normalizedMode === "story";
+  const usePremium = normalizedMode === "premium";
+  const useFormat = String(format || "png").toLowerCase() === "jpg" ? "jpg" : useStory ? "jpg" : "png";
+  const svg = useStory
+    ? buildCouponStorySvg(couponData)
+    : usePremium
+      ? buildCouponPremiumSvg(couponData)
+      : buildCouponImageSvg(couponData);
+  const buffer = await rasterizeSvg(svg, useFormat);
+  return sendTelegramPhoto(
+    botToken,
+    chatId,
+    new Blob([buffer], { type: useFormat === "jpg" ? "image/jpeg" : "image/png" }),
+    `coupon-fc25-${normalizedMode}-${Date.now()}.${useFormat === "jpg" ? "jpg" : "png"}`,
+    "Coupon image - SOLITFIFPRO225 | Signe: SOLITAIRE HACK"
+  );
+}
+
 app.post("/api/coupon/pdf", generateCouponPdfHandler);
 app.post("/api/pdf/coupon", generateCouponPdfHandler);
 app.post("/api/download/coupon", generateCouponPdfHandler);
@@ -5674,11 +5339,731 @@ async function sendTelegramLadderHandler(req, res) {
   }
 }
 
+async function executeTelegramSiteAction(action, state = {}) {
+  const botToken = String(state.botToken || "").trim();
+  const chatId = String(state.chatId || "").trim();
+  const session = state.session || null;
+  const text = String(state.text || "");
+  const name = String(action?.name || action?.action || action?.type || "").trim();
+  const payload = action?.payload || {};
+
+  if (!name) return false;
+
+  if (name === "show_menu") {
+    if (session) session.lastMode = "help";
+    await sendTelegramMessage(botToken, chatId, buildTelegramHelpText(), {
+      reply_markup: buildTelegramMenuKeyboard(),
+    });
+    return true;
+  }
+
+  if (name === "show_dashboard") {
+    if (session) session.lastMode = "dashboard";
+    const [health, dbStatus, live, upcoming, finished, couponStats, couponHistory] = await Promise.all([
+      callLocalApi("/api/health").catch(() => ({})),
+      callLocalApi("/api/db/status").catch(() => ({})),
+      callLocalApi("/api/matches/live").catch(() => ({})),
+      callLocalApi("/api/matches/upcoming").catch(() => ({})),
+      callLocalApi("/api/matches/finished").catch(() => ({})),
+      callLocalApi("/api/coupon/stats").catch(() => ({})),
+      callLocalApi("/api/coupon/history?limit=1").catch(() => ({})),
+    ]);
+    const dashboardText = buildTelegramDashboardText({
+      health,
+      db: dbStatus?.db || dbStatus?.database || {},
+      live,
+      upcoming,
+      finished,
+      couponStats,
+      session,
+      latestHistoryItem: Array.isArray(couponHistory?.items) ? couponHistory.items[0] : null,
+    });
+    await sendTelegramMessage(botToken, chatId, dashboardText, { reply_markup: buildTelegramMenuKeyboard() });
+    return true;
+  }
+
+  if (name === "show_status") {
+    if (session) session.lastMode = "status";
+    const [health, dbStatus, couponStats] = await Promise.all([
+      callLocalApi("/api/health").catch(() => ({})),
+      callLocalApi("/api/db/status").catch(() => ({})),
+      callLocalApi("/api/coupon/stats").catch(() => ({})),
+    ]);
+    await sendTelegramMessage(
+      botToken,
+      chatId,
+      buildTelegramStatusText({
+        health,
+        db: dbStatus?.db || dbStatus?.database || {},
+        couponStats,
+      }),
+      { reply_markup: buildTelegramMenuKeyboard() }
+    );
+    return true;
+  }
+
+  if (name === "set_coupon_form") {
+    if (session) {
+      session.preferences = {
+        ...(session.preferences || {}),
+        size: Number(payload?.size || session.preferences?.size || state.size || 3),
+        league: String(payload?.league || session.preferences?.league || state.league || "all"),
+        risk: String(payload?.risk || session.preferences?.risk || state.risk || "balanced"),
+        stake: Number(payload?.stake || session.preferences?.stake || state.stake || 1000),
+      };
+    }
+    if (botToken && chatId) {
+      await sendTelegramMessage(
+        botToken,
+        chatId,
+        `Parametres Telegram mis a jour: taille ${session?.preferences?.size ?? state.size ?? 3}, ligue ${session?.preferences?.league || state.league || "all"}, risque ${session?.preferences?.risk || state.risk || "balanced"}, mise ${session?.preferences?.stake ?? state.stake ?? 1000}.`
+      );
+    }
+    return true;
+  }
+
+  if (["generate_coupon", "download_image", "download_image_premium", "download_story", "download_pdf", "download_pdf_summary", "download_pdf_quick", "download_pdf_detailed", "validate_ticket", "simulate_bankroll", "copy_coupon_text", "build_watchlist", "analyze_journal", "replay_journal"].includes(name)) {
+    const couponData = await ensureTelegramCoupon(session, {
+      size: state.size,
+      league: state.league,
+      risk: state.risk,
+      stake: state.stake,
+    }, name === "generate_coupon");
+
+    if (name === "copy_coupon_text" && couponData?.coupon?.length) {
+      await sendTelegramMessage(botToken, chatId, buildTelegramCouponText(couponData));
+      return true;
+    }
+
+    if (name === "download_image") {
+      await sendTelegramCouponMedia(botToken, chatId, couponData, { mode: "default", format: state.format || "png" });
+      return true;
+    }
+    if (name === "download_image_premium") {
+      await sendTelegramCouponMedia(botToken, chatId, couponData, { mode: "premium", format: state.format || "png" });
+      return true;
+    }
+    if (name === "download_story") {
+      await sendTelegramCouponMedia(botToken, chatId, couponData, { mode: "story", format: state.format || "jpg" });
+      return true;
+    }
+    if (name === "download_pdf" || name === "download_pdf_summary" || name === "download_pdf_quick" || name === "download_pdf_detailed") {
+      const pdfMode = name === "download_pdf_detailed" ? "detailed" : name === "download_pdf_quick" ? "quick" : "summary";
+      const pdf = buildCouponPdfBuffer(couponData, pdfMode);
+      await sendTelegramDocument(
+        botToken,
+        chatId,
+        new Blob([pdf], { type: "application/pdf" }),
+        `coupon-fc25-${pdfMode}-${Date.now()}.pdf`,
+        `Coupon PDF ${pdfMode} - SOLITFIFPRO225`
+      );
+      return true;
+    }
+    if (name === "validate_ticket") {
+      const validation = await callLocalApi("/api/coupon/validate", {
+        method: "POST",
+        body: {
+          driftThresholdPercent: 6,
+          selections: (couponData?.coupon || []).map((p) => ({ matchId: p.matchId, pari: p.pari, cote: p.cote })),
+        },
+      });
+      const summary = validation?.summary || {};
+      const issues = Array.isArray(validation?.issues) ? validation.issues.slice(0, 5) : [];
+      const lines = [
+        "VALIDATION COUPON",
+        `Statut: ${validation?.status || "N/A"}`,
+        `OK: ${summary.ok ?? 0} | A corriger: ${summary.toFix ?? 0} | Total: ${summary.total ?? 0}`,
+        ...issues.map((issue, index) => `${index + 1}. ${issue?.message || issue?.code || "Alerte"}`),
+      ];
+      await sendTelegramMessage(botToken, chatId, lines.join("\n"));
+      return true;
+    }
+    if (name === "simulate_bankroll") {
+      const stats = couponData?.summary || {};
+      const avg = Number(stats.averageConfidence || 0);
+      const lines = [
+        "SIMULATION BANKROLL",
+        `Selections: ${Number(stats.totalSelections || couponData?.coupon?.length || 0)}`,
+        `Cote combinee: ${formatOddForTelegram(stats.combinedOdd)}`,
+        `Confiance moyenne: ${avg.toFixed(1)}%`,
+      ];
+      await sendTelegramMessage(botToken, chatId, lines.join("\n"));
+      return true;
+    }
+    if (name === "build_watchlist") {
+      const watchlist = await callLocalApi(`/api/watchlist?userId=${encodeURIComponent(chatId)}`);
+      const list = Array.isArray(watchlist?.data?.watchlist) ? watchlist.data.watchlist : [];
+      const lines = ["WATCHLIST TELEGRAM", `Total: ${list.length}`];
+      list.slice(0, 12).forEach((item, index) => lines.push(`${index + 1}. ${item}`));
+      await sendTelegramMessage(botToken, chatId, lines.join("\n"));
+      return true;
+    }
+    if (name === "analyze_journal" || name === "replay_journal") {
+      const journal = await callLocalApi("/api/coupon/journal");
+      const items = Array.isArray(journal?.data?.journal) ? journal.data.journal : [];
+      const lines = [name === "analyze_journal" ? "JOURNAL PERFORMANCE" : "REPLAY JOURNAL"];
+      items.slice(0, 10).forEach((item, index) => {
+        lines.push(`${index + 1}. ${item?.timestamp || "-"} | ${item?.status || "-"} | profit ${Number(item?.profit || 0)}`);
+      });
+      await sendTelegramMessage(botToken, chatId, lines.join("\n"));
+      return true;
+    }
+    if (name === "generate_coupon") {
+      await sendTelegramMessage(botToken, chatId, buildTelegramCouponText(couponData));
+      return true;
+    }
+  }
+
+  if (name === "download_image_duo") {
+    const couponData = await ensureTelegramCoupon(session, {
+      size: state.size,
+      league: state.league,
+      risk: state.risk,
+      stake: state.stake,
+    });
+    await sendTelegramCouponMedia(botToken, chatId, couponData, { mode: "default", format: "png" });
+    await sendTelegramCouponMedia(botToken, chatId, couponData, { mode: "default", format: "jpg" });
+    return true;
+  }
+
+  if (name === "refresh_matches" || name === "set_mode_live" || name === "set_mode_upcoming" || name === "set_mode_finished" || name === "set_mode_turbo") {
+    const route =
+      name === "set_mode_live"
+        ? "/api/matches/live"
+        : name === "set_mode_finished"
+          ? "/api/matches/finished"
+          : "/api/matches/upcoming";
+    const data = await callLocalApi(route);
+    const list = Array.isArray(data?.matches) ? data.matches : [];
+    const title =
+      name === "set_mode_live" ? "MATCHS LIVE" : name === "set_mode_finished" ? "MATCHS TERMINES" : "MATCHS A VENIR";
+    await sendTelegramMessage(botToken, chatId, buildTelegramMatchListText(title, list, 8));
+    return true;
+  }
+
+  if (name === "refresh_match_data" || name === "export_match_all" || name === "send_match_telegram_text") {
+    const targetMatchId = String(state.matchId || session?.lastMatchId || "").trim();
+    if (!targetMatchId) return false;
+    const details = await callLocalApi(`/api/matches/${encodeURIComponent(targetMatchId)}/details`);
+    await sendTelegramMessage(botToken, chatId, buildTelegramMatchDetailsText(details));
+    return true;
+  }
+
+  if (name === "send_match_telegram_image") {
+    const targetMatchId = String(state.matchId || session?.lastMatchId || "").trim();
+    if (!targetMatchId) return false;
+    const details = await callLocalApi(`/api/matches/${encodeURIComponent(targetMatchId)}/details`);
+    const selection = couponPayloadFromSelection({
+      matchId: targetMatchId,
+      homeTeam: details?.match?.teamHome,
+      awayTeam: details?.match?.teamAway,
+      league: details?.match?.league,
+      pari: details?.prediction?.maitre?.decision_finale?.pari_choisi || "1",
+      cote: details?.match?.odds || 1.5,
+      confiance: details?.prediction?.maitre?.decision_finale?.confiance_numerique || 75,
+      exactScore: details?.exactScore || null,
+      startTime: details?.match?.startTimeUnix,
+    });
+    const svg = buildCouponImageSvg(selection);
+    const buffer = await rasterizeSvg(svg, "png");
+    await sendTelegramPhoto(
+      botToken,
+      chatId,
+      new Blob([buffer], { type: "image/png" }),
+      `match-fc25-${Date.now()}.png`,
+      "Match details - SOLITFIFPRO225"
+    );
+    return true;
+  }
+
+  return false;
+}
+
+async function handleTelegramWebhookUpdate(req, res) {
+  const botToken = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
+  if (!botToken) {
+    return res.status(500).json({
+      success: false,
+      message: "Configuration Telegram manquante (TELEGRAM_BOT_TOKEN).",
+    });
+  }
+
+  const secretToken = String(process.env.TELEGRAM_WEBHOOK_SECRET || "").trim();
+  if (secretToken) {
+    const incomingSecret = String(req.get("x-telegram-bot-api-secret-token") || "").trim();
+    if (incomingSecret !== secretToken) {
+      return res.status(403).json({
+        success: false,
+        message: "Webhook Telegram refuse.",
+      });
+    }
+  }
+
+  const update = req.body || {};
+  const message = update.message || update.edited_message || update.channel_post || update.callback_query?.message || null;
+  const chat = message?.chat || update.callback_query?.message?.chat || null;
+  const chatId = String(chat?.id || "").trim();
+  const rawText = String(message?.text || message?.caption || update.callback_query?.data || "").trim();
+  const callbackData = String(update.callback_query?.data || "").trim();
+
+  if (!chatId || (!rawText && !callbackData)) {
+    return res.json({ success: true, ignored: true });
+  }
+
+  const session = await loadTelegramSession(chatId, { username: chat?.username || null });
+  const text = resolveTelegramCallbackCommand(callbackData, session) || rawText;
+  const chatMeta = { chatId, username: chat?.username || null };
+
+  try {
+    await saveTelegramLog({
+      kind: "telegram_inbound",
+      status: "received",
+      message: text,
+      payload: {
+        chatId,
+        username: chat?.username || null,
+        updateType: update?.callback_query ? "callback_query" : "message",
+      },
+      response: {},
+    });
+  } catch (_dbError) {}
+
+  const normalized = normalizeTelegramFilter(text);
+  const isCommand = normalized.startsWith("/");
+  const mode = extractTelegramMode(text);
+  const size = extractTelegramSize(text, session?.preferences?.size || 3);
+  const risk = extractTelegramRisk(text, session?.preferences?.risk || "balanced");
+  const league = extractTelegramLeague(text) || session?.preferences?.league || "all";
+  const stake = extractTelegramStake(text, session?.preferences?.stake || 1000);
+  const matchId = extractTelegramMatchId(text) || session?.lastMatchId || "";
+  const wantsImage = normalized.includes("image") || mode === "image" || mode === "pack" || mode === "premium" || mode === "story";
+  const wantsPdf = normalized.includes("pdf") || mode === "pdf" || mode === "pack";
+  const wantsPack = mode === "pack" || normalized.includes("pack");
+  const wantsValidate = mode === "validate" || normalized.includes("valide") || normalized.includes("validate");
+  const wantsLadder = mode === "ladder";
+  const wantsMulti = mode === "multi";
+  const wantsHistory = mode === "history";
+  const wantsWatchlist = mode === "watchlist";
+  const wantsJournal = mode === "journal";
+  const wantsStatus = mode === "status";
+  const wantsDashboard = normalized.includes("dashboard");
+  const wantsHelp = mode === "help" || normalized.includes("start");
+
+  const respond = async (messageText, extra = {}) => {
+    await persistTelegramSession(session, chatMeta);
+    if (update.callback_query?.id) {
+      await answerTelegramCallback(botToken, update.callback_query.id, "Recu").catch(() => {});
+    }
+    const options = { ...extra };
+    if (!options.reply_markup) {
+      options.reply_markup = buildTelegramMenuKeyboard();
+    }
+    await sendTelegramMessage(botToken, chatId, messageText, options);
+    return res.json({ success: true });
+  };
+
+  try {
+    if (wantsHelp) {
+      if (session) session.lastMode = "help";
+      return respond(buildTelegramHelpText(), { reply_markup: buildTelegramMenuKeyboard() });
+    }
+
+    if (wantsDashboard) {
+      const [health, dbStatus, live, upcoming, finished, couponStats, couponHistory, watchlistData, journalData] = await Promise.all([
+        callLocalApi("/api/health").catch(() => ({})),
+        callLocalApi("/api/db/status").catch(() => ({})),
+        callLocalApi("/api/matches/live").catch(() => ({})),
+        callLocalApi("/api/matches/upcoming").catch(() => ({})),
+        callLocalApi("/api/matches/finished").catch(() => ({})),
+        callLocalApi("/api/coupon/stats").catch(() => ({})),
+        callLocalApi("/api/coupon/history?limit=1").catch(() => ({})),
+        callLocalApi(`/api/watchlist?userId=${encodeURIComponent(chatId)}`).catch(() => ({})),
+        callLocalApi("/api/coupon/journal").catch(() => ({})),
+      ]);
+      const latestHistoryItem = Array.isArray(couponHistory?.items) ? couponHistory.items[0] : null;
+      const dashboardText = buildTelegramDashboardText({
+        health,
+        db: dbStatus?.db || dbStatus?.database || {},
+        live,
+        upcoming,
+        finished,
+        couponStats,
+        session,
+        latestHistoryItem,
+        watchlist: watchlistData?.data?.watchlist || [],
+        journal: journalData?.data?.journal || [],
+      });
+      if (session) session.lastMode = "dashboard";
+      return respond(dashboardText, { reply_markup: buildTelegramMenuKeyboard() });
+    }
+
+    if (wantsStatus) {
+      const [health, dbStatus, couponStats] = await Promise.all([
+        callLocalApi("/api/health"),
+        callLocalApi("/api/db/status"),
+        callLocalApi("/api/coupon/stats").catch(() => ({ success: false })),
+      ]);
+      const combined = buildTelegramStatusText({
+        health: health?.database ? health : { ok: true, ...health },
+        db: dbStatus?.db || dbStatus?.database || {},
+        couponStats,
+      });
+      if (session) session.lastMode = "status";
+      return respond(combined);
+    }
+
+    if (normalized.includes("live") || normalized.includes("match live")) {
+      const data = await callLocalApi("/api/matches/live");
+      const list = Array.isArray(data?.matches) ? data.matches : [];
+      const textOut = buildTelegramMatchListText("MATCHS LIVE", list, 8);
+      if (session) session.lastMode = "live";
+      return respond(textOut);
+    }
+
+    if (normalized.includes("upcoming") || normalized.includes("match a venir") || normalized.includes("matchs a venir")) {
+      const data = await callLocalApi("/api/matches/upcoming");
+      const list = Array.isArray(data?.matches) ? data.matches : [];
+      const textOut = buildTelegramMatchListText("MATCHS A VENIR", list, 8);
+      if (session) session.lastMode = "upcoming";
+      return respond(textOut);
+    }
+
+    if (normalized.includes("finished") || normalized.includes("match termine") || normalized.includes("matchs termines")) {
+      const data = await callLocalApi("/api/matches/finished");
+      const list = Array.isArray(data?.matches) ? data.matches : [];
+      const textOut = buildTelegramMatchListText("MATCHS TERMINES", list, 8);
+      if (session) session.lastMode = "finished";
+      return respond(textOut);
+    }
+
+    if (normalized.includes("match") || normalized.includes("details") || normalized.includes("detail match")) {
+      if (!matchId) {
+        return respond("Donne-moi un identifiant de match, par exemple: /match 12345");
+      }
+      const details = await callLocalApi(`/api/matches/${encodeURIComponent(matchId)}/details`);
+      if (session) session.lastMatchId = matchId;
+      if (session) session.lastMode = "match";
+      const lines = buildTelegramMatchDetailsText(details);
+      return respond(lines);
+    }
+
+    if (normalized.includes("coupon") || normalized.includes("ladder") || normalized.includes("multi")) {
+      const couponReq = {
+        size,
+        league,
+        risk,
+        stake,
+      };
+      if (session) {
+        session.preferences = { ...session.preferences, size, league, risk, stake };
+      }
+
+      if (wantsLadder) {
+        if (session) session.lastMode = "ladder";
+        const ladderRes = await callLocalApi("/api/coupon/ladder", { method: "POST", body: couponReq });
+        const ladder = ladderRes?.ladder || ladderRes?.data?.ladder || ladderRes?.data || {};
+        if (session) session.lastLadder = ladder;
+        const ladderText = buildTelegramLadderText({
+          items: (Array.isArray(ladder?.coupons) ? ladder.coupons : []).map((item) => ({
+            label: item?.name || "TICKET",
+            profile: item?.name || "TICKET",
+            stake: item?.stake || 0,
+            coupon: Array.isArray(item?.matches)
+              ? item.matches.map((m) => ({
+                  teamHome: m?.homeTeam || m?.teamHome || "Equipe 1",
+                  teamAway: m?.awayTeam || m?.teamAway || "Equipe 2",
+                  pari: m?.prediction?.recommendation || "1",
+                  cote: Number(m?.odds || m?.odd || 1.5) || 1.5,
+                }))
+              : [],
+            summary: {
+              combinedOdd: Array.isArray(item?.matches) && item.matches.length
+                ? Number(item.matches.reduce((acc, m) => acc * (Number(m?.odds || m?.odd || 1.5) || 1.5), 1).toFixed(3))
+                : null,
+              totalSelections: Array.isArray(item?.matches) ? item.matches.length : 0,
+            },
+          })),
+          totalStake: stake,
+        });
+        return respond(ladderText);
+      }
+
+      if (wantsMulti) {
+        if (session) session.lastMode = "multi";
+        const multiRes = await callLocalApi("/api/coupon/multi", { method: "POST", body: couponReq });
+        const strategies = Array.isArray(multiRes?.strategies || multiRes?.data?.strategies) ? multiRes.strategies || multiRes.data?.strategies : [];
+        const lines = ["COUPON MULTI", `Taille: ${size} | Ligue: ${league} | Risque: ${risk}`];
+        strategies.slice(0, 4).forEach((strategy, index) => {
+          const matches = Array.isArray(strategy?.matches) ? strategy.matches : [];
+          lines.push(`${index + 1}. ${strategy?.name || strategy?.risk || "Strategie"} | ${matches.length} match(s)`);
+          matches.slice(0, 4).forEach((m, i) => {
+            lines.push(`   ${i + 1}) ${m?.homeTeam || "Equipe 1"} vs ${m?.awayTeam || "Equipe 2"} | ${m?.prediction?.recommendation || "1"} | ${Number(m?.prediction?.confidence || 0).toFixed(1)}%`);
+          });
+        });
+        return respond(lines.join("\n"));
+      }
+
+      if (
+        !session?.lastCoupon ||
+        normalized === "coupon" ||
+        normalized === "/coupon" ||
+        normalized.includes("genere") ||
+        normalized.includes("cree") ||
+        normalized.includes("nouveau")
+      ) {
+        if (session) session.lastMode = "coupon";
+        const couponRes = await callLocalApi(`/api/coupon?size=${encodeURIComponent(size)}&league=${encodeURIComponent(league)}&risk=${encodeURIComponent(risk)}`);
+        const couponData = couponRes?.coupon ? couponRes : couponRes?.data?.coupon ? couponRes.data : couponRes;
+        if (session) session.lastCoupon = couponData;
+      }
+
+      const currentCoupon = session?.lastCoupon || null;
+      if (!currentCoupon?.coupon?.length) {
+        return respond("Je n'ai pas encore de coupon en mémoire. Demande-moi: /coupon size=3 risk=balanced league=all");
+      }
+
+      const textOut = buildTelegramCouponText(currentCoupon);
+      const couponForMedia = currentCoupon;
+
+      if (wantsValidate) {
+        if (session) session.lastMode = "validate";
+        const payload = {
+          driftThresholdPercent: 6,
+          selections: couponForMedia.coupon.map((p) => ({
+            matchId: p.matchId,
+            pari: p.pari,
+            cote: p.cote,
+          })),
+        };
+        const validation = await callLocalApi("/api/coupon/validate", { method: "POST", body: payload });
+        const summary = validation?.summary || {};
+        const issues = Array.isArray(validation?.issues) ? validation.issues : [];
+        const lines = [
+          "VALIDATION COUPON",
+          `Statut: ${validation?.status || "N/A"}`,
+          `OK: ${summary.ok ?? 0} | A corriger: ${summary.toFix ?? 0} | Total: ${summary.total ?? 0}`,
+        ];
+        issues.slice(0, 5).forEach((issue, index) => {
+          lines.push(`${index + 1}. ${issue?.message || issue?.code || "Alerte"}`);
+        });
+        return respond(lines.join("\n"));
+      }
+
+      if (wantsPack) {
+        if (session) session.lastMode = "pack";
+        if (update.callback_query?.id) {
+          await answerTelegramCallback(botToken, update.callback_query.id, "Pack en cours").catch(() => {});
+        }
+        await sendTelegramMessage(botToken, chatId, textOut);
+        const imageSvg = buildCouponImageSvg(couponForMedia);
+        const imageBuffer = await rasterizeSvg(imageSvg, "png");
+        await sendTelegramPhoto(
+          botToken,
+          chatId,
+          new Blob([imageBuffer], { type: "image/png" }),
+          `coupon-fc25-${Date.now()}.png`,
+          "Coupon image - SOLITFIFPRO225 | Signe: SOLITAIRE HACK"
+        );
+        const pdfBuffer = buildCouponPdfBuffer(couponForMedia, "quick");
+        await sendTelegramDocument(
+          botToken,
+          chatId,
+          new Blob([pdfBuffer], { type: "application/pdf" }),
+          `coupon-fc25-rapide-${Date.now()}.pdf`,
+          "Coupon PDF rapide - SOLITFIFPRO225"
+        );
+        await persistTelegramSession(session, chatMeta);
+        return res.json({ success: true });
+      }
+
+      if (wantsImage) {
+        if (session) session.lastMode = "image";
+        const imageMode = normalized.includes("premium") ? "premium" : normalized.includes("story") || normalized.includes("snap") ? "story" : "default";
+        const imageFormat = normalized.includes("jpg") ? "jpg" : imageMode === "story" ? "jpg" : "png";
+        const svg =
+          imageMode === "story"
+            ? buildCouponStorySvg(couponForMedia)
+            : imageMode === "premium"
+            ? buildCouponPremiumSvg(couponForMedia)
+            : buildCouponImageSvg(couponForMedia);
+        const buffer = await rasterizeSvg(svg, imageFormat);
+        await sendTelegramPhoto(
+          botToken,
+          chatId,
+          new Blob([buffer], { type: imageFormat === "jpg" ? "image/jpeg" : "image/png" }),
+          `coupon-fc25-${imageMode}-${Date.now()}.${imageFormat === "jpg" ? "jpg" : "png"}`,
+          "Coupon image - SOLITFIFPRO225 | Signe: SOLITAIRE HACK"
+        );
+        return respond(textOut);
+      }
+
+      if (wantsPdf) {
+        if (session) session.lastMode = "pdf";
+        const pdfMode = normalized.includes("detail") || normalized.includes("detailed") ? "detailed" : normalized.includes("quick") ? "quick" : "summary";
+        const pdfBuffer = buildCouponPdfBuffer(couponForMedia, pdfMode);
+        await sendTelegramDocument(
+          botToken,
+          chatId,
+          new Blob([pdfBuffer], { type: "application/pdf" }),
+          `coupon-fc25-${pdfMode}-${Date.now()}.pdf`,
+          `Coupon PDF ${pdfMode} - SOLITFIFPRO225`
+        );
+        return respond(textOut);
+      }
+
+      return respond(textOut);
+    }
+
+    if (wantsHistory) {
+      const history = await callLocalApi("/api/coupon/history?limit=8");
+      const items = Array.isArray(history?.items) ? history.items : [];
+      const lines = ["HISTORIQUE COUPONS"];
+      items.slice(0, 8).forEach((item, index) => {
+        lines.push(`${index + 1}. ${item?.timestamp || "-"} | ${item?.status || "-"} | ${Number(item?.summary?.matchesCount || item?.matches?.length || 0)} match(s)`);
+      });
+      if (session) session.lastMode = "history";
+      return respond(lines.join("\n"));
+    }
+
+    if (wantsWatchlist) {
+      const data = await callLocalApi(`/api/watchlist?userId=${encodeURIComponent(chatId)}`);
+      const watchlist = data?.data?.watchlist || [];
+      const lines = ["WATCHLIST TELEGRAM", `Total: ${watchlist.length}`];
+      watchlist.slice(0, 12).forEach((item, index) => {
+        lines.push(`${index + 1}. ${item}`);
+      });
+      if (session) session.lastMode = "watchlist";
+      return respond(lines.join("\n"));
+    }
+
+    if (wantsJournal) {
+      const journal = await callLocalApi("/api/coupon/journal");
+      const items = Array.isArray(journal?.data?.journal) ? journal.data.journal : [];
+      const lines = ["JOURNAL PERFORMANCE"];
+      items.slice(0, 10).forEach((item, index) => {
+        lines.push(`${index + 1}. ${item?.timestamp || "-"} | ${item?.status || "-"} | gain/profit ${Number(item?.profit || 0)}`);
+      });
+      if (session) session.lastMode = "journal";
+      return respond(lines.join("\n"));
+    }
+
+    const telegramContext = {
+      page: "/telegram",
+      matchId,
+      league,
+      pageSnapshot: {
+        pageType: "telegram",
+        title: "Telegram Control Hub",
+        enabledButtons: [
+          "dashboard",
+          "status",
+          "coupon",
+          "image",
+          "pdf",
+          "pack",
+          "live",
+          "upcoming",
+          "finished",
+          "match",
+          "history",
+          "watchlist",
+          "journal",
+        ],
+      },
+      capabilities: {
+        actions: [
+          "show_dashboard",
+          "show_status",
+          "show_menu",
+          "generate_coupon",
+          "validate_ticket",
+          "simulate_bankroll",
+          "download_image",
+          "download_image_premium",
+          "download_story",
+          "download_image_duo",
+          "download_pdf",
+          "download_pdf_summary",
+          "download_pdf_quick",
+          "download_pdf_detailed",
+          "build_watchlist",
+          "analyze_journal",
+          "replay_journal",
+          "refresh_matches",
+          "refresh_match_data",
+          "set_mode_live",
+          "set_mode_upcoming",
+          "set_mode_finished",
+          "set_mode_turbo",
+          "export_match_all",
+        ],
+      },
+    };
+    const chatResult = await callLocalApi("/api/chat", {
+      method: "POST",
+      body: {
+        message: text,
+        history: [],
+        context: telegramContext,
+      },
+    });
+    const answer = String(chatResult?.answer || "").trim() || "Aucune reponse.";
+    const derivedActions = Array.isArray(chatResult?.actions) ? chatResult.actions : [];
+    let handledByActions = false;
+    for (const action of derivedActions) {
+      // Le bot Telegram execute localement ce que le site ferait via l'interface.
+      handledByActions = (await executeTelegramSiteAction(action, {
+        botToken,
+        chatId,
+        session,
+        text,
+        size,
+        risk,
+        league,
+        stake,
+        matchId,
+        format: normalized.includes("jpg") ? "jpg" : normalized.includes("png") ? "png" : "png",
+      })) || handledByActions;
+    }
+    if (session && derivedActions.length) {
+      session.pendingActions = derivedActions;
+    }
+    if (handledByActions) {
+      if (update.callback_query?.id) {
+        await answerTelegramCallback(botToken, update.callback_query.id, "Action terminee").catch(() => {});
+      }
+      await persistTelegramSession(session, chatMeta);
+      return res.json({ success: true, handled: true });
+    }
+    return respond(answer);
+  } catch (error) {
+    try {
+      await sendTelegramMessage(botToken, chatId, `Erreur Telegram: ${error.message}`);
+    } catch (_sendError) {}
+    try {
+      await saveTelegramLog({
+        kind: "telegram_inbound",
+        status: "error",
+        message: text,
+        payload: { chatId },
+        response: {},
+        error: error.message,
+      });
+    } catch (_dbError) {}
+    return res.json({
+      success: false,
+      error: error.message,
+    });
+  }
+}
+
 app.post("/api/coupon/send-telegram", sendTelegramCouponHandler);
 app.post("/api/telegram/send-coupon", sendTelegramCouponHandler);
 app.post("/api/send-telegram", sendTelegramCouponHandler);
 app.post("/api/coupon/send-telegram-pack", sendTelegramCouponPackHandler);
 app.post("/api/coupon/ladder/send-telegram", sendTelegramLadderHandler);
+app.post("/api/telegram/webhook", handleTelegramWebhookUpdate);
+app.post("/api/telegram/update", handleTelegramWebhookUpdate);
 
 function trimTrailingSlash(url = "") {
   return String(url || "").replace(/\/+$/, "");
@@ -6277,9 +6662,155 @@ app.get("*", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+async function syncTelegramWebhook() {
+  const botToken = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
+  const webhookUrl = String(process.env.TELEGRAM_WEBHOOK_URL || "").trim();
+  if (!botToken || !webhookUrl) return null;
+
+  const payload = {
+    url: webhookUrl,
+    allowed_updates: ["message", "edited_message", "channel_post", "callback_query"],
+  };
+  const secretToken = String(process.env.TELEGRAM_WEBHOOK_SECRET || "").trim();
+  if (secretToken) payload.secret_token = secretToken;
+
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.description || "Impossible de synchroniser le webhook Telegram.");
+  }
+  console.log(`Telegram webhook synchronise vers ${webhookUrl}`);
+  return data;
+}
+
+async function deleteTelegramWebhook() {
+  const botToken = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
+  if (!botToken) return null;
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/deleteWebhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ drop_pending_updates: false }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.description || "Impossible de supprimer le webhook Telegram.");
+  }
+  return data;
+}
+
+function createTelegramMockRequest(update = {}, secretToken = "") {
+  return {
+    body: update,
+    get(headerName) {
+      const key = String(headerName || "").toLowerCase();
+      if (key === "x-telegram-bot-api-secret-token") return String(secretToken || "");
+      return "";
+    },
+  };
+}
+
+function createTelegramMockResponse() {
+  return {
+    statusCode: 200,
+    payload: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.payload = payload;
+      return payload;
+    },
+  };
+}
+
+async function startTelegramPolling() {
+  const botToken = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
+  if (!botToken) return null;
+
+  let offset = 0;
+  let stopped = false;
+  let running = false;
+
+  const loop = async () => {
+    if (stopped || running) return;
+    running = true;
+    try {
+      while (!stopped) {
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/getUpdates`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            offset,
+            timeout: 30,
+            allowed_updates: ["message", "edited_message", "channel_post", "callback_query"],
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) {
+          throw new Error(data?.description || "Telegram polling indisponible.");
+        }
+        const updates = Array.isArray(data?.result) ? data.result : [];
+        for (const update of updates) {
+          const nextOffset = Number(update?.update_id || 0) + 1;
+          if (Number.isFinite(nextOffset) && nextOffset > offset) {
+            offset = nextOffset;
+          }
+          const mockReq = createTelegramMockRequest(update, "");
+          const mockRes = createTelegramMockResponse();
+          await handleTelegramWebhookUpdate(mockReq, mockRes);
+        }
+      }
+    } catch (error) {
+      if (!stopped) {
+        console.warn(`Telegram polling interrompu: ${error.message}`);
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        running = false;
+        return loop();
+      }
+    } finally {
+      running = false;
+    }
+    return null;
+  };
+
+  console.log("Telegram polling actif.");
+  loop().catch((error) => {
+    console.warn(`Telegram polling non demarre: ${error.message}`);
+  });
+
+  return {
+    stop() {
+      stopped = true;
+    },
+  };
+}
+
 function startServer(startPort, triesLeft = MAX_PORT_TRIES) {
   const server = app.listen(startPort, () => {
+    activeServerPort = startPort;
     console.log(`Serveur actif: http://localhost:${startPort}`);
+    if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_URL) {
+      setTimeout(() => {
+        syncTelegramWebhook().catch((error) => {
+          console.warn(`Webhook Telegram non synchronise: ${error.message}`);
+        });
+      }, 1500);
+    } else if (process.env.TELEGRAM_BOT_TOKEN) {
+      setTimeout(() => {
+        deleteTelegramWebhook()
+          .catch(() => null)
+          .finally(() => {
+            startTelegramPolling().catch((error) => {
+              console.warn(`Polling Telegram non demarre: ${error.message}`);
+            });
+          });
+      }, 1500);
+    }
   });
 
   server.on("error", (error) => {

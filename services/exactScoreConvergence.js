@@ -429,6 +429,18 @@ function buildExactScoreConvergence({
     const alignmentBonus = biasFromPrediction ? activeWeight * (aligned ? 0.08 : -0.03) : 0;
     scorePondere += alignmentBonus;
 
+    if (profile) {
+      const goalCenter = Number.isFinite(profile.goalCenter) ? profile.goalCenter : 2.5;
+      const goalBias = Number(profile.goalBias || 0);
+      const totalDistance = Math.abs(score.total - goalCenter);
+      const totalFactor = clamp(1 - totalDistance / Math.max(1.7, goalCenter || 2.5), 0.55, 1.18);
+      const diffTarget = goalBias > 0.45 ? 1.7 : goalBias < -0.45 ? 0.6 : 1.05;
+      const diffDistance = Math.abs(Math.abs(score.g1 - score.g2) - diffTarget);
+      const diffFactor = clamp(1 - diffDistance / 3.2, 0.62, 1.12);
+      const profileFactor = clamp(Number(profile.exactScoreWeight || 1) * totalFactor * diffFactor, 0.38, 1.42);
+      scorePondere += (profileFactor - 1) * activeWeight * 0.18;
+    }
+
     return {
       score: score.score,
       g1: score.g1,
@@ -467,9 +479,9 @@ function buildExactScoreConvergence({
   const awayLambda = topSlice.reduce((sum, item) => sum + item.g2 * (item.probability || 0), 0) / scoreWeightSum;
   const totalGoals = homeLambda + awayLambda;
 
-  const fitScore = clamp(Math.round(50 + (top?.score_pondere || 0) * 18 + (biasFromPrediction ? 6 : 0)), 18, 96);
+  const fitScore = clamp(Math.round(50 + (top?.score_pondere || 0) * 18 + (biasFromPrediction ? 6 : 0) + (profile?.reliabilityBoost || 0)), 18, 96);
   const marketSupport = clamp(Math.round((top?.votes_pour || 0) / Math.max(marketCount, 1) * 100), 0, 100);
-  const reliability = clamp(Math.round(confidence * 0.55 + marketSupport * 0.25 + fitScore * 0.2), 20, 95);
+  const reliability = clamp(Math.round(confidence * 0.53 + marketSupport * 0.23 + fitScore * 0.24), 20, 95);
   const overLines = [0.5, 1.5, 2.5, 3.5, 4.5].map((line) => ({
     line,
     prob: Number(rankedWithProbability.reduce((sum, item) => sum + (item.total > line ? item.probability || 0 : 0), 0).toFixed(6)),

@@ -122,8 +122,6 @@ function getPageKey(path) {
   if (path.includes('coupon')) return 'coupon';
   if (path.includes('match')) return 'match';
   if (path.includes('mode-emploi')) return 'guide';
-  if (path.includes('auth')) return 'auth';
-  if (path.includes('admin')) return 'admin';
   if (path.includes('about')) return 'about';
   if (path.includes('developpeur')) return 'dev';
   return 'other';

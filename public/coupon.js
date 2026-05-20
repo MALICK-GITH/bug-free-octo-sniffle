@@ -2,14 +2,6 @@ function formatOdd(value) {
   return typeof value === "number" ? value.toFixed(3) : "-";
 }
 
-function promptExactScoreImageChoice(label = "cette image") {
-  try {
-    return window.confirm(`Inclure le score exact dans ${label} ?\nOK = avec score exact\nAnnuler = sans score exact`);
-  } catch {
-    return false;
-  }
-}
-
 // ============================================
 // SYSTÈME DE NOTIFICATIONS TOAST - SOLITAIRE HACK
 // ============================================
@@ -2873,7 +2865,7 @@ function renderValidation(report) {
   hydrateTopReplacements(report);
 }
 
-async function sendCouponToTelegram(sendImage = false, mini = false, includeExactScore = null) {
+async function sendCouponToTelegram(sendImage = false, mini = false) {
   const panel = document.getElementById("validation");
   if (!lastCouponData || !Array.isArray(lastCouponData.coupon) || lastCouponData.coupon.length === 0) {
     if (panel) panel.innerHTML = "<p>Genere d'abord un coupon avant envoi Telegram.</p>";
@@ -2894,10 +2886,6 @@ async function sendCouponToTelegram(sendImage = false, mini = false, includeExac
       lastCouponData.summary || {},
       insights
     );
-    const exactScoreImage = sendImage
-      ? (includeExactScore === null ? promptExactScoreImageChoice("l'image coupon Telegram") : Boolean(includeExactScore))
-      : false;
-
     const payload = {
       coupon: lastCouponData.coupon,
       summary: lastCouponData.summary || {},
@@ -2907,7 +2895,6 @@ async function sendCouponToTelegram(sendImage = false, mini = false, includeExac
       sendImage,
       mini: Boolean(mini && !sendImage),
       imageFormat: sendImage ? getCouponImageFormatPreference() : "png",
-      includeExactScore: exactScoreImage,
       visualMode: getCouponImageVisualModePreference(sendImage ? "hacker" : "hacker"),
       ticketShield: {
         driftThresholdPercent: getDriftThreshold(),
@@ -3054,7 +3041,7 @@ async function downloadCouponPdfPack() {
   }
 }
 
-async function fetchCouponImageBlob(mode = "default", format = "png", includeExactScore = false) {
+async function fetchCouponImageBlob(mode = "default", format = "png") {
   const insights = computeCouponInsights(lastCouponData?.coupon || [], lastCouponData?.riskProfile || "balanced");
   const safeFormat = String(format || "").toLowerCase() === "jpg" ? "jpg" : "png";
   const payload = {
@@ -3064,7 +3051,6 @@ async function fetchCouponImageBlob(mode = "default", format = "png", includeExa
     insights,
     mode,
     format: safeFormat,
-    includeExactScore: Boolean(includeExactScore),
     visualMode: getCouponImageVisualModePreference(mode === "premium" ? "royal" : mode === "story" ? "hightech" : "hacker"),
   };
   const endpoints = mode === "story" ? ["/api/coupon/image/story", "/api/coupon/image"] : ["/api/coupon/image"];
@@ -3087,7 +3073,7 @@ async function fetchCouponImageBlob(mode = "default", format = "png", includeExa
   return blob;
 }
 
-async function downloadCouponImage(mode = "default", forcedFormat, includeExactScore = null) {
+async function downloadCouponImage(mode = "default", forcedFormat) {
   const panel = document.getElementById("validation");
   if (!lastCouponData || !Array.isArray(lastCouponData.coupon) || lastCouponData.coupon.length === 0) {
     if (panel) panel.innerHTML = "<p>Genere d'abord un coupon avant image.</p>";
@@ -3097,9 +3083,7 @@ async function downloadCouponImage(mode = "default", forcedFormat, includeExactS
     await enforceTicketShield(mode === "story" ? "export story" : mode === "premium" ? "export image premium" : "export image");
     const format =
       forcedFormat === "jpg" || forcedFormat === "png" ? forcedFormat : getCouponImageFormatPreference();
-    const exactScoreImage =
-      includeExactScore === null ? promptExactScoreImageChoice(`l'image ${mode === "story" ? "story" : mode === "premium" ? "premium" : "coupon"}`) : Boolean(includeExactScore);
-    const blob = await fetchCouponImageBlob(mode, format, exactScoreImage);
+    const blob = await fetchCouponImageBlob(mode, format);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -3116,12 +3100,11 @@ async function downloadCouponImage(mode = "default", forcedFormat, includeExactS
       type: "pdf",
       at: new Date().toISOString(),
       note: `Export ${mode === "story" ? "snap story" : mode === "premium" ? "image premium" : "image coupon"
-        }${exactScoreImage ? " avec score exact" : ""} | ${lastCouponData.summary?.totalSelections ?? 0} selections`,
+        } | ${lastCouponData.summary?.totalSelections ?? 0} selections`,
     });
     notifyEvent(
       "Coupon envoye",
-      `${mode === "story" ? "Snap story" : mode === "premium" ? "Image premium" : "Image coupon"} telecharge${mode === "story" ? "" : "e"
-      }${exactScoreImage ? " avec score exact" : ""}.`
+      `${mode === "story" ? "Snap story" : mode === "premium" ? "Image premium" : "Image coupon"} telecharge${mode === "story" ? "" : "e"}.`
     );
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   } catch (error) {
@@ -3131,10 +3114,9 @@ async function downloadCouponImage(mode = "default", forcedFormat, includeExactS
 }
 
 async function downloadCouponImageDuo(mode = "default") {
-  const includeExactScore = promptExactScoreImageChoice(`l'image ${mode === "story" ? "story" : mode === "premium" ? "premium" : "coupon"} (duo PNG + JPG)`);
-  await downloadCouponImage(mode, "png", includeExactScore);
+  await downloadCouponImage(mode, "png");
   await new Promise((r) => setTimeout(r, 450));
-  await downloadCouponImage(mode, "jpg", includeExactScore);
+  await downloadCouponImage(mode, "jpg");
 }
 
 async function copyCouponToClipboard() {

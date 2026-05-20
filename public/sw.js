@@ -1,4 +1,4 @@
-const CACHE_VERSION = "fc25-cache-v10";
+const CACHE_VERSION = "fc25-cache-v11";
 const ASSETS = [
   "/",
   "/index.html",
@@ -13,9 +13,6 @@ const ASSETS = [
   "/about.html",
   "/about.css",
   "/developpeur.html",
-  "/auth.html",
-  "/auth.css",
-  "/auth.js",
   "/mode-emploi.html",
   "/mode-emploi.css",
   "/mode-emploi.js",

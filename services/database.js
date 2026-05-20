@@ -396,7 +396,7 @@ class DatabaseService {
       `INSERT INTO subscription_plans (plan_key, display_name, daily_prediction_quota, monthly_prediction_quota, is_unlimited, price_label, description, sort_order, is_active)
        VALUES
          ('free', 'Free', 3, 60, FALSE, '0', 'Acces de base avec quota limite.', 1, TRUE),
-         ('basic', 'Basic', 20, 400, FALSE, 'starter', 'Plan d'entree avec quota quotidien confortable.', 2, TRUE),
+         ('basic', 'Basic', 20, 400, FALSE, 'starter', 'Plan d''entree avec quota quotidien confortable.', 2, TRUE),
          ('pro', 'Pro', 100, 2000, FALSE, 'pro', 'Plan avance pour clients actifs.', 3, TRUE),
          ('vip', 'VIP', 999999, 999999, TRUE, 'vip', 'Plan illimite pour administration ou clients premium.', 4, TRUE)
        ON CONFLICT (plan_key) DO UPDATE SET
