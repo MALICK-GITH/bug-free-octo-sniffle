@@ -2,6 +2,7 @@
   const BANNER_ID = "browserSyncBanner";
   const INSTALL_BTN_ID = "installPwaBtn";
   const APP_VERSION = "2026.03.30-r3";
+  const UPDATE_FLAG_KEY = "fc25_sw_reload_after_update";
   let deferredInstallPrompt = null;
   let hiddenAt = Date.now();
   let registrationRef = null;
@@ -67,8 +68,14 @@
 
   function promptForUpdate(worker) {
     if (!worker) return;
-    showBanner("Nouvelle version detectee. Recharge quand tu veux pour l'activer.", true, "Mettre a jour", () => {
+    showBanner("Nouvelle version detectee. Tu peux l'activer quand tu veux, sans bloquer ta session.", true, "Mettre a jour", () => {
+      try {
+        sessionStorage.setItem(UPDATE_FLAG_KEY, "1");
+      } catch (_error) {
+        // ignore storage issues and continue with best effort update flow
+      }
       worker.postMessage({ type: "SKIP_WAITING" });
+      showBanner("Mise a jour lancee. La page se rechargera une seule fois si necessaire.", true);
     });
   }
 
@@ -98,7 +105,16 @@
         const registration = await navigator.serviceWorker.register("/sw.js");
         bindRegistration(registration);
         navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (document.visibilityState === "visible") {
+          let shouldReload = false;
+          try {
+            shouldReload = sessionStorage.getItem(UPDATE_FLAG_KEY) === "1";
+            if (shouldReload) {
+              sessionStorage.removeItem(UPDATE_FLAG_KEY);
+            }
+          } catch (_error) {
+            shouldReload = false;
+          }
+          if (shouldReload && document.visibilityState === "visible") {
             window.location.reload();
           }
         });
