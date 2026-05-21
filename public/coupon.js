@@ -129,10 +129,7 @@ function getCouponImageFormatPreference() {
 }
 
 function getCouponImageVisualModePreference(fallbackMode = "hacker") {
-  const r = document.querySelector('input[name="couponImgMode"]:checked');
-  if (r) return r.value || fallbackMode;
-  const v = localStorage.getItem(COUPON_IMAGE_MODE_KEY);
-  return v || fallbackMode;
+  return "onedelux";
 }
 
 function persistCouponImageFormat() {
@@ -141,8 +138,7 @@ function persistCouponImageFormat() {
 }
 
 function persistCouponImageVisualMode() {
-  const r = document.querySelector('input[name="couponImgMode"]:checked');
-  if (r) localStorage.setItem(COUPON_IMAGE_MODE_KEY, r.value);
+  localStorage.setItem(COUPON_IMAGE_MODE_KEY, "onedelux");
 }
 
 function hydrateCouponImageFormatRadios() {
@@ -153,10 +149,7 @@ function hydrateCouponImageFormatRadios() {
 }
 
 function hydrateCouponImageVisualModeRadios() {
-  const v = localStorage.getItem(COUPON_IMAGE_MODE_KEY) || "hacker";
-  document.querySelectorAll('input[name="couponImgMode"]').forEach((el) => {
-    el.checked = el.value === v;
-  });
+  localStorage.setItem(COUPON_IMAGE_MODE_KEY, "onedelux");
 }
 
 let pendingLeagueValue = null;
@@ -2895,7 +2888,7 @@ async function sendCouponToTelegram(sendImage = false, mini = false) {
       sendImage,
       mini: Boolean(mini && !sendImage),
       imageFormat: sendImage ? getCouponImageFormatPreference() : "png",
-      visualMode: getCouponImageVisualModePreference(sendImage ? "hacker" : "hacker"),
+      visualMode: "onedelux",
       ticketShield: {
         driftThresholdPercent: getDriftThreshold(),
         replacedSelections: adapted.replaced,
@@ -3060,11 +3053,11 @@ async function fetchCouponImageBlob(mode = "default", format = "png") {
     summary: lastCouponData.summary || {},
     riskProfile: lastCouponData.riskProfile || "balanced",
     insights,
-    mode,
+    mode: "default",
     format: safeFormat,
-    visualMode: getCouponImageVisualModePreference(mode === "premium" ? "royal" : mode === "story" ? "hightech" : "hacker"),
+    visualMode: "onedelux",
   };
-  const endpoints = mode === "story" ? ["/api/coupon/image/story", "/api/coupon/image"] : ["/api/coupon/image"];
+  const endpoints = ["/api/coupon/image"];
   let blob = null;
   let lastErr = "Erreur image coupon";
   for (const endpoint of endpoints) {
@@ -3091,38 +3084,35 @@ async function downloadCouponImage(mode = "default", forcedFormat) {
     return;
   }
   try {
-    await enforceTicketShield(mode === "story" ? "export story" : mode === "premium" ? "export image premium" : "export image");
+    await enforceTicketShield("export image");
     const format =
       forcedFormat === "jpg" || forcedFormat === "png" ? forcedFormat : getCouponImageFormatPreference();
-    const blob = await fetchCouponImageBlob(mode, format);
+    const blob = await fetchCouponImageBlob("default", format);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const suffix = mode === "story" ? "story" : mode === "premium" ? "premium" : "image";
-    a.download = `coupon-fc25-${suffix}-${Date.now()}.${format}`;
+    a.download = `one-delux-${Date.now()}.${format}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     if (panel) {
-      panel.innerHTML = `<p>${mode === "story" ? "Snap Story" : mode === "premium" ? "Image premium" : "Image coupon"
-        } telecharge${mode === "story" ? "" : "e"}.</p><div class="coupon-image-preview"><img src="${url}" alt="Apercu coupon image"/></div>`;
+      panel.innerHTML = `<p>Image signature ONE-DELUX telechargee.</p><div class="coupon-image-preview"><img src="${url}" alt="Apercu coupon image"/></div>`;
     }
     addHistoryEntry({
       type: "pdf",
       at: new Date().toISOString(),
-      note: `Export ${mode === "story" ? "snap story" : mode === "premium" ? "image premium" : "image coupon"
-        } | ${lastCouponData.summary?.totalSelections ?? 0} selections`,
+      note: `Export image signature | ${lastCouponData.summary?.totalSelections ?? 0} selections`,
     });
     notifyEvent(
       "Coupon envoye",
-      `${mode === "story" ? "Snap story" : mode === "premium" ? "Image premium" : "Image coupon"} telecharge${mode === "story" ? "" : "e"}.`
+      "Image signature ONE-DELUX telechargee."
     );
     window.dispatchEvent(
       new CustomEvent("fc25:generated-media", {
         detail: {
           kind: "image",
           page: window.location.pathname,
-          action: mode === "story" ? "download_coupon_story" : mode === "premium" ? "download_coupon_premium" : "download_coupon_image",
+          action: "download_coupon_image",
         },
       })
     );
@@ -3665,10 +3655,10 @@ if (downloadImageBtn) {
   downloadImageBtn.addEventListener("click", () => downloadCouponImage("default"));
 }
 if (downloadPremiumImageBtn) {
-  downloadPremiumImageBtn.addEventListener("click", () => downloadCouponImage("premium"));
+  downloadPremiumImageBtn.addEventListener("click", () => downloadCouponImage("default"));
 }
 if (downloadStoryBtn) {
-  downloadStoryBtn.addEventListener("click", () => downloadCouponImage("story"));
+  downloadStoryBtn.addEventListener("click", () => downloadCouponImage("default"));
 }
 const downloadImageDuoBtn = document.getElementById("downloadImageDuoBtn");
 const copyCouponTextBtn = document.getElementById("copyCouponTextBtn");
@@ -3689,10 +3679,10 @@ if (resetCouponWorkspaceBtn) {
   resetCouponWorkspaceBtn.addEventListener("click", () => resetCouponWorkspace());
 }
 if (downloadPremiumImageBtnQuick) {
-  downloadPremiumImageBtnQuick.addEventListener("click", () => downloadCouponImage("premium"));
+  downloadPremiumImageBtnQuick.addEventListener("click", () => downloadCouponImage("default"));
 }
 if (downloadStoryBtnQuick) {
-  downloadStoryBtnQuick.addEventListener("click", () => downloadCouponImage("story"));
+  downloadStoryBtnQuick.addEventListener("click", () => downloadCouponImage("default"));
 }
 if (sendTelegramImageBtnQuick) {
   sendTelegramImageBtnQuick.addEventListener("click", () => sendCouponToTelegram(true));
@@ -3804,12 +3794,8 @@ async function initCouponPage() {
   applyStoredCouponFormValues();
   applyQueryOverrides();
   hydrateCouponImageFormatRadios();
-  hydrateCouponImageVisualModeRadios();
   document.querySelectorAll('input[name="couponImgFmt"]').forEach((el) => {
     el.addEventListener("change", persistCouponImageFormat);
-  });
-  document.querySelectorAll('input[name="couponImgMode"]').forEach((el) => {
-    el.addEventListener("change", persistCouponImageVisualMode);
   });
 
   const refreshInput = document.getElementById("refreshMinutesCouponInput");
@@ -4099,8 +4085,6 @@ function registerCouponSiteControl() {
       "replay_journal",
       "download_image",
       "download_image_duo",
-      "download_image_premium",
-      "download_story",
       "copy_coupon_text",
       "reset_coupon_workspace",
       "download_pdf_quick",
@@ -4141,19 +4125,13 @@ function registerCouponSiteControl() {
       if (action === "replay_journal") return renderPerformanceReplay();
       if (action === "build_watchlist") return buildWatchlistFromCoupon();
       if (action === "download_image") {
-        const mode = String(payload?.mode || "default").toLowerCase();
-        const m = mode === "premium" ? "premium" : mode === "story" ? "story" : "default";
         const fmt = payload?.format === "jpg" || payload?.format === "jpeg" ? "jpg" : payload?.format === "png" ? "png" : undefined;
-        return downloadCouponImage(m, fmt);
+        return downloadCouponImage("default", fmt);
       }
       if (action === "download_image_duo") {
-        const mode = String(payload?.mode || "default").toLowerCase();
-        const m = mode === "premium" ? "premium" : "default";
-        return downloadCouponImageDuo(m);
+        return downloadCouponImageDuo("default");
       }
-      if (action === "download_image_premium") return downloadCouponImage("premium");
-      if (action === "download_story") return downloadCouponImage("story");
-      if (action === "copy_coupon_text") return copyCouponToClipboard();
+       if (action === "copy_coupon_text") return copyCouponToClipboard();
       if (action === "reset_coupon_workspace") return resetCouponWorkspace();
       if (action === "download_pdf_quick") return downloadCouponPdf("quick");
       if (action === "download_pdf_summary") return downloadCouponPdf("summary");

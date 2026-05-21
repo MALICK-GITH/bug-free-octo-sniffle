@@ -673,13 +673,13 @@ function buildSiteKnowledgeBlock() {
     "- Couverture: FC 24, FC 25, et toutes les ligues/formats FIFA virtuels presentes sur le site.",
     "- Detail match: decision maitre, bots, top 3 recommandations, Neural Match Engine, alertes drift cotes, historique et suivi.",
     "- Coupon: generation optimisee par risque (safe/balanced/aggressive), validation ticket, remplacement selections faibles.",
-    "- Exports image: PNG (nettete) et JPG (leger) pour standard, premium et story; duo PNG+JPG en un flux; Telegram image suit le format choisi sur la page coupon.",
+    "- Exports image: rendu unique ONE-DELUX en SVG source, puis sortie PNG ou JPG selon l'export; duo PNG+JPG reste disponible pour l'usage pratique; Telegram image suit le meme rendu signature.",
     "- Exports: PDF coupon (resume/rapide/detaille), impression A4, rapport pro, journal performance, galerie des medias generes.",
     "- Telegram: envoi texte, image (PNG ou JPG selon UI), pack (texte+image+PDF), ladder, et webhook autonome pour piloter le moteur sans ouvrir le site.",
     "- Regle metier critique: aucun coupon garanti gagnant; filtrer de preference les matchs non demarres.",
     "- CONTROLE IA (priorite): le site t'envoie snapshot + liste d'actions disponibles. Tu t'appuies d'abord sur ces donnees, puis sur le contexte runtime, puis sur la recherche web si elle est fournie. Tu expliques clairement ce que tu vois, ce que tu sais et ce qui manque sans inventer.",
     "- STYLE: reponses fluides, amicales, precises, professionnelles, sans tourner autour du pot; si une info manque, indique-le proprement et propose la meilleure alternative.",
-    "- Commandes reconnues (non exhaustif): accueil, page coupon, guide, actualise, image png/jpg, duo png jpg, copier coupon, reinitialiser coupon, generer/valider/telegram/pdf/story/premium, modes match (live, turbo, termines), suivi, historique, mises a jour.",
+    "- Commandes reconnues (non exhaustif): accueil, page coupon, guide, actualise, image png/jpg, duo png jpg, copier coupon, reinitialiser coupon, generer/valider/telegram/pdf, modes match (live, turbo, termines), suivi, historique, mises a jour.",
   ].join("\n");
 }
 
@@ -984,15 +984,7 @@ function deriveControlActions(message, context = {}) {
     ) {
       actions.push({ type: "site_control", name: "download_image_duo", payload: { mode: "default" } });
     }
-    if (text.includes("premium") && wantPng) {
-      actions.push({ type: "site_control", name: "download_image", payload: { mode: "premium", format: "png" } });
-    } else if (text.includes("premium") && wantJpg) {
-      actions.push({ type: "site_control", name: "download_image", payload: { mode: "premium", format: "jpg" } });
-    } else if ((text.includes("story") || text.includes("snap")) && wantPng) {
-      actions.push({ type: "site_control", name: "download_image", payload: { mode: "story", format: "png" } });
-    } else if ((text.includes("story") || text.includes("snap")) && wantJpg) {
-      actions.push({ type: "site_control", name: "download_image", payload: { mode: "story", format: "jpg" } });
-    } else if (
+    if (
       (text.includes("image coupon") || text.includes("telecharge image") || (text.includes("export") && text.includes("image"))) &&
       wantPng
     ) {
@@ -1004,10 +996,6 @@ function deriveControlActions(message, context = {}) {
       actions.push({ type: "site_control", name: "download_image", payload: { mode: "default", format: "jpg" } });
     } else if (text.includes("image coupon")) {
       actions.push({ type: "site_control", name: "download_image" });
-    } else if (text.includes("image premium")) {
-      actions.push({ type: "site_control", name: "download_image_premium" });
-    } else if (text.includes("story") || text.includes("snap")) {
-      actions.push({ type: "site_control", name: "download_story" });
     }
   }
 
@@ -1329,116 +1317,36 @@ function buildCouponShareHeroSummaryLine(payload = {}) {
 }
 
 function normalizeCouponVisualMode(payload = {}) {
-  const raw = String(payload.visualMode || payload.mode || "").trim().toLowerCase();
-  if (["hacker", "premium", "royal", "hightech", "high-tech"].includes(raw)) {
-    return raw === "high-tech" ? "hightech" : raw;
-  }
-  if (raw === "story") return "hightech";
-  if (raw === "default") return "hacker";
-  return payload.mode === "premium" ? "royal" : payload.mode === "story" ? "hightech" : "hacker";
+  void payload;
+  return "onedelux";
 }
 
 function getCouponVisualTheme(payload = {}) {
-  const mode = normalizeCouponVisualMode(payload);
-  const themes = {
-    hacker: {
-      label: "HACKER MODE",
-      title: "NEON HACKER",
-      subtitle: "Cyber grid / stealth / neon trace",
-      bg: "#050810",
-      glow: "rgba(0,240,255,0.12)",
-      floor: "rgba(93,255,162,0.08)",
-      mesh: "rgba(255,255,255,0.04)",
-      accent: "#00f0ff",
-      stroke: "rgba(0,240,255,0.42)",
-      odd: "#5dffa2",
-      chipFill: "rgba(0,240,255,0.10)",
-      chipStroke: "rgba(0,240,255,0.44)",
-      textStrong: "#dfffff",
-      textSoft: "#8eb8d6",
-      cardFill: "rgba(4,8,16,0.92)",
-      badgeFill: "rgba(0,240,255,0.12)",
-      badgeText: "#00f0ff",
-      heroAccent: "#5dffa2",
-      edgeGlow: "rgba(0,240,255,0.35)",
-      panelTitle: "#00f0ff",
-      scoreTone: "#cffff3",
-      layout: "compact",
-    },
-    premium: {
-      label: "PREMIUM MODE",
-      title: "PREMIUM LUXE",
-      subtitle: "Glass polish / elite ticket / soft gold",
-      bg: "#060a12",
-      glow: "rgba(255,215,120,0.12)",
-      floor: "rgba(255,191,88,0.08)",
-      mesh: "rgba(255,255,255,0.035)",
-      accent: "#ffd77a",
-      stroke: "rgba(255,215,120,0.42)",
-      odd: "#9fff6e",
-      chipFill: "rgba(255,215,120,0.12)",
-      chipStroke: "rgba(255,215,120,0.45)",
-      textStrong: "#ffffff",
-      textSoft: "#d8c8a0",
-      cardFill: "rgba(7,11,20,0.94)",
-      badgeFill: "rgba(255,215,120,0.12)",
-      badgeText: "#ffd77a",
-      heroAccent: "#ffd77a",
-      edgeGlow: "rgba(255,215,120,0.32)",
-      panelTitle: "#ffd77a",
-      scoreTone: "#fff3d0",
-      layout: "balanced",
-    },
-    royal: {
-      label: "ROYAL MODE",
-      title: "ROYAL EDITION",
-      subtitle: "Deep velvet / gold trim / imperial contrast",
-      bg: "#090611",
-      glow: "rgba(255,191,88,0.12)",
-      floor: "rgba(123,44,255,0.10)",
-      mesh: "rgba(255,255,255,0.03)",
-      accent: "#ffdb7d",
-      stroke: "rgba(255,191,88,0.44)",
-      odd: "#ffdb7d",
-      chipFill: "rgba(255,191,88,0.12)",
-      chipStroke: "rgba(255,191,88,0.48)",
-      textStrong: "#fff8e5",
-      textSoft: "#cdbb9f",
-      cardFill: "rgba(10,7,24,0.95)",
-      badgeFill: "rgba(255,191,88,0.14)",
-      badgeText: "#ffdb7d",
-      heroAccent: "#ffdb7d",
-      edgeGlow: "rgba(255,191,88,0.34)",
-      panelTitle: "#ffdb7d",
-      scoreTone: "#fff1bd",
-      layout: "royal",
-    },
-    hightech: {
-      label: "HIGH TECH MODE",
-      title: "HIGH TECH HUD",
-      subtitle: "Futuristic glass / cyan magenta / telemetry",
-      bg: "#040711",
-      glow: "rgba(255,0,170,0.12)",
-      floor: "rgba(0,240,255,0.08)",
-      mesh: "rgba(255,255,255,0.035)",
-      accent: "#ff7fe0",
-      stroke: "rgba(255,0,170,0.42)",
-      odd: "#00f0ff",
-      chipFill: "rgba(0,240,255,0.11)",
-      chipStroke: "rgba(255,0,170,0.42)",
-      textStrong: "#ffffff",
-      textSoft: "#a8c6ef",
-      cardFill: "rgba(6,9,20,0.94)",
-      badgeFill: "rgba(255,0,170,0.12)",
-      badgeText: "#ff7fe0",
-      heroAccent: "#ff7fe0",
-      edgeGlow: "rgba(255,0,170,0.28)",
-      panelTitle: "#ff7fe0",
-      scoreTone: "#f6eefe",
-      layout: "stacked",
-    },
+  void payload;
+  return {
+    label: "ONE-DELUX SIGNATURE",
+    title: "ONE-DELUX",
+    subtitle: "Custom coupon visual / neon grid / editorial stack",
+    bg: "#04060d",
+    glow: "rgba(0,242,255,0.14)",
+    floor: "rgba(255,0,170,0.08)",
+    mesh: "rgba(255,255,255,0.04)",
+    accent: "#00f2ff",
+    stroke: "rgba(0,242,255,0.34)",
+    odd: "#ffda6b",
+    chipFill: "rgba(0,242,255,0.10)",
+    chipStroke: "rgba(255,0,170,0.34)",
+    textStrong: "#f6fbff",
+    textSoft: "#a6c2e3",
+    cardFill: "rgba(7,10,21,0.95)",
+    badgeFill: "rgba(255,0,170,0.12)",
+    badgeText: "#ff8adf",
+    heroAccent: "#ff8adf",
+    edgeGlow: "rgba(0,242,255,0.28)",
+    panelTitle: "#00f2ff",
+    scoreTone: "#effcff",
+    layout: "one-delux",
   };
-  return themes[mode] || themes.hacker;
 }
 
 function buildCouponShareHeroSvg(payload = {}, options = {}) {
@@ -1513,15 +1421,15 @@ function buildCouponImageSvg(payload = {}) {
   const theme = getCouponVisualTheme(payload);
   const picks = coupon.slice(0, 6);
   const count = Math.max(1, picks.length || 1);
-  const cardH = theme.layout === "royal" ? 218 : theme.layout === "stacked" ? 212 : 228;
-  const gap = theme.layout === "royal" ? 14 : 18;
-  const headH = theme.layout === "royal" ? 252 : 270;
+  const cardH = 224;
+  const gap = 16;
+  const headH = 258;
   const footH = 52;
   const width = 1200;
   const height = headH + footH + count * cardH + (count - 1) * gap;
   const generatedAt = formatDateTime(new Date());
   const innerW = width - 72;
-  const hero = buildCouponShareHeroSvg(payload, { width, kicker: "SHARE IMAGE" });
+  const hero = buildCouponShareHeroSvg(payload, { width, kicker: "ONE-DELUX FORMAT" });
 
   const cards = picks.map((pick, i) => {
     const y = headH + i * (cardH + gap);
@@ -1691,7 +1599,7 @@ function buildCouponStorySvg(payload = {}) {
   <text x="72" y="168" fill="${theme.panelTitle}" font-size="22" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.35em">${theme.label}</text>
   <text x="72" y="210" fill="${theme.textStrong}" font-size="26" font-family="Segoe UI, Arial, sans-serif">Profil ${escapeXml(riskRaw)} · ${Number(summary.totalSelections) || coupon.length} selections</text>
   <text x="72" y="246" fill="${theme.textSoft}" font-size="22" font-family="Segoe UI, Arial, sans-serif">Cote ${formatOddForTelegram(summary.combinedOdd)} · ${escapeXml(generatedAt)}</text>
-  ${buildCouponShareHeroSvg(payload, { width, kicker: "SHARE STORY" })}
+  ${buildCouponShareHeroSvg(payload, { width, kicker: "ONE-DELUX FORMAT" })}
   ${cards.join("\n")}
   <text x="72" y="${height - 88}" fill="${theme.textStrong}" font-size="24" font-family="Segoe UI, Arial, sans-serif">Signe SOLITAIRE HACK</text>
   <text x="72" y="${height - 52}" fill="${theme.textSoft}" font-size="18" font-family="Segoe UI, Arial, sans-serif">Aucune combinaison n'est garantie gagnante.</text>
@@ -1707,13 +1615,13 @@ function buildCouponPremiumSvg(payload = {}) {
   const count = Math.max(1, picks.length || 1);
   const width = 1400;
   const headH = 286;
-  const cardH = theme.layout === "royal" ? 158 : 152;
+  const cardH = 156;
   const gap = 14;
   const footH = 54;
   const height = headH + footH + count * cardH + (count - 1) * gap;
   const generatedAt = formatDateTime(new Date());
   const rowW = width - 64;
-  const hero = buildCouponShareHeroSvg(payload, { width, kicker: "SHARE PREMIUM" });
+  const hero = buildCouponShareHeroSvg(payload, { width, kicker: "ONE-DELUX FORMAT" });
 
   const rows = picks
     .map((pick, idx) => {
@@ -1781,14 +1689,14 @@ function buildCouponPremiumSvg(payload = {}) {
   <rect width="${width}" height="${height}" fill="url(#pmBg)"/>
   <rect width="${width}" height="${height}" fill="url(#pmLite)"/>
   <rect x="18" y="16" width="${width - 36}" height="${headH - 34}" rx="20" fill="rgba(6,10,22,0.78)" stroke="${theme.stroke}" stroke-width="1.2"/>
-  <text x="40" y="58" fill="${theme.title === "ROYAL EDITION" ? "#ffdf8a" : theme.accent}" font-size="38" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${theme.title}</text>
+  <text x="40" y="58" fill="${theme.accent}" font-size="38" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${theme.title}</text>
   <rect x="${width - 298}" y="34" width="208" height="32" rx="10" fill="${theme.chipFill}" stroke="${theme.chipStroke}"/>
   <text x="${width - 194}" y="56" text-anchor="middle" fill="${theme.badgeText}" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">${theme.subtitle}</text>
   <text x="40" y="92" fill="${theme.textStrong}" font-size="18" font-family="Segoe UI, Arial, sans-serif">${theme.label} · Profil ${escapeXml(riskRaw)} · ${Number(summary.totalSelections) || coupon.length} sel. · ${formatOddForTelegram(summary.combinedOdd)}</text>
   <text x="40" y="120" fill="${theme.textSoft}" font-size="14" font-family="Segoe UI, Arial, sans-serif">Genere ${escapeXml(generatedAt)} — rendu HD mobile &amp; desktop</text>
   ${hero}
   ${rows}
-  <text x="40" y="${height - 22}" fill="${theme.textSoft}" font-size="14" font-family="Segoe UI, Arial, sans-serif">Signe SOLITAIRE HACK — jeu responsable — combinaison non garantie</text>
+   <text x="40" y="${height - 22}" fill="${theme.textSoft}" font-size="14" font-family="Segoe UI, Arial, sans-serif">ONE-DELUX Signature — jeu responsable — combinaison non garantie</text>
 </svg>`;
 }
 
@@ -4641,25 +4549,18 @@ async function generateCouponImageHandler(req, res) {
         message: "Image bloquee: le coupon contient des matchs deja demarres.",
       });
     }
-    const mode = String(req.body?.mode || "default").toLowerCase();
-    const isStory = mode === "story" || mode === "snap";
-    const isPremium = mode === "premium" || mode === "pro";
-    const requested = req.body?.format || req.query?.format || (isStory ? "jpg" : "png");
-    const format = normalizeImageFormat(requested, isStory ? "jpg" : "png");
-    const svg = isStory
-      ? buildCouponStorySvg(req.body || {})
-      : isPremium
-      ? buildCouponPremiumSvg(req.body || {})
-      : buildCouponImageSvg(req.body || {});
+    const requested = req.body?.format || req.query?.format || "png";
+    const format = normalizeImageFormat(requested, "png");
+    const svg = buildCouponImageSvg(req.body || {});
     if (format === "svg") {
-      const filename = `coupon-fc25-${isStory ? "story" : isPremium ? "premium" : "image"}-${Date.now()}.svg`;
+      const filename = `one-delux-${Date.now()}.svg`;
       res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       await saveGeneratedAsset(
         buildGeneratedAssetRecord(req, {
           kind: "image",
-          action: isStory ? "download_coupon_story" : isPremium ? "download_coupon_premium" : "download_coupon_image",
-          label: isStory ? "Snap story coupon" : isPremium ? "Image premium coupon" : "Image coupon",
+          action: "download_coupon_image",
+          label: "Image coupon ONE-DELUX",
           fileName: filename,
           format: "svg",
           mimeType: "image/svg+xml",
@@ -4671,14 +4572,14 @@ async function generateCouponImageHandler(req, res) {
     }
     const output = await rasterizeSvg(svg, format);
     const ext = format === "jpg" ? "jpg" : "png";
-    const filename = `coupon-fc25-${isStory ? "story" : isPremium ? "premium" : "image"}-${Date.now()}.${ext}`;
+    const filename = `one-delux-${Date.now()}.${ext}`;
     res.setHeader("Content-Type", format === "jpg" ? "image/jpeg" : "image/png");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     await saveGeneratedAsset(
       buildGeneratedAssetRecord(req, {
         kind: "image",
-        action: isStory ? "download_coupon_story" : isPremium ? "download_coupon_premium" : "download_coupon_image",
-        label: isStory ? "Snap story coupon" : isPremium ? "Image premium coupon" : "Image coupon",
+        action: "download_coupon_image",
+        label: "Image coupon ONE-DELUX",
         fileName: filename,
         format: ext,
         mimeType: format === "jpg" ? "image/jpeg" : "image/png",
@@ -5365,21 +5266,15 @@ async function ensureTelegramCoupon(session, params = {}, force = false) {
 
 async function sendTelegramCouponMedia(botToken, chatId, couponData, { mode = "default", format = "png" } = {}) {
   if (!couponData?.coupon?.length) return null;
-  const normalizedMode = String(mode || "default").toLowerCase();
-  const useStory = normalizedMode === "story";
-  const usePremium = normalizedMode === "premium";
-  const useFormat = String(format || "png").toLowerCase() === "jpg" ? "jpg" : useStory ? "jpg" : "png";
-  const svg = useStory
-    ? buildCouponStorySvg(couponData)
-    : usePremium
-      ? buildCouponPremiumSvg(couponData)
-      : buildCouponImageSvg(couponData);
+  void mode;
+  const useFormat = String(format || "png").toLowerCase() === "jpg" ? "jpg" : "png";
+  const svg = buildCouponImageSvg(couponData);
   const buffer = await rasterizeSvg(svg, useFormat);
   return sendTelegramPhoto(
     botToken,
     chatId,
     new Blob([buffer], { type: useFormat === "jpg" ? "image/jpeg" : "image/png" }),
-    `coupon-fc25-${normalizedMode}-${Date.now()}.${useFormat === "jpg" ? "jpg" : "png"}`,
+    `one-delux-${Date.now()}.${useFormat === "jpg" ? "jpg" : "png"}`,
     "Coupon image - ONE-DELUX | Signe: SOLITAIRE HACK"
   );
 }
@@ -6380,20 +6275,14 @@ async function handleTelegramWebhookUpdate(req, res) {
 
       if (wantsImage) {
         if (session) session.lastMode = "image";
-        const imageMode = normalized.includes("premium") ? "premium" : normalized.includes("story") || normalized.includes("snap") ? "story" : "default";
-        const imageFormat = normalized.includes("jpg") ? "jpg" : imageMode === "story" ? "jpg" : "png";
-        const svg =
-          imageMode === "story"
-            ? buildCouponStorySvg(couponForMedia)
-            : imageMode === "premium"
-            ? buildCouponPremiumSvg(couponForMedia)
-            : buildCouponImageSvg(couponForMedia);
+        const imageFormat = normalized.includes("jpg") ? "jpg" : "png";
+        const svg = buildCouponImageSvg(couponForMedia);
         const buffer = await rasterizeSvg(svg, imageFormat);
         await sendTelegramPhoto(
           botToken,
           chatId,
           new Blob([buffer], { type: imageFormat === "jpg" ? "image/jpeg" : "image/png" }),
-          `coupon-fc25-${imageMode}-${Date.now()}.${imageFormat === "jpg" ? "jpg" : "png"}`,
+          `one-delux-${Date.now()}.${imageFormat === "jpg" ? "jpg" : "png"}`,
           "Coupon image - ONE-DELUX | Signe: SOLITAIRE HACK"
         );
         return respond(textOut);
