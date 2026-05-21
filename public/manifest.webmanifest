@@ -1,7 +1,7 @@
 {
-  "name": "SOLITFIFPRO225 - COUP SUBLIME",
-  "short_name": "COUP SUBLIME",
-  "description": "Prediction Engine avance avec visualisation 3D, blockchain trace et communaute.",
+  "name": "ONE-DELUX",
+  "short_name": "ONE-DELUX",
+  "description": "Prediction Engine avance avec visualisation 3D, trace et communaute.",
   "start_url": "/coupon-sublime.html",
   "scope": "/",
   "display": "standalone",
@@ -31,9 +31,9 @@
   ],
   "shortcuts": [
     {
-      "name": "Coup Sublime",
-      "short_name": "Sublime",
-      "description": "Generer un coupon sublime",
+      "name": "ONE-DELUX",
+      "short_name": "ONE-DELUX",
+      "description": "Ouvrir l'app ONE-DELUX",
       "url": "/coupon-sublime.html",
       "icons": [
         {

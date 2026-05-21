@@ -3147,7 +3147,7 @@ async function copyCouponToClipboard() {
   }
   const s = lastCouponData.summary || {};
   const lines = [
-    "SOLITFIFPRO225 | Signe SOLITAIRE HACK",
+    "ONE-DELUX | Signe SOLITAIRE HACK",
     `Profil: ${lastCouponData.riskProfile || "balanced"} | Selections: ${s.totalSelections ?? lastCouponData.coupon.length} | Cote combinee: ${formatOdd(s.combinedOdd)}`,
     "",
   ];

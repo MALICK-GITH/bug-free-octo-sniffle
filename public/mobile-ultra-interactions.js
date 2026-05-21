@@ -517,8 +517,8 @@ class MobileUltraInteractions {
     // Implement share functionality
     if (navigator.share) {
       navigator.share({
-        title: 'FIFA PRO Match',
-        text: 'Découvrez ce match sur FIFA PRO',
+        title: 'ONE-DELUX Match',
+        text: 'Découvrez ce match sur ONE-DELUX',
         url: window.location.href
       });
     } else {

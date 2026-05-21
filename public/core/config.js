@@ -5,7 +5,7 @@
  */
 
 export const APP_CONFIG = {
-  name: 'SOLITFIFPRO225',
+  name: 'ONE-DELUX',
   version: '2026.05.08-r1',
   buildDate: new Date().toISOString(),
   

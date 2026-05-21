@@ -323,7 +323,7 @@ class IntelligentCache {
 
     if (oddChanges.length > 0 && 'Notification' in window) {
       if (Notification.permission === 'granted') {
-        new Notification('SOLITFIFPRO225', {
+        new Notification('ONE-DELUX', {
           body: `${oddChanges.length} côte(s) mise(s) à jour`,
           icon: '/icon-192.svg'
         });

@@ -423,7 +423,7 @@ function parseCookies(header = "") {
 function buildMobileBootstrapData(dbStatus = {}) {
   return {
     app: {
-      name: "SOLITFIFPRO225",
+      name: "ONE-DELUX",
       apiVersion: MOBILE_API_VERSION,
       suggestedAndroidPackage: ANDROID_PACKAGE_NAME,
       minimumSdk: ANDROID_MIN_SDK,
@@ -553,7 +553,7 @@ function localChatFallback(message, context = {}) {
     const pageType = String(pageSnapshot?.pageType || context?.page || "site");
     const cards = Number(pageSnapshot?.cardsVisible || 0);
     const selections = Number(pageSnapshot?.selectionsVisible || 0);
-    return `Oui, je vois la page via le snapshot temps reel (${pageType}). Elements detectes: matchs=${cards}, selections=${selections}.`;
+    return `Oui, je vois la page via le snapshot temps reel (${pageType}). Elements detectes: matchs=${cards}, selections=${selections}. Je peux aussi commenter les boutons, les titres et les actions disponibles.`;
   }
 
   if (
@@ -563,16 +563,18 @@ function localChatFallback(message, context = {}) {
     text.includes("mode emploi")
   ) {
     return (
-      "Je connais le site: page matchs live (/), detail match (/match.html?id=...), coupon builder (/coupon.html), " +
-      "guide complet (/mode-emploi.html), page createur (/about.html), page developpeur (/developpeur.html). " +
-      "Pour bien utiliser le coupon: choisis taille + ligue + profil risque, genere, valide ticket, puis exporte en PDF/PNG/JPG ou envoie Telegram."
+      "Je connais le site et ses zones principales: accueil des matchs live (/), detail match (/match.html?id=...), coupon builder (/coupon.html), " +
+      "guide complet (/mode-emploi.html), page createur (/about.html), page developpeur (/developpeur.html), suivi (/suivre.html) et mises a jour (/updates.html). " +
+      "Je peux commenter les actions visibles, les selections, les exports et les etats du systeme. " +
+      "Pour un coupon propre: choisis taille + ligue + profil risque, genere, valide le ticket, puis exporte en PDF/PNG/JPG ou envoie Telegram."
     );
   }
 
   if (text.includes("coupon")) {
     return (
       `Mode local actif (API IA indisponible). Sur ${page}, prends un profil Equilibre, ` +
-      `3 selections max, cotes entre 1.35 et 2.20, et supprime les matchs deja en cours.`
+      `3 selections max, cotes entre 1.35 et 2.20, et supprime les matchs deja en cours. ` +
+      `Je peux aussi t'aider a relire le ticket, le PDF, le PNG ou l'historique si tu me donnes le contexte.`
     );
   }
 
@@ -592,10 +594,10 @@ function localChatFallback(message, context = {}) {
     text.includes("salut") ||
     text.includes("ca va")
   ) {
-    return "Salut. Je suis actif et je peux repondre a tes questions sur le site et aussi aux questions generales.";
+    return "Salut. Je suis actif, fluide et pro. Je peux repondre sur le site, sur les actions disponibles, et aussi sur tes questions generales.";
   }
 
-  return "Mode local actif. Je peux repondre aux questions du site et aux questions generales, puis proposer une action concrete si besoin.";
+  return "Mode local actif. Je peux repondre aux questions du site et aux questions generales, m'appuyer sur le contexte visible, puis proposer une action concrete si besoin.";
 }
 
 function isSiteQuestion(message = "") {
@@ -665,18 +667,19 @@ function localResearchAnswer(message = "", researchContext = "") {
 
 function buildSiteKnowledgeBlock() {
   return [
-    "BASE CONNAISSANCE SITE SOLITFIFPRO225 (TOUS FORMATS) â€” Signe SOLITAIRE HACK:",
-    "- Pages: / (matchs live), /match.html?id=... (detail match), /coupon.html (coupon builder), /mode-emploi.html (guide), /about.html (createur), /developpeur.html (contacts).",
+    "BASE CONNAISSANCE SITE ONE-DELUX (TOUS FORMATS) - Signe SOLITAIRE HACK:",
+    "- Pages: / (matchs live), /match.html?id=... (detail match), /coupon.html (coupon builder), /suivre.html (suivi), /updates.html (mises a jour), /mode-emploi.html (guide), /about.html (createur), /developpeur.html (contacts).",
     "- Donnees matchs: API 1xBet LiveFeed (FIFA virtuel global), tri ligue, statut match, cotes 1X2 et marches additionnels.",
     "- Couverture: FC 24, FC 25, et toutes les ligues/formats FIFA virtuels presentes sur le site.",
-    "- Detail match: decision maitre, bots, top 3 recommandations, Neural Match Engine, alertes drift cotes.",
+    "- Detail match: decision maitre, bots, top 3 recommandations, Neural Match Engine, alertes drift cotes, historique et suivi.",
     "- Coupon: generation optimisee par risque (safe/balanced/aggressive), validation ticket, remplacement selections faibles.",
     "- Exports image: PNG (nettete) et JPG (leger) pour standard, premium et story; duo PNG+JPG en un flux; Telegram image suit le format choisi sur la page coupon.",
-    "- Exports: PDF coupon (resume/rapide/detaille), impression A4, rapport pro, journal performance.",
+    "- Exports: PDF coupon (resume/rapide/detaille), impression A4, rapport pro, journal performance, galerie des medias generes.",
     "- Telegram: envoi texte, image (PNG ou JPG selon UI), pack (texte+image+PDF), ladder, et webhook autonome pour piloter le moteur sans ouvrir le site.",
     "- Regle metier critique: aucun coupon garanti gagnant; filtrer de preference les matchs non demarres.",
-    "- CONTROLE IA (priorite): le site t'envoie snapshot + liste d'actions disponibles. Tu orientes l'utilisateur et tu sais que le backend declenche des actions securisees (navigation, refresh, site_control) quand l'utilisateur formule une intention claire.",
-    "- Commandes reconnues (non exhaustif): accueil, page coupon, guide, actualise, image png/jpg, duo png jpg, copier coupon, reinitialiser coupon, generer/valider/telegram/pdf/story/premium, modes match (live, turbo, termines).",
+    "- CONTROLE IA (priorite): le site t'envoie snapshot + liste d'actions disponibles. Tu t'appuies d'abord sur ces donnees, puis sur le contexte runtime, puis sur la recherche web si elle est fournie. Tu expliques clairement ce que tu vois, ce que tu sais et ce qui manque sans inventer.",
+    "- STYLE: reponses fluides, amicales, precises, professionnelles, sans tourner autour du pot; si une info manque, indique-le proprement et propose la meilleure alternative.",
+    "- Commandes reconnues (non exhaustif): accueil, page coupon, guide, actualise, image png/jpg, duo png jpg, copier coupon, reinitialiser coupon, generer/valider/telegram/pdf/story/premium, modes match (live, turbo, termines), suivi, historique, mises a jour.",
   ].join("\n");
 }
 
@@ -1243,8 +1246,8 @@ function buildTelegramCouponText(payload = {}) {
     return lines.slice(0, 8).join("\n");
   }
   const lines = [
-    "TICKET SIGNATURE SOLITFIFPRO225",
-    "Source: SOLITFIFPRO225",
+    "TICKET SIGNATURE ONE-DELUX",
+    "Source: ONE-DELUX",
     `Profil de risque: ${riskProfile}`,
     `Selections: ${Number(summary.totalSelections) || coupon.length}`,
     `Cote combinee: ${formatOddForTelegram(summary.combinedOdd)}`,
@@ -1860,7 +1863,7 @@ function buildCouponPdfSummaryLines(payload = {}) {
   const riskProfile = String(payload.riskProfile || "balanced");
   const generatedAt = new Date().toLocaleString("fr-FR");
   const lines = [
-    "SOLITFIFPRO225 - COUPON PDF",
+    "ONE-DELUX - COUPON PDF",
     "Signe: SOLITAIRE HACK",
     `Date: ${generatedAt}`,
     `Profil: ${riskProfile}`,
@@ -1887,7 +1890,7 @@ function buildCouponPdfQuickLines(payload = {}) {
   const summary = payload.summary || {};
   const generatedAt = new Date().toLocaleString("fr-FR");
   const lines = [
-    "SOLITFIFPRO225 - PDF ULTRA-COURT",
+    "ONE-DELUX - PDF ULTRA-COURT",
     `Date: ${generatedAt}`,
     `Selections: ${Number(summary.totalSelections) || coupon.length}`,
     `Cote combinee: ${formatOddForTelegram(summary.combinedOdd)}`,
@@ -1919,7 +1922,7 @@ function buildCouponPdfDetailedLines(payload = {}) {
   const highRiskCount = Math.max(0, coupon.length - safeCount - mediumCount);
 
   const lines = [
-    "SOLITFIFPRO225 - COUPON DETAILLE ANALYTIQUE",
+    "ONE-DELUX - COUPON DETAILLE ANALYTIQUE",
     "Signe: SOLITAIRE HACK",
     `Date: ${generatedAt}`,
     `Profil: ${riskProfile}`,
@@ -2164,7 +2167,7 @@ function buildPrintableCouponHtml(payload = {}) {
   <div class="wrap">
     <div class="head">
       <div>
-        <h1 class="title">SOLITFIFPRO225 Coupon Ticket A4</h1>
+        <h1 class="title">ONE-DELUX Coupon Ticket A4</h1>
         <p class="sub">Genere le ${escapeXml(generatedAt)}</p>
         <p class="sub">Signe: SOLITAIRE HACK</p>
       </div>
@@ -2605,7 +2608,7 @@ app.get("/api/health", (_req, res) => {
     success: true,
     data: {
       status: "healthy",
-      service: "FIFAXPREDOOOOOOOO Backend",
+      service: "ONE-DELUX Backend",
       version: "1.0.0",
       uptime: process.uptime()
     },
@@ -5032,7 +5035,7 @@ function resolveTelegramCallbackCommand(data = "", session = null) {
 
 function buildTelegramHelpText() {
   return [
-    "SOLITFIFPRO225 | Tour de contrôle Telegram",
+    "ONE-DELUX | Tour de contrôle Telegram",
     "Tu peux piloter le site avec un niveau de confort premium, sans ouvrir le navigateur.",
     "",
     "Menu rapide: les boutons inline donnent accès aux actions clés en un geste.",
@@ -5066,7 +5069,7 @@ function buildTelegramStatusText(data = {}) {
   const db = data?.db || {};
   const coupons = data?.couponStats?.data?.stats || data?.couponStats?.data || {};
   return [
-    "ETAT SYSTEME | SOLITFIFPRO225",
+    "ETAT SYSTEME | ONE-DELUX",
     `Serveur principal: ${health?.success === false ? "attention requise" : "stable"}`,
     `Uptime: ${health?.uptimeSec ?? 0}s`,
     `Base de donnees: ${db?.status || health?.database?.status || "unknown"}`,
@@ -5132,7 +5135,7 @@ function buildTelegramDashboardText(data = {}) {
     ? `Dernier ticket: ${Number(session?.lastCoupon?.summary?.totalSelections || session?.lastCoupon?.coupon?.length || 0)} selection(s) | Cote ${formatOddForTelegram(session?.lastCoupon?.summary?.combinedOdd)}`
     : "Dernier ticket: aucun";
   return [
-    "TABLEAU DE BORD | SOLITFIFPRO225",
+    "TABLEAU DE BORD | ONE-DELUX",
     `Serveur: ${health?.success === false ? "KO" : "OK"}`,
     `Base de donnees: ${db?.status || health?.database?.status || "unknown"}`,
     `Matchs live / a venir / termines: ${liveCount} / ${upcomingCount} / ${finishedCount}`,
@@ -5377,7 +5380,7 @@ async function sendTelegramCouponMedia(botToken, chatId, couponData, { mode = "d
     chatId,
     new Blob([buffer], { type: useFormat === "jpg" ? "image/jpeg" : "image/png" }),
     `coupon-fc25-${normalizedMode}-${Date.now()}.${useFormat === "jpg" ? "jpg" : "png"}`,
-    "Coupon image - SOLITFIFPRO225 | Signe: SOLITAIRE HACK"
+    "Coupon image - ONE-DELUX | Signe: SOLITAIRE HACK"
   );
 }
 
@@ -5455,7 +5458,7 @@ async function sendTelegramCouponHandler(req, res) {
         chatId,
         new Blob([img], { type: mime }),
         `coupon-fc25-${Date.now()}.${ext}`,
-        "Coupon image - SOLITFIFPRO225 | Signe: SOLITAIRE HACK"
+        "Coupon image - ONE-DELUX | Signe: SOLITAIRE HACK"
       );
       try {
         await saveGeneratedAsset(
@@ -5608,7 +5611,7 @@ async function sendTelegramCouponPackHandler(req, res) {
       chatId,
       new Blob([imageBuffer], { type: imageFormat === "jpg" ? "image/jpeg" : "image/png" }),
       `coupon-fc25-${Date.now()}.${imageFormat === "jpg" ? "jpg" : "png"}`,
-      "Coupon image - SOLITFIFPRO225 | Signe: SOLITAIRE HACK"
+      "Coupon image - ONE-DELUX | Signe: SOLITAIRE HACK"
     );
     try {
       await saveGeneratedAsset(
@@ -5632,7 +5635,7 @@ async function sendTelegramCouponPackHandler(req, res) {
       chatId,
       new Blob([pdf], { type: "application/pdf" }),
       `coupon-fc25-rapide-${Date.now()}.pdf`,
-      "Coupon PDF rapide - SOLITFIFPRO225"
+      "Coupon PDF rapide - ONE-DELUX"
     );
     try {
       await saveGeneratedAsset(
@@ -5878,7 +5881,7 @@ async function executeTelegramSiteAction(action, state = {}) {
     const runs = Array.isArray(tracking?.data?.runs) ? tracking.data.runs : [];
     const matches = Array.isArray(tracking?.data?.matches) ? tracking.data.matches : [];
     const lines = [
-      "SUIVI MATCHS | SOLITFIFPRO225",
+      "SUIVI MATCHS | ONE-DELUX",
       `Actif: ${tracker?.enabled ? "oui" : "non"} | Intervalle: ${tracker?.intervalSeconds || matchTrackingConfig.intervalSeconds}s`,
       `En cours: ${tracker?.running ? "oui" : "non"} | Runs: ${tracker?.lastRunCount ?? state?.totalRuns ?? 0}`,
       `Dernier passage: ${state?.lastCompletedAt || state?.updatedAt || "n/a"}`,
@@ -5948,7 +5951,7 @@ async function executeTelegramSiteAction(action, state = {}) {
         chatId,
         new Blob([pdf], { type: "application/pdf" }),
         `coupon-fc25-${pdfMode}-${Date.now()}.pdf`,
-        `Coupon PDF ${pdfMode} - SOLITFIFPRO225`
+        `Coupon PDF ${pdfMode} - ONE-DELUX`
       );
       return true;
     }
@@ -6068,7 +6071,7 @@ async function executeTelegramSiteAction(action, state = {}) {
       chatId,
       new Blob([buffer], { type: "image/png" }),
       `match-fc25-${Date.now()}.png`,
-      "Match details - SOLITFIFPRO225"
+      "Match details - ONE-DELUX"
     );
     return true;
   }
@@ -6361,7 +6364,7 @@ async function handleTelegramWebhookUpdate(req, res) {
           chatId,
           new Blob([imageBuffer], { type: "image/png" }),
           `coupon-fc25-${Date.now()}.png`,
-          "Coupon image - SOLITFIFPRO225 | Signe: SOLITAIRE HACK"
+          "Coupon image - ONE-DELUX | Signe: SOLITAIRE HACK"
         );
         const pdfBuffer = buildCouponPdfBuffer(couponForMedia, "quick");
         await sendTelegramDocument(
@@ -6369,7 +6372,7 @@ async function handleTelegramWebhookUpdate(req, res) {
           chatId,
           new Blob([pdfBuffer], { type: "application/pdf" }),
           `coupon-fc25-rapide-${Date.now()}.pdf`,
-          "Coupon PDF rapide - SOLITFIFPRO225"
+          "Coupon PDF rapide - ONE-DELUX"
         );
         await persistTelegramSession(session, chatMeta);
         return res.json({ success: true });
@@ -6391,7 +6394,7 @@ async function handleTelegramWebhookUpdate(req, res) {
           chatId,
           new Blob([buffer], { type: imageFormat === "jpg" ? "image/jpeg" : "image/png" }),
           `coupon-fc25-${imageMode}-${Date.now()}.${imageFormat === "jpg" ? "jpg" : "png"}`,
-          "Coupon image - SOLITFIFPRO225 | Signe: SOLITAIRE HACK"
+          "Coupon image - ONE-DELUX | Signe: SOLITAIRE HACK"
         );
         return respond(textOut);
       }
@@ -6405,7 +6408,7 @@ async function handleTelegramWebhookUpdate(req, res) {
           chatId,
           new Blob([pdfBuffer], { type: "application/pdf" }),
           `coupon-fc25-${pdfMode}-${Date.now()}.pdf`,
-          `Coupon PDF ${pdfMode} - SOLITFIFPRO225`
+          `Coupon PDF ${pdfMode} - ONE-DELUX`
         );
         return respond(textOut);
       }
@@ -6456,7 +6459,7 @@ async function handleTelegramWebhookUpdate(req, res) {
       const runs = Array.isArray(tracking?.data?.runs) ? tracking.data.runs : [];
       const matches = Array.isArray(tracking?.data?.matches) ? tracking.data.matches : [];
       const lines = [
-        "SUIVI MATCHS | SOLITFIFPRO225",
+        "SUIVI MATCHS | ONE-DELUX",
         `Actif: ${tracker?.enabled ? "oui" : "non"} | Intervalle: ${tracker?.intervalSeconds || matchTrackingConfig.intervalSeconds}s`,
         `En cours: ${tracker?.running ? "oui" : "non"} | Runs: ${tracker?.lastRunCount ?? state?.totalRuns ?? 0}`,
         `Dernier passage: ${state?.lastCompletedAt || state?.updatedAt || "n/a"}`,
@@ -6925,13 +6928,13 @@ app.post("/api/chat", validateBody(chatSchema), async (req, res) => {
     const webResearchContext = await buildWebResearchContext(message);
 
     const systemPrompt =
-      "Tu es SOLITAIRE AI, bras operationnel du site FIFA Virtual Predictions (SOLITFIFPRO225, signe SOLITAIRE HACK). " +
-      "Tu as la main sur les actions securisees exposees par le site (navigation, refresh, generation coupon, exports PNG/JPG, PDF, Telegram, reglages) via le mecanisme d'actions renvoye par le serveur. " +
-      "Reponds en francais, ton premium et clair (1 a 5 phrases). " +
+      "Tu es SOLITAIRE AI, bras operationnel du site ONE-DELUX (signe SOLITAIRE HACK). " +
+      "Tu as acces au snapshot de page, au contexte runtime, a l'historique conversationnel, aux actions securisees exposees par le serveur et aux connaissances du site. " +
+      "Tu dois t'appuyer d'abord sur ces donnees, puis sur la recherche web contextuelle si elle est fournie. " +
+      "Reponds en francais, dans un ton fluide, amical, professionnel et precis, en 1 a 5 phrases. " +
       "Priorite: guider vers une action concrete (bouton ou phrase declencheur) plutot que du blabla. " +
+      "Si l'information existe dans le site ou dans le contexte fourni, exploite-la sans hesitation. Si elle manque, dis-le clairement et propose la meilleure alternative. " +
       "Tu peux repondre aussi aux questions generales hors site, sans recadrer de force. " +
-      "Si la question concerne le site, reste tres operationnel. Si elle est generale, reponds simplement et clairement. " +
-      "Quand une recherche web contextuelle est fournie, appuie-toi dessus et cite la source en texte court si utile. " +
       "Quand on te demande si tu vois la page, reponds OUI et cite le snapshot (titres, selections, boutons). " +
       "Tu ne promets jamais un gain garanti.\n\n" +
       siteKnowledge;
@@ -6939,7 +6942,7 @@ app.post("/api/chat", validateBody(chatSchema), async (req, res) => {
     const runtimeContext = await buildDynamicRuntimeContext({ page, league, matchId });
 
     const userPrompt = [
-      "Mode: assistant operationnel site uniquement. Priorite execution et reponse precise.",
+      "Mode: assistant operationnel site uniquement. Priorite execution, reponse precise, ton fluide et professionnel.",
       chatHistory.length
         ? `Historique conversation recente:\n${chatHistory
             .map((m) => `${m.role === "user" ? "Utilisateur" : "Assistant"}: ${m.text}`)
@@ -7360,4 +7363,5 @@ function startServer(startPort, triesLeft = MAX_PORT_TRIES) {
 }
 
 startServer(DEFAULT_PORT);
+
 

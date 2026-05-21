@@ -210,7 +210,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification('SOLITFIFPRO225', options)
+    self.registration.showNotification('ONE-DELUX', options)
   );
 });
 

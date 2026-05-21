@@ -313,7 +313,7 @@ class MobileEnhancer {
     banner.className = 'install-banner';
     banner.innerHTML = `
       <div class="install-banner-content">
-        <span>📱 Installez SOLITFIFPRO225</span>
+        <span>📱 Installez ONE-DELUX</span>
         <button id="installBtn">Installer</button>
         <button id="dismissBtn">Plus tard</button>
       </div>

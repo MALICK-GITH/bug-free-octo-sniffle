@@ -77,7 +77,7 @@ class MatchPDFExport {
             <div class="export-options">
               <label class="export-option">
                 <input type="checkbox" id="includeBranding" checked>
-                <span>Branding FIFA PRO</span>
+                <span>Branding ONE-DELUX</span>
               </label>
               <label class="export-option">
                 <input type="checkbox" id="includeWatermark">
@@ -384,7 +384,7 @@ class MatchPDFExport {
     if (options.includeBranding) {
       content += `
         <div class="header">
-          <div class="logo">⚽ FIFA PRO - Analyse Expert</div>
+          <div class="logo">⚽ ONE-DELUX - Analyse Expert</div>
           <div class="match-title">${matchData.teamHome} vs ${matchData.teamAway}</div>
           <div>${matchData.league || 'Ligue'} - ${timestamp}</div>
         </div>
@@ -462,7 +462,7 @@ class MatchPDFExport {
     // Footer
     content += `
       <div class="footer">
-        <div>📊 Analyse générée par FIFA PRO - ${timestamp}</div>
+        <div>📊 Analyse générée par ONE-DELUX - ${timestamp}</div>
         <div>Cette analyse est basée sur des modèles IA et des données statistiques</div>
         ${options.includeWatermark ? '<div>🔒 Document confidentiel - Usage interne uniquement</div>' : ''}
       </div>
@@ -497,7 +497,7 @@ class MatchPDFExport {
   generateCSVContent(options) {
     const matchData = this.getCurrentMatchData();
     
-    let csv = 'FIFA PRO - Analyse de Match\n\n';
+    let csv = 'ONE-DELUX - Analyse de Match\n\n';
     csv += 'Match Information\n';
     csv += `Équipe Domicile,${matchData.teamHome}\n`;
     csv += `Équipe Extérieur,${matchData.teamAway}\n`;

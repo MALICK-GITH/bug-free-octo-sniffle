@@ -72,14 +72,14 @@ class MobileCompleteOptimizer {
     if (this.isIOS) {
       this.addMetaTag('apple-mobile-web-app-capable', 'yes');
       this.addMetaTag('apple-mobile-web-app-status-bar-style', 'black-translucent');
-      this.addMetaTag('apple-mobile-web-app-title', 'FIFA PRO');
+      this.addMetaTag('apple-mobile-web-app-title', 'ONE-DELUX');
       this.addMetaTag('format-detection', 'telephone=no');
     }
 
     // Android specific meta tags
     if (this.isAndroid) {
       this.addMetaTag('mobile-web-app-capable', 'yes');
-      this.addMetaTag('application-name', 'FIFA PRO');
+      this.addMetaTag('application-name', 'ONE-DELUX');
       this.addMetaTag('theme-color', '#0a1628');
     }
 
