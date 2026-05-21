@@ -35,31 +35,32 @@
 
     <section class="hero updates-hero">
       <p class="tag">Journal de version</p>
-      <h1>Mises a jour</h1>
+      <h1>Ce que le site devient</h1>
       <p class="subtitle">
-        Chaque evolution importante du site est consignee ici. La page sert a la fois d'historique public et de
-        journal interne pour garder une trace claire des changements deployes.
+        Cette page n'est pas un espace de publication libre. Elle raconte l'evolution du site depuis sa creation:
+        ce qui a ete ajoute, ce que chaque changement apporte, ce qu'il complique parfois, et ce qui est deja en
+        preparation.
       </p>
       <div class="hero-metric-strip" aria-hidden="true">
         <article class="hero-metric-card">
-          <span>Traceabilite</span>
-          <strong>Historique vivant</strong>
-          <em>Chaque mise a jour ajoute un point de repere clair pour l'equipe.</em>
-        </article>
-        <article class="hero-metric-card">
           <span>Lecture</span>
-          <strong>Changelog lisible</strong>
-          <em>Les versions, categories et impacts sont regroupes dans un flux net.</em>
+          <strong>Historique vivant</strong>
+          <em>Chaque version devient un repere public et lisible.</em>
         </article>
         <article class="hero-metric-card">
-          <span>Publication</span>
-          <strong>Ajout instantane</strong>
-          <em>Un formulaire simple permet de consigner une nouvelle version en quelques secondes.</em>
+          <span>Valeur</span>
+          <strong>Avantages clairs</strong>
+          <em>Les gains concrets du site sont exposes sans jargon inutile.</em>
         </article>
         <article class="hero-metric-card">
-          <span>Focus</span>
-          <strong>Produit d'abord</strong>
-          <em>Les changements majeurs restent visibles sans noyer le reste du site.</em>
+          <span>Transparence</span>
+          <strong>Limites assumees</strong>
+          <em>Les compromis et points de vigilance restent visibles.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Projection</span>
+          <strong>Future excitante</strong>
+          <em>Les evolutions a venir donnent une vraie direction produit.</em>
         </article>
       </div>
     </section>
@@ -67,69 +68,62 @@
     <section class="updates-stats" id="updatesStats" aria-live="polite"></section>
 
     <section class="updates-layout">
-      <section class="panel updates-panel" aria-labelledby="publishTitle">
+      <section class="panel updates-panel updates-editorial" aria-labelledby="storyTitle">
         <div class="panel-head">
           <div>
-            <h2 id="publishTitle">Publier une mise a jour</h2>
-            <p>Remplis ce bloc pour archiver une nouvelle evolution du site dans l'historique.</p>
+            <h2 id="storyTitle">Lecture editoriale du produit</h2>
+            <p>Un resume de la progression du site, de ses forces, de ses compromis et de sa direction future.</p>
           </div>
           <button type="button" class="updates-refresh-btn" id="refreshUpdatesBtn">Rafraichir</button>
         </div>
 
-        <form id="updateForm" class="update-form">
-          <div class="update-form-grid">
-            <label>
-              <span>Version</span>
-              <input name="version" type="text" placeholder="ex: 2026.05.19" />
-            </label>
-            <label>
-              <span>Titre</span>
-              <input name="title" type="text" placeholder="ex: Nouvelle page Mises a jour" required />
-            </label>
-            <label>
-              <span>Categorie</span>
-              <select name="category">
-                <option value="Fonctionnel">Fonctionnel</option>
-                <option value="Design">Design</option>
-                <option value="Performance">Performance</option>
-                <option value="Mobile">Mobile</option>
-                <option value="Data">Data</option>
-                <option value="Securite">Securite</option>
-                <option value="Autre">Autre</option>
-              </select>
-            </label>
-            <label>
-              <span>Auteur</span>
-              <input name="author" type="text" placeholder="SOLITAIRE HACK" value="SOLITAIRE HACK" />
-            </label>
+        <div class="editorial-grid">
+          <article class="editorial-card editorial-card-positive">
+            <p class="editorial-kicker">Ce que le site apporte</p>
+            <h3>Des parcours plus rapides, plus lisibles, plus stables</h3>
+            <ul>
+              <li>Navigation plus directe entre matchs, coupon et suivi.</li>
+              <li>Lectures visuelles plus fortes pour guider la decision.</li>
+              <li>Persistance renforcee pour garder le contexte dans le temps.</li>
+            </ul>
+          </article>
+
+          <article class="editorial-card editorial-card-tradeoff">
+            <p class="editorial-kicker">Ce que cela coute</p>
+            <h3>Plus de structure, plus de donnees, plus de vigilance</h3>
+            <ul>
+              <li>Les historiques prennent plus de place mais deviennent utiles pour analyser.</li>
+              <li>Les visuels denses demandent de conserver une hiérarchie claire.</li>
+              <li>Les automatismes en arriere-plan doivent rester fiables et discrets.</li>
+            </ul>
+          </article>
+
+          <article class="editorial-card editorial-card-future">
+            <p class="editorial-kicker">Ce qui arrive</p>
+            <h3>Une page plus narrative, plus immersive et plus utile</h3>
+            <ul>
+              <li>Chronologie enrichie des ajouts majeurs depuis le lancement.</li>
+              <li>Comparaison plus nette entre gains immediats et limites restantes.</li>
+              <li>Mise en avant des prochaines fonctions pour maintenir l'enthousiasme.</li>
+            </ul>
+          </article>
+        </div>
+
+        <section class="editorial-roadmap" aria-labelledby="roadmapTitle">
+          <div class="panel-head panel-head-tight">
+            <div>
+              <h3 id="roadmapTitle">Direction produit</h3>
+              <p>Le site est pense comme un produit qui se raconte lui-meme au fil de ses ameliorations.</p>
+            </div>
           </div>
-
-          <label>
-            <span>Resume court</span>
-            <input name="summary" type="text" maxlength="500"
-              placeholder="Resume executif de la mise a jour" />
-          </label>
-
-          <label>
-            <span>Points cles</span>
-            <textarea name="highlights" rows="4"
-              placeholder="Une ligne par point cle. Exemple:\nAjout de la nouvelle page.\nSauvegarde de l'historique.\nNavigation integree."></textarea>
-          </label>
-
-          <label>
-            <span>Details</span>
-            <textarea name="details" rows="6"
-              placeholder="Decris ici ce qui a change, pourquoi, et ce que cela apporte au site."></textarea>
-          </label>
-
-          <div class="update-form-actions">
-            <label class="update-pin-toggle">
-              <input name="pinned" type="checkbox" />
-              <span>Mettre en avant</span>
-            </label>
-            <button type="submit" class="updates-submit-btn">Enregistrer la mise a jour</button>
+          <div class="roadmap-chips" aria-label="Axes de progression">
+            <span class="roadmap-chip is-live">Historique des changements</span>
+            <span class="roadmap-chip">Couverture coupon plus lisible</span>
+            <span class="roadmap-chip">Meilleure lecture des risques</span>
+            <span class="roadmap-chip">Suivi automatique en arriere-plan</span>
+            <span class="roadmap-chip">Archives produit plus claires</span>
           </div>
-        </form>
+        </section>
 
         <p class="updates-status" id="updatesStatus" aria-live="polite"></p>
       </section>
@@ -138,7 +132,7 @@
         <div class="panel-head">
           <div>
             <h2 id="latestUpdateTitle">Derniere version</h2>
-            <p>Le dernier enregistrement reste visible ici pour un repere rapide.</p>
+            <p>Le dernier changement en date reste visible ici comme reference rapide.</p>
           </div>
         </div>
         <article class="latest-update-card" id="latestUpdateCard">
@@ -151,7 +145,7 @@
       <div class="panel-head">
         <div>
           <h2 id="historyTitle">Historique complet</h2>
-          <p>Toutes les mises a jour enregistrees apparaissent ici dans l'ordre du plus recent au plus ancien.</p>
+          <p>Toutes les versions enregistrees sont affichees du plus recent au plus ancien.</p>
         </div>
         <span class="updates-feed-count" id="updatesCount">0 entree</span>
       </div>

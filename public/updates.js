@@ -3,7 +3,6 @@ const updatesStats = document.getElementById("updatesStats");
 const updatesCount = document.getElementById("updatesCount");
 const updatesStatus = document.getElementById("updatesStatus");
 const latestUpdateCard = document.getElementById("latestUpdateCard");
-const updateForm = document.getElementById("updateForm");
 const refreshUpdatesBtn = document.getElementById("refreshUpdatesBtn");
 
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
@@ -41,32 +40,44 @@ function updateStatus(message, tone = "neutral") {
   updatesStatus.dataset.tone = tone;
 }
 
-function renderStats(items = []) {
+function summarizeItems(items = []) {
   const total = items.length;
   const latest = items[0] || null;
   const pinned = items.filter((item) => item.pinned).length;
   const categories = new Set(items.map((item) => item.category).filter(Boolean)).size;
+  const lastCategory = latest?.category || "Vision produit";
+  return {
+    total,
+    latest,
+    pinned,
+    categories,
+    lastCategory,
+  };
+}
+
+function renderStats(items = []) {
+  const summary = summarizeItems(items);
 
   updatesStats.innerHTML = `
     <article class="update-stat">
-      <span>Total</span>
-      <strong>${total}</strong>
-      <em>Entrees dans l'historique</em>
+      <span>Chronologie</span>
+      <strong>${summary.total}</strong>
+      <em>Versions conservees depuis le lancement</em>
     </article>
     <article class="update-stat">
       <span>Derniere version</span>
-      <strong>${latest ? escapeHtml(latest.version || latest.title) : "-"}</strong>
-      <em>${latest ? escapeHtml(formatDate(latest.createdAt)) : "Aucune publication"}</em>
+      <strong>${summary.latest ? escapeHtml(summary.latest.version || summary.latest.title) : "-"}</strong>
+      <em>${summary.latest ? escapeHtml(formatDate(summary.latest.createdAt)) : "Aucune publication"}</em>
     </article>
     <article class="update-stat">
-      <span>En avant</span>
-      <strong>${pinned}</strong>
-      <em>Versions marquees importantes</em>
+      <span>Signal fort</span>
+      <strong>${summary.pinned}</strong>
+      <em>Mises en avant qui definissent la direction du site</em>
     </article>
     <article class="update-stat">
-      <span>Categorie</span>
-      <strong>${categories}</strong>
-      <em>Axes de changement differents</em>
+      <span>Angles couverts</span>
+      <strong>${summary.categories}</strong>
+      <em>${escapeHtml(summary.lastCategory)} comme derniere couleur editoriale</em>
     </article>
   `;
 }
@@ -74,7 +85,12 @@ function renderStats(items = []) {
 function renderLatestUpdate(update) {
   if (!latestUpdateCard) return;
   if (!update) {
-    latestUpdateCard.innerHTML = '<p class="latest-update-empty">Aucune mise a jour enregistree pour le moment.</p>';
+    latestUpdateCard.innerHTML = `
+      <div class="empty-callout">
+        <p class="latest-update-empty">Aucune mise a jour enregistree pour le moment.</p>
+        <p class="latest-update-empty">Ajoute une premiere version pour faire vivre le journal produit.</p>
+      </div>
+    `;
     return;
   }
 
@@ -82,7 +98,7 @@ function renderLatestUpdate(update) {
 }
 
 function renderUpdateCard(update, featured = false) {
-  const highlights = Array.isArray(update.highlights) ? update.highlights : [];
+  const highlights = Array.isArray(update.highlights) ? update.highlights : splitHighlights(update.highlights);
   const highlightList = highlights.length
     ? `<ul class="update-highlights">${highlights.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
     : "";
@@ -116,7 +132,11 @@ function renderUpdateCard(update, featured = false) {
 function renderFeed(items = []) {
   if (!updatesFeed) return;
   if (!items.length) {
-    updatesFeed.innerHTML = '<p class="update-empty">Aucune mise a jour n\'a encore ete publiee.</p>';
+    updatesFeed.innerHTML = `
+      <article class="update-card update-card-empty">
+        <p class="update-empty">Aucune mise a jour n'a encore ete publiee.</p>
+      </article>
+    `;
     if (updatesCount) updatesCount.textContent = "0 entree";
     return;
   }
@@ -128,7 +148,7 @@ function renderFeed(items = []) {
 }
 
 async function loadUpdates() {
-  updateStatus("Chargement de l'historique...", "neutral");
+  updateStatus("Chargement de l'historique editorial...", "neutral");
   refreshUpdatesBtn.disabled = true;
 
   try {
@@ -138,7 +158,7 @@ async function loadUpdates() {
     renderStats(items);
     renderLatestUpdate(items[0] || null);
     renderFeed(items);
-    updateStatus(items.length ? "Historique synchronise." : "Aucune mise a jour enregistree pour l'instant.", "success");
+    updateStatus(items.length ? "Journal produit synchronise." : "Le journal est vide pour l'instant.", "success");
   } catch (error) {
     renderStats([]);
     renderLatestUpdate(null);
@@ -149,68 +169,9 @@ async function loadUpdates() {
   }
 }
 
-function readFormPayload(form) {
-  const formData = new FormData(form);
-  return {
-    version: String(formData.get("version") || "").trim(),
-    title: String(formData.get("title") || "").trim(),
-    summary: String(formData.get("summary") || "").trim(),
-    details: String(formData.get("details") || "").trim(),
-    highlights: splitHighlights(formData.get("highlights")),
-    category: String(formData.get("category") || "").trim(),
-    author: String(formData.get("author") || "").trim(),
-    pinned: formData.get("pinned") === "on",
-  };
-}
-
-async function submitUpdate(event) {
-  event.preventDefault();
-  if (!updateForm) return;
-
-  const payload = readFormPayload(updateForm);
-  if (!payload.title) {
-    updateStatus("Le titre est obligatoire.", "error");
-    return;
-  }
-
-  updateStatus("Enregistrement en cours...", "neutral");
-  const submitButton = updateForm.querySelector('button[type="submit"]');
-  if (submitButton instanceof HTMLButtonElement) submitButton.disabled = true;
-
-  try {
-    const response = await fetch("/api/updates", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-    const result = await response.json();
-
-    if (!response.ok || result?.success === false) {
-      throw new Error(result?.error?.message || result?.message || "Echec de l'enregistrement.");
-    }
-
-    updateForm.reset();
-    const authorField = updateForm.querySelector('input[name="author"]');
-    if (authorField instanceof HTMLInputElement) {
-      authorField.value = "SOLITAIRE HACK";
-    }
-
-    updateStatus(result?.message || "Mise a jour enregistree.", "success");
-    await loadUpdates();
-  } catch (error) {
-    updateStatus(`Impossible d'enregistrer la mise a jour: ${error.message}`, "error");
-  } finally {
-    if (submitButton instanceof HTMLButtonElement) submitButton.disabled = false;
-  }
-}
-
 refreshUpdatesBtn?.addEventListener("click", () => {
   loadUpdates().catch(() => null);
 });
-
-updateForm?.addEventListener("submit", submitUpdate);
 
 loadUpdates().catch((error) => {
   updateStatus(`Erreur au chargement initial: ${error.message}`, "error");

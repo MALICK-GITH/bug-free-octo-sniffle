@@ -42,9 +42,27 @@ function getWatchlistUserId() {
 }
 
 function extractScore(match = {}) {
-  const source = match?.score || match?.context || {};
-  const home = Number(source.S1 ?? source.score1 ?? source.H ?? source.Home ?? 0) || 0;
-  const away = Number(source.S2 ?? source.score2 ?? source.A ?? source.Away ?? 0) || 0;
+  const source = match?.score || match?.context || match || {};
+  const home = Number(
+    source.S1 ??
+      source.score1 ??
+      source.scoreHome ??
+      source.homeScore ??
+      source.H ??
+      source.Home ??
+      source.score_home ??
+      0
+  ) || 0;
+  const away = Number(
+    source.S2 ??
+      source.score2 ??
+      source.scoreAway ??
+      source.awayScore ??
+      source.A ??
+      source.Away ??
+      source.score_away ??
+      0
+  ) || 0;
   return { home, away };
 }
 
@@ -72,6 +90,59 @@ function classifyMatchStatus(match = {}) {
     return "live";
   }
   return "live";
+}
+
+function applyScoreHistoryFallback(match = {}, historyLatest = null) {
+  if (!historyLatest || typeof historyLatest !== "object") return match;
+  const historyScore = {
+    home: Number(historyLatest.scoreHome ?? historyLatest.score_home ?? 0) || 0,
+    away: Number(historyLatest.scoreAway ?? historyLatest.score_away ?? 0) || 0,
+  };
+  const matchScore = extractScore(match);
+  const shouldReplace =
+    historyScore.home !== matchScore.home ||
+    historyScore.away !== matchScore.away ||
+    (Number(historyLatest.minute || 0) > Number(match?.context?.minute || 0));
+
+  if (!shouldReplace) return match;
+
+  return {
+    ...match,
+    scoreHome: historyScore.home,
+    scoreAway: historyScore.away,
+    score: {
+      ...(match?.score || {}),
+      S1: historyScore.home,
+      S2: historyScore.away,
+      score1: historyScore.home,
+      score2: historyScore.away,
+      scoreHome: historyScore.home,
+      scoreAway: historyScore.away,
+    },
+    context: {
+      ...(match?.context || {}),
+      score1: historyScore.home,
+      score2: historyScore.away,
+      minute: Number(historyLatest.minute || match?.context?.minute || 0) || 0,
+    },
+    statusText: historyLatest.status === "finished" ? "Terminé" : historyLatest.status || match?.statusText || "",
+    phase: historyLatest.status === "finished" ? "Terminé" : historyLatest.status || match?.phase || "",
+    statusCode: historyLatest.status === "finished" ? 3 : match?.statusCode || 0,
+    updatedAt: historyLatest.createdAt || historyLatest.created_at || match?.updatedAt || null,
+  };
+}
+
+async function fetchMatchHistory(matchId) {
+  try {
+    const response = await fetch(`/api/match/${encodeURIComponent(matchId)}/history?limit=20`, { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok || payload?.success === false) {
+      throw new Error(payload?.error?.message || payload?.message || "Historique indisponible");
+    }
+    return payload;
+  } catch (_error) {
+    return null;
+  }
 }
 
 function evaluateOutcome(details = {}) {
@@ -317,11 +388,24 @@ async function loadFollowData() {
     const items = await Promise.all(
       watchlist.ids.map(async (matchId) => {
         const details = await fetchMatchDetails(matchId);
+        const history = await fetchMatchHistory(matchId);
         const fallback = watchlist.snapshot?.[matchId] || {};
-        const match = details?.match || {};
+        const historyLatest = history?.data?.latest || history?.latest || history?.data?.history?.[0] || null;
+        const match = applyScoreHistoryFallback(details?.match || {}, historyLatest);
         const prediction = details?.prediction || {};
-        const status = classifyMatchStatus(match);
+        const status =
+          historyLatest?.status === "finished"
+            ? "finished"
+            : classifyMatchStatus(historyLatest ? { ...match, statusText: historyLatest.status || match.statusText } : match);
         const score = extractScore(match);
+        const historyScore = historyLatest ? {
+          home: Number(historyLatest.scoreHome ?? historyLatest.score_home ?? 0) || 0,
+          away: Number(historyLatest.scoreAway ?? historyLatest.score_away ?? 0) || 0,
+        } : null;
+        const displayScore =
+          historyScore && (historyScore.home !== score.home || historyScore.away !== score.away)
+            ? historyScore
+            : score;
         return {
           matchId,
           homeTeam: match.teamHome || fallback.teamHome || fallback.homeTeam || "Match suivi",
@@ -332,13 +416,16 @@ async function loadFollowData() {
           phase: match.phase || fallback.phase || "",
           updatedAt: details?.meta?.timestamp || fallback.updatedAt || null,
           createdAt: fallback.createdAt || null,
-          score,
+          score: displayScore,
           predictionLabel:
             prediction?.maitre?.decision_finale?.pari_choisi ||
             prediction?.analyse_avancee?.top_3_recommandations?.[0]?.pari ||
             fallback.predictionLabel ||
             "",
-          outcome: evaluateOutcome(details || { match: fallback, prediction }),
+          outcome: evaluateOutcome({
+            match,
+            prediction,
+          }),
         };
       })
     );

@@ -16,6 +16,18 @@ Variables minimales:
 - `DB_FILE=data/app.sqlite`
 - `TELEGRAM_BOT_TOKEN=...` (optionnel mais recommande)
 
+Variables base de donnees:
+
+- `DATABASE_URL=...` ou `DB_HOST` / `DB_NAME` / `DB_USER` / `DB_PASSWORD`
+- `DB_SSL=false` si ton hebergement ne supporte pas le SSL PostgreSQL
+- `DB_POOL_MAX=20` pour la taille du pool de connexions
+
+Variables tracker de matchs:
+
+- `MATCH_TRACKER_ENABLED=1`
+- `MATCH_TRACKER_INTERVAL_SECONDS=60`
+- `MATCH_TRACKER_KEY=default`
+
 3. Lancer le serveur
 
 ```bash
@@ -34,6 +46,9 @@ Le projet utilise SQLite par defaut et cree automatiquement:
 - `coupon_generations`
 - `coupon_validations`
 - `telegram_logs`
+- `matches`
+- `match_tracking_runs`
+- `match_tracking_state`
 
 Fichier DB par defaut:
 

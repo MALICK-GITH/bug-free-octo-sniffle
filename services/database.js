@@ -278,6 +278,37 @@ class DatabaseService {
         last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )`,
 
+      `CREATE TABLE IF NOT EXISTS match_tracking_state (
+        id SERIAL PRIMARY KEY,
+        tracker_key VARCHAR(120) UNIQUE NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        interval_seconds INTEGER NOT NULL DEFAULT 60,
+        total_runs INTEGER NOT NULL DEFAULT 0,
+        last_started_at TIMESTAMP,
+        last_completed_at TIMESTAMP,
+        last_success_at TIMESTAMP,
+        last_error_at TIMESTAMP,
+        last_error_text TEXT,
+        last_snapshot JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS match_tracking_runs (
+        id SERIAL PRIMARY KEY,
+        tracker_key VARCHAR(120) NOT NULL,
+        source VARCHAR(120) NOT NULL DEFAULT 'liveFeed',
+        status VARCHAR(40) NOT NULL DEFAULT 'ok',
+        live_count INTEGER NOT NULL DEFAULT 0,
+        upcoming_count INTEGER NOT NULL DEFAULT 0,
+        finished_count INTEGER NOT NULL DEFAULT 0,
+        total_count INTEGER NOT NULL DEFAULT 0,
+        snapshot JSONB DEFAULT '{}'::jsonb,
+        error_text TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+
       // Analytics table
       `CREATE TABLE IF NOT EXISTS analytics (
         id SERIAL PRIMARY KEY,
@@ -297,6 +328,23 @@ class DatabaseService {
         description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS match_score_history (
+        id SERIAL PRIMARY KEY,
+        match_id VARCHAR(50) NOT NULL,
+        state_hash VARCHAR(255) NOT NULL,
+        team_home VARCHAR(100) NOT NULL,
+        team_away VARCHAR(100) NOT NULL,
+        league VARCHAR(100) NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        minute INTEGER NOT NULL DEFAULT 0,
+        score_home INTEGER NOT NULL DEFAULT 0,
+        score_away INTEGER NOT NULL DEFAULT 0,
+        source VARCHAR(120),
+        snapshot JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (match_id, state_hash)
       )`,
 
       `CREATE TABLE IF NOT EXISTS subscription_plans (
@@ -372,6 +420,8 @@ class DatabaseService {
       `CREATE INDEX IF NOT EXISTS idx_matches_league ON matches(league)`,
       `CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status)`,
       `CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_match_score_history_match_id_created_at ON match_score_history(match_id, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_match_tracking_runs_tracker_key_created_at ON match_tracking_runs(tracker_key, created_at)`,
       `CREATE INDEX IF NOT EXISTS idx_coupons_user_id ON coupons(user_id)`,
       `CREATE INDEX IF NOT EXISTS idx_coupons_status ON coupons(status)`,
       `CREATE INDEX IF NOT EXISTS idx_coupons_created_at ON coupons(created_at)`,
@@ -560,6 +610,324 @@ class DatabaseService {
     const query = 'SELECT * FROM predictions WHERE match_id = $1 ORDER BY created_at DESC';
     const result = await this.query(query, [matchId]);
     return result.rows;
+  }
+
+  normalizeTrackedMatch(matchData = {}, extra = {}) {
+    const teamHome = String(matchData.teamHome || matchData.team1 || matchData.homeTeam || matchData.O1 || "").trim() || "Equipe 1";
+    const teamAway = String(matchData.teamAway || matchData.team2 || matchData.awayTeam || matchData.O2 || "").trim() || "Equipe 2";
+    const league = String(matchData.league || extra.league || "").trim() || "unknown";
+    const status = String(matchData.status || extra.status || "upcoming").trim().toLowerCase();
+    const minute = Number(matchData.minute ?? extra.minute ?? 0) || 0;
+    const startTimeUnix = Number(matchData.startTimeUnix ?? matchData.start_time_unix ?? extra.startTimeUnix ?? 0) || null;
+    const scoreHome = Number(matchData.scoreHome ?? matchData.score1 ?? matchData.homeScore ?? 0) || 0;
+    const scoreAway = Number(matchData.scoreAway ?? matchData.score2 ?? matchData.awayScore ?? 0) || 0;
+    return {
+      matchId: String(matchData.matchId || matchData.id || matchData.match_id || extra.matchId || "").trim(),
+      teamHome,
+      teamAway,
+      league,
+      status,
+      minute,
+      startTimeUnix,
+      scoreHome,
+      scoreAway,
+      odds: matchData.odds || matchData.odd || {},
+      prediction: matchData.prediction || extra.prediction || {},
+      source: String(matchData.source || extra.source || "liveFeed").trim() || "liveFeed",
+    };
+  }
+
+  buildMatchScoreStateHash(match = {}) {
+    return [match.status || "unknown", Number(match.minute) || 0, Number(match.scoreHome) || 0, Number(match.scoreAway) || 0].join("|");
+  }
+
+  buildMatchScoreSnapshot(match = {}, extra = {}) {
+    return {
+      matchId: match.matchId || extra.matchId || null,
+      teamHome: match.teamHome || extra.teamHome || null,
+      teamAway: match.teamAway || extra.teamAway || null,
+      league: match.league || extra.league || null,
+      status: match.status || extra.status || null,
+      minute: Number(match.minute) || 0,
+      scoreHome: Number(match.scoreHome) || 0,
+      scoreAway: Number(match.scoreAway) || 0,
+      source: match.source || extra.source || "liveFeed",
+      odds: match.odds || extra.odds || {},
+      prediction: match.prediction || extra.prediction || {},
+      observedAt: extra.observedAt || new Date().toISOString(),
+    };
+  }
+
+  async upsertTrackedMatch(matchData = {}) {
+    const match = this.normalizeTrackedMatch(matchData);
+    if (!match.matchId) {
+      throw new Error("match_id requis");
+    }
+    if (this.useFallback || !this.pool) {
+      return fallbackDb.upsertTrackedMatch(match);
+    }
+    const result = await this.query(
+      `INSERT INTO matches (match_id, team1, team2, league, score1, score2, minute, status, odds, prediction)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (match_id) DO UPDATE SET
+         team1 = EXCLUDED.team1,
+         team2 = EXCLUDED.team2,
+         league = EXCLUDED.league,
+         score1 = EXCLUDED.score1,
+         score2 = EXCLUDED.score2,
+         minute = EXCLUDED.minute,
+         status = EXCLUDED.status,
+         odds = EXCLUDED.odds,
+         prediction = EXCLUDED.prediction,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [
+        match.matchId,
+        match.teamHome,
+        match.teamAway,
+        match.league,
+        match.scoreHome,
+        match.scoreAway,
+        match.minute,
+        match.status,
+        JSON.stringify(match.odds || {}),
+        JSON.stringify(match.prediction || {}),
+      ]
+    );
+    try {
+      await this.saveMatchScoreHistory(match);
+    } catch (historyError) {
+      console.warn(`Impossible de persister l'historique du score pour ${match.matchId}: ${historyError.message}`);
+    }
+    return result.rows[0] || null;
+  }
+
+  async saveMatchScoreHistory(matchData = {}) {
+    const match = this.normalizeTrackedMatch(matchData);
+    if (!match.matchId) {
+      throw new Error("match_id requis");
+    }
+    if (this.useFallback || !this.pool) {
+      return fallbackDb.saveMatchScoreHistory(match);
+    }
+
+    const stateHash = this.buildMatchScoreStateHash(match);
+    const snapshot = this.buildMatchScoreSnapshot(match, matchData.snapshot || matchData);
+    const result = await this.query(
+      `INSERT INTO match_score_history (
+         match_id, state_hash, team_home, team_away, league, status, minute, score_home, score_away, source, snapshot
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (match_id, state_hash) DO NOTHING
+       RETURNING *`,
+      [
+        match.matchId,
+        stateHash,
+        match.teamHome,
+        match.teamAway,
+        match.league,
+        match.status,
+        match.minute,
+        match.scoreHome,
+        match.scoreAway,
+        match.source,
+        JSON.stringify(snapshot),
+      ]
+    );
+    return result.rows[0] || null;
+  }
+
+  async saveMatchTrackingState(entry = {}) {
+    const trackerKey = String(entry.trackerKey || "default").trim() || "default";
+    const snapshot = entry.snapshot || {};
+    if (this.useFallback || !this.pool) {
+      return fallbackDb.upsertMatchTrackingState({
+        trackerKey,
+        enabled: entry.enabled !== false,
+        intervalSeconds: entry.intervalSeconds || 60,
+        totalRuns: Number(entry.totalRuns) || 0,
+        lastStartedAt: entry.lastStartedAt || null,
+        lastCompletedAt: entry.lastCompletedAt || null,
+        lastSuccessAt: entry.lastSuccessAt || null,
+        lastErrorAt: entry.lastErrorAt || null,
+        lastErrorText: entry.lastErrorText || null,
+        snapshot,
+      });
+    }
+    const result = await this.query(
+      `INSERT INTO match_tracking_state (
+         tracker_key, enabled, interval_seconds, total_runs, last_started_at, last_completed_at,
+         last_success_at, last_error_at, last_error_text, last_snapshot
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (tracker_key) DO UPDATE SET
+         enabled = EXCLUDED.enabled,
+         interval_seconds = EXCLUDED.interval_seconds,
+         total_runs = EXCLUDED.total_runs,
+         last_started_at = EXCLUDED.last_started_at,
+         last_completed_at = EXCLUDED.last_completed_at,
+         last_success_at = EXCLUDED.last_success_at,
+         last_error_at = EXCLUDED.last_error_at,
+         last_error_text = EXCLUDED.last_error_text,
+         last_snapshot = EXCLUDED.last_snapshot,
+         updated_at = CURRENT_TIMESTAMP,
+         last_seen_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [
+        trackerKey,
+        entry.enabled === false ? false : true,
+        Math.max(10, Number(entry.intervalSeconds) || 60),
+        Math.max(0, Number(entry.totalRuns) || 0),
+        entry.lastStartedAt || null,
+        entry.lastCompletedAt || null,
+        entry.lastSuccessAt || null,
+        entry.lastErrorAt || null,
+        entry.lastErrorText || null,
+        JSON.stringify(snapshot || {}),
+      ]
+    );
+    return result.rows[0] || null;
+  }
+
+  async saveMatchTrackingRun(entry = {}) {
+    const trackerKey = String(entry.trackerKey || "default").trim() || "default";
+    const snapshot = entry.snapshot || {};
+    const counts = entry.counts || {};
+    if (this.useFallback || !this.pool) {
+      return fallbackDb.saveMatchTrackingRun({
+        trackerKey,
+        source: entry.source || "liveFeed",
+        status: entry.status || (entry.error ? "error" : "ok"),
+        counts,
+        snapshot,
+        error: entry.error || null,
+      });
+    }
+    const result = await this.query(
+      `INSERT INTO match_tracking_runs (
+         tracker_key, source, status, live_count, upcoming_count, finished_count, total_count, snapshot, error_text
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        trackerKey,
+        String(entry.source || "liveFeed").trim() || "liveFeed",
+        String(entry.status || (entry.error ? "error" : "ok")).trim().toLowerCase(),
+        Number(counts.live ?? entry.liveCount ?? 0) || 0,
+        Number(counts.upcoming ?? entry.upcomingCount ?? 0) || 0,
+        Number(counts.finished ?? entry.finishedCount ?? 0) || 0,
+        Number(counts.total ?? entry.totalCount ?? 0) || 0,
+        JSON.stringify(snapshot || {}),
+        entry.error || null,
+      ]
+    );
+    return result.rows[0] || null;
+  }
+
+  async saveMatchTrackingSnapshot(entry = {}) {
+    const trackerKey = String(entry.trackerKey || "default").trim() || "default";
+    const matches = Array.isArray(entry.matches) ? entry.matches : [];
+    const counts = {
+      live: Number(entry.counts?.live) || 0,
+      upcoming: Number(entry.counts?.upcoming) || 0,
+      finished: Number(entry.counts?.finished) || 0,
+      total: Number(entry.counts?.total) || matches.length,
+    };
+    const snapshot = {
+      counts,
+      source: String(entry.source || "liveFeed").trim() || "liveFeed",
+      fetchedAt: entry.fetchedAt || new Date().toISOString(),
+      matches,
+    };
+    for (const match of matches) {
+      await this.upsertTrackedMatch(match);
+    }
+    const state = await this.saveMatchTrackingState({
+      trackerKey,
+      enabled: entry.enabled !== false,
+      intervalSeconds: entry.intervalSeconds || 60,
+      totalRuns: Number(entry.totalRuns) || 0,
+      lastStartedAt: entry.lastStartedAt || snapshot.fetchedAt,
+      lastCompletedAt: entry.lastCompletedAt || snapshot.fetchedAt,
+      lastSuccessAt: entry.lastSuccessAt || snapshot.fetchedAt,
+      lastErrorAt: entry.lastErrorAt || null,
+      lastErrorText: entry.lastErrorText || null,
+      snapshot,
+    });
+    await this.saveMatchTrackingRun({
+      trackerKey,
+      source: snapshot.source,
+      status: entry.error ? "error" : "ok",
+      counts,
+      snapshot,
+      error: entry.error || null,
+    });
+    return { state, snapshot };
+  }
+
+  async getMatchTrackingState(trackerKey = "default") {
+    const safeKey = String(trackerKey || "default").trim() || "default";
+    if (this.useFallback || !this.pool) {
+      return fallbackDb.getMatchTrackingState(safeKey);
+    }
+    const result = await this.query(
+      `SELECT * FROM match_tracking_state WHERE tracker_key = $1 LIMIT 1`,
+      [safeKey]
+    );
+    return result.rows[0] || null;
+  }
+
+  async getMatchTrackingRuns(trackerKey = "default", limit = 20) {
+    const safeKey = String(trackerKey || "default").trim() || "default";
+    const safeLimit = Math.max(1, Math.min(200, Number(limit) || 20));
+    if (this.useFallback || !this.pool) {
+      return fallbackDb.getMatchTrackingRuns(safeKey, safeLimit);
+    }
+    const result = await this.query(
+      `SELECT * FROM match_tracking_runs WHERE tracker_key = $1 ORDER BY created_at DESC LIMIT $2`,
+      [safeKey, safeLimit]
+    );
+    return result.rows;
+  }
+
+  async getTrackedMatches(limit = 50) {
+    const safeLimit = Math.max(1, Math.min(500, Number(limit) || 50));
+    if (this.useFallback || !this.pool) {
+      return fallbackDb.getTrackedMatches(safeLimit);
+    }
+    const result = await this.query(
+      `SELECT * FROM matches ORDER BY updated_at DESC LIMIT $1`,
+      [safeLimit]
+    );
+    return result.rows;
+  }
+
+  async getMatchScoreHistory(matchId, limit = 120) {
+    const safeMatchId = String(matchId || "").trim();
+    const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 120));
+    if (!safeMatchId) {
+      return [];
+    }
+    if (this.useFallback || !this.pool) {
+      return fallbackDb.getMatchScoreHistory(safeMatchId, safeLimit);
+    }
+
+    const result = await this.query(
+      `SELECT * FROM match_score_history WHERE match_id = $1 ORDER BY id DESC LIMIT $2`,
+      [safeMatchId, safeLimit]
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      matchId: row.match_id,
+      stateHash: row.state_hash,
+      teamHome: row.team_home,
+      teamAway: row.team_away,
+      league: row.league,
+      status: row.status,
+      minute: Number(row.minute) || 0,
+      scoreHome: Number(row.score_home) || 0,
+      scoreAway: Number(row.score_away) || 0,
+      source: row.source || null,
+      snapshot: row.snapshot || {},
+      createdAt: row.created_at || null,
+    }));
   }
 
   // Analytics operations
@@ -1073,6 +1441,10 @@ class DatabaseService {
       const [sessionRows] = await this.pool.query("SELECT COUNT(*) AS c FROM auth_sessions");
       const [planRows] = await this.pool.query("SELECT COUNT(*) AS c FROM subscription_plans");
       const [usageRows] = await this.pool.query("SELECT COUNT(*) AS c FROM prediction_usage");
+      const [matchRows] = await this.pool.query("SELECT COUNT(*) AS c FROM matches");
+      const [scoreHistoryRows] = await this.pool.query("SELECT COUNT(*) AS c FROM match_score_history");
+      const [trackingRunRows] = await this.pool.query("SELECT COUNT(*) AS c FROM match_tracking_runs");
+      const [trackingStateRows] = await this.pool.query("SELECT COUNT(*) AS c FROM match_tracking_state");
 
       return {
         ok: true,
@@ -1085,6 +1457,10 @@ class DatabaseService {
           auth_sessions: Number(sessionRows?.[0]?.c) || 0,
           subscription_plans: Number(planRows?.[0]?.c) || 0,
           prediction_usage: Number(usageRows?.[0]?.c) || 0,
+          matches: Number(matchRows?.[0]?.c) || 0,
+          match_score_history: Number(scoreHistoryRows?.[0]?.c) || 0,
+          match_tracking_runs: Number(trackingRunRows?.[0]?.c) || 0,
+          match_tracking_state: Number(trackingStateRows?.[0]?.c) || 0,
         },
       };
     } catch (error) {
