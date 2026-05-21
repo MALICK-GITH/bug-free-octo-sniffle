@@ -29,6 +29,8 @@ const {
   saveCouponValidation,
   saveTelegramLog,
   saveAuditReport,
+  saveGeneratedAsset,
+  getGeneratedAssets,
   getCouponHistory,
   getTelegramHistory,
   saveUpdateEntry,
@@ -64,6 +66,14 @@ const ANDROID_MIN_SDK = config.androidMinSdk;
 const ANDROID_TARGET_SDK = config.androidTargetSdk;
 const ANDROID_PACKAGE_NAME = config.androidPackageName;
 const telegramSessionState = new Map();
+const matchTrackingConfig = {
+  enabled: String(process.env.MATCH_TRACKER_ENABLED || "1").trim() !== "0",
+  intervalSeconds: Math.max(20, Number(process.env.MATCH_TRACKER_INTERVAL_SECONDS) || 60),
+  trackerKey: String(process.env.MATCH_TRACKER_KEY || "default").trim() || "default",
+};
+let matchTrackingTimer = null;
+let matchTrackingRunning = false;
+let matchTrackingRunCount = 0;
 let activeServerPort = DEFAULT_PORT;
 
 app.disable("x-powered-by");
@@ -278,6 +288,25 @@ function buildMatchSummary(match = {}, extra = {}) {
     startTime: Number(match?.startTimeUnix) || null,
     odds: getMatchPrimaryOdd(match),
     ...extra,
+  };
+}
+
+function buildGeneratedAssetRecord(req = {}, extra = {}) {
+  const body = normalizePlainObject(req?.body);
+  const fallbackPage = String(req?.headers?.referer || "").trim();
+  const page = String(body.sourcePage || body.page || extra.page || fallbackPage).trim() || null;
+  const label = String(body.label || extra.label || "").trim() || null;
+  return {
+    kind: String(extra.kind || body.kind || "image").trim().toLowerCase() || "image",
+    page,
+    action: String(body.sourceAction || body.action || extra.action || "").trim() || null,
+    label,
+    fileName: String(body.fileName || body.file_name || extra.fileName || "").trim() || null,
+    format: String(body.format || extra.format || "").trim().toLowerCase() || null,
+    mimeType: String(body.mimeType || body.mime_type || extra.mimeType || "").trim() || null,
+    source: String(body.source || extra.source || "").trim() || null,
+    relatedId: String(body.relatedId || body.related_id || extra.relatedId || body.matchId || body.couponId || "").trim() || null,
+    asset: normalizePlainObject(extra.asset || body.asset || body.meta || body.payload || {}),
   };
 }
 
@@ -1202,24 +1231,25 @@ function buildTelegramCouponText(payload = {}) {
     const top = coupon.slice(0, 3);
     const heroSummary = buildCouponShareHeroSummaryLine(payload);
     const lines = [
-      `FC25 MINI | ${riskProfile.toUpperCase()}`,
-      `Sel: ${Number(summary.totalSelections) || coupon.length} | Cote: ${formatOddForTelegram(summary.combinedOdd)}`,
-      `Conf: ${Number(summary.averageConfidence) || 0}%`,
+      `TICKET MINI | ${riskProfile.toUpperCase()}`,
+      `Selections: ${Number(summary.totalSelections) || coupon.length} | Cote combinee: ${formatOddForTelegram(summary.combinedOdd)}`,
+      `Confiance moyenne: ${Number(summary.averageConfidence) || 0}%`,
       `Score Telegram: ${telegramConfidenceScore}/100`,
       heroSummary,
       ...top.map((p, i) => `${i + 1}) ${p?.teamHome || "E1"} vs ${p?.teamAway || "E2"} | ${formatOddForTelegram(p?.cote)}`),
+      "Lecture concise, efficace et partageable.",
       "Signe: SOLITAIRE HACK",
     ];
-    return lines.slice(0, 7).join("\n");
+    return lines.slice(0, 8).join("\n");
   }
   const lines = [
-    "COUPON OPTIMISE SOLITFIFPRO225",
+    "TICKET SIGNATURE SOLITFIFPRO225",
     "Source: SOLITFIFPRO225",
-    `Profil: ${riskProfile}`,
+    `Profil de risque: ${riskProfile}`,
     `Selections: ${Number(summary.totalSelections) || coupon.length}`,
     `Cote combinee: ${formatOddForTelegram(summary.combinedOdd)}`,
     `Confiance moyenne: ${Number(summary.averageConfidence) || 0}%`,
-    `Score confiance Telegram: ${telegramConfidenceScore}/100`,
+    `Score Telegram: ${telegramConfidenceScore}/100`,
     buildCouponShareHeroSummaryLine(payload),
     "",
   ];
@@ -1231,7 +1261,7 @@ function buildTelegramCouponText(payload = {}) {
     lines.push(`Cote: ${formatOddForTelegram(pick.cote)} | Confiance: ${Number(pick.confiance) || 0}%`);
     lines.push("");
   });
-  lines.push("Aucune combinaison n'est garantie gagnante.");
+  lines.push("Aucune combinaison n'est garantie gagnante, mais le ticket est structure pour rester propre et exploitable.");
   lines.push("Signe: SOLITAIRE HACK");
   return lines.join("\n").slice(0, 3900);
 }
@@ -1254,10 +1284,14 @@ function truncateCouponLabel(text = "", max = 44) {
 function getCouponShareLead(payload = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
+  const leagues = new Set(coupon.map((pick) => String(pick?.league || "").trim()).filter(Boolean));
   const lead = coupon[0] || {};
   return {
     lead,
     summary,
+    coupon,
+    totalSelections: Number(summary.totalSelections) || coupon.length || 0,
+    leagueCount: leagues.size || 0,
     generatedAt: formatDateTime(new Date()),
     matchStart: formatMatchStartTimeUnix(lead.startTimeUnix),
     confidence: Number.isFinite(Number(lead.confiance))
@@ -1270,13 +1304,15 @@ function buildCouponShareHeroLines(payload = {}) {
   const share = getCouponShareLead(payload);
   const lead = share.lead;
   const recommendation = String(lead.pari || "Aucun").trim();
+  const coverLabel = `${share.totalSelections} match${share.totalSelections > 1 ? "s" : ""}`;
+  const leagueLabel = `${share.leagueCount} ligue${share.leagueCount > 1 ? "s" : ""}`;
   return [
-    "PROJECTION PREMIUM",
-    `Pari recommande: ${recommendation}`,
+    "PROJECTION COUPON",
+    `Ticket complet: ${coverLabel} | ${leagueLabel}`,
+    `Reco principale: ${recommendation}`,
     `Confiance: ${Number(share.confidence || 0).toFixed(1)}%`,
     `Heure match: ${share.matchStart}`,
-    `Ligue: ${lead.league || "Non specifiee"}`,
-    "Aucune projection detaillee n'est affichee dans les exports.",
+    `Vue globale du coupon, pas seulement du premier pick.`,
   ];
 }
 
@@ -1284,7 +1320,9 @@ function buildCouponShareHeroSummaryLine(payload = {}) {
   const share = getCouponShareLead(payload);
   const lead = share.lead;
   const confidence = Number(share.confidence || 0).toFixed(1);
-  return `Reco: ${lead.pari || "-"} | Conf: ${confidence}% | Heure: ${share.matchStart || "-"}`;
+  const totalSelections = Number(share.totalSelections) || 0;
+  const leagueCount = Number(share.leagueCount) || 0;
+  return `Reco: ${lead.pari || "-"} | Conf: ${confidence}% | ${totalSelections} match${totalSelections > 1 ? "s" : ""} | ${leagueCount} ligue${leagueCount > 1 ? "s" : ""}`;
 }
 
 function normalizeCouponVisualMode(payload = {}) {
@@ -1411,6 +1449,33 @@ function buildCouponShareHeroSvg(payload = {}, options = {}) {
   const matchStart = escapeXml(share.matchStart || "-");
   const odd = formatOddForTelegram(lead.cote);
   const league = escapeXml(truncateCouponLabel(lead.league || "Ligue", 34));
+  const totalSelections = Number(share.totalSelections) || 0;
+  const leagueCount = Number(share.leagueCount) || 0;
+  const topLabels = share.coupon
+    .slice(0, 4)
+    .map((pick) => escapeXml(truncateCouponLabel(`${pick.teamHome || "Equipe 1"} vs ${pick.teamAway || "Equipe 2"}`, 28)));
+  const extraCount = Math.max(0, totalSelections - topLabels.length);
+  const miniChips = [
+    `<rect x="22" y="172" width="118" height="24" rx="8" fill="${theme.chipFill}" stroke="${theme.chipStroke}" stroke-width="1"/>`,
+    `<text x="81" y="189" text-anchor="middle" fill="${theme.textStrong}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${totalSelections} match${totalSelections > 1 ? "s" : ""}</text>`,
+    `<rect x="150" y="172" width="132" height="24" rx="8" fill="rgba(255,255,255,0.06)" stroke="${theme.chipStroke}" stroke-width="1"/>`,
+    `<text x="216" y="189" text-anchor="middle" fill="${theme.textStrong}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${leagueCount} ligue${leagueCount > 1 ? "s" : ""}</text>`,
+    `<rect x="292" y="172" width="160" height="24" rx="8" fill="rgba(255,212,121,0.11)" stroke="rgba(255,212,121,0.28)" stroke-width="1"/>`,
+    `<text x="372" y="189" text-anchor="middle" fill="#ffe6a0" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">Cote ${odd}</text>`,
+    ...topLabels.map((label, index) => {
+      const x = 466 + index * 160;
+      return `
+        <rect x="${x}" y="172" width="150" height="24" rx="8" fill="rgba(255,255,255,0.05)" stroke="${theme.edgeGlow}" stroke-width="1"/>
+        <text x="${x + 75}" y="189" text-anchor="middle" fill="${theme.textSoft}" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${label}</text>
+      `;
+    }),
+    extraCount > 0
+      ? `
+        <rect x="${466 + topLabels.length * 160}" y="172" width="94" height="24" rx="8" fill="rgba(0,240,255,0.10)" stroke="${theme.edgeGlow}" stroke-width="1"/>
+        <text x="${466 + topLabels.length * 160 + 47}" y="189" text-anchor="middle" fill="${theme.textStrong}" font-size="11" font-weight="800" font-family="Segoe UI, Arial, sans-serif">+${extraCount}</text>
+      `
+      : "",
+  ].join("");
 
   return `
     <g transform="translate(36, 78)">
@@ -1420,8 +1485,9 @@ function buildCouponShareHeroSvg(payload = {}, options = {}) {
       <text x="${innerW - 18}" y="31" text-anchor="end" fill="${theme.textSoft}" font-size="12" font-family="Segoe UI, Arial, sans-serif">${escapeXml(share.generatedAt)}</text>
       <text x="22" y="78" fill="${theme.scoreTone}" font-size="18" font-weight="900" font-family="Segoe UI, Arial, sans-serif">Pari recommande</text>
       <text x="22" y="108" fill="#ffffff" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${recommendation}</text>
-      <rect x="22" y="120" width="170" height="24" rx="8" fill="${theme.badgeFill}" stroke="${theme.chipStroke}" stroke-width="1"/>
-      <text x="107" y="137" text-anchor="middle" fill="${theme.badgeText}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">LECTURE COUPON</text>
+      <rect x="22" y="120" width="186" height="24" rx="8" fill="${theme.badgeFill}" stroke="${theme.chipStroke}" stroke-width="1"/>
+      <text x="115" y="137" text-anchor="middle" fill="${theme.badgeText}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">LECTURE DU TICKET</text>
+      <text x="22" y="164" fill="${theme.textSoft}" font-size="12.5" font-family="Segoe UI, Arial, sans-serif">Couvre ${totalSelections} match${totalSelections > 1 ? "s" : ""} du coupon, pas seulement le pick principal.</text>
 
       <rect x="${innerW - 388}" y="62" width="366" height="60" rx="14" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)"/>
       <text x="${innerW - 370}" y="86" fill="${theme.textSoft}" font-size="11" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.16em">INDICATEURS</text>
@@ -1433,8 +1499,7 @@ function buildCouponShareHeroSvg(payload = {}, options = {}) {
       <text x="${innerW - 209}" y="152" text-anchor="middle" fill="#c5ffd9" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
       <rect x="${innerW - 142}" y="130" width="120" height="34" rx="10" fill="rgba(255,212,121,0.11)" stroke="rgba(255,212,121,0.28)"/>
       <text x="${innerW - 82}" y="152" text-anchor="middle" fill="#ffe6a0" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${league}</text>
-
-      <text x="22" y="183" fill="${theme.textSoft}" font-size="12.5" font-family="Segoe UI, Arial, sans-serif">Aucune projection detaillee n'est affichee dans les visuels exportes.</text>
+      ${miniChips}
     </g>`;
 }
 
@@ -2550,6 +2615,84 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.get("/api/match-tracking/status", async (_req, res) => {
+  try {
+    const [state, runs, matches] = await Promise.all([
+      authDb.getMatchTrackingState(matchTrackingConfig.trackerKey).catch(() => null),
+      authDb.getMatchTrackingRuns(matchTrackingConfig.trackerKey, 10).catch(() => []),
+      authDb.getTrackedMatches(30).catch(() => []),
+    ]);
+    res.json({
+      success: true,
+      data: {
+        tracker: {
+          enabled: matchTrackingConfig.enabled,
+          intervalSeconds: matchTrackingConfig.intervalSeconds,
+          trackerKey: matchTrackingConfig.trackerKey,
+          running: matchTrackingRunning,
+          lastRunCount: matchTrackingRunCount,
+        },
+        state,
+        runs,
+        matches,
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "MATCH_TRACKING_STATUS_ERROR",
+        message: "Impossible de recuperer le suivi des matchs.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/match/:id/history", async (req, res) => {
+  try {
+    const matchId = String(req.params.id || "").trim();
+    if (!/^\d+$/.test(matchId)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_MATCH_ID",
+          message: "Identifiant de match invalide.",
+        },
+      });
+    }
+
+    const limit = Math.max(1, Math.min(1000, Number(req.query.limit) || 120));
+    const history = await authDb.getMatchScoreHistory(matchId, limit).catch(() => []);
+
+    res.json({
+      success: true,
+      data: {
+        matchId,
+        limit,
+        count: history.length,
+        latest: history[0] || null,
+        history,
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "MATCH_HISTORY_ERROR",
+        message: "Impossible de recuperer l'historique du score.",
+        details: error.message,
+      },
+    });
+  }
+});
+
 app.get("/api/matches", async (_req, res) => {
   try {
     const data = await getPenaltyMatches();
@@ -3049,6 +3192,10 @@ app.get("/api/predictions/:matchId", async (req, res) => {
 app.get("/api/matches/:id/details", async (req, res) => {
   try {
     const details = await getMatchPredictionDetails(req.params.id);
+    if (details?.match?.id) {
+      // Persiste une empreinte du match pour que le suivi retrouve aussi le score final plus tard.
+      authDb.upsertTrackedMatch(normalizePersistedMatch(details.match)).catch(() => {});
+    }
     res.json({ success: true, source: API_URL, ...details });
   } catch (error) {
     res.status(500).json({
@@ -3271,6 +3418,64 @@ app.get("/api/coupon/history", async (req, res) => {
       success: true,
       total: 0,
       items: [],
+    });
+  }
+});
+
+app.get("/api/media/history", async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 24));
+    const items = await getGeneratedAssets(limit);
+    const kind = String(req.query.kind || "").trim().toLowerCase();
+    const filtered = kind ? items.filter((item) => String(item.kind || "").toLowerCase() === kind) : items;
+    return res.json({
+      success: true,
+      total: filtered.length,
+      items: filtered,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      total: 0,
+      items: [],
+      error: {
+        code: "MEDIA_HISTORY_FETCH_ERROR",
+        message: "Impossible de recuperer l'historique des medias generes.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.post("/api/media/history", async (req, res) => {
+  try {
+    const record = buildGeneratedAssetRecord(req, {
+      kind: req.body?.kind || "image",
+      action: req.body?.action || req.body?.sourceAction || "manual_log",
+      label: req.body?.label || null,
+      fileName: req.body?.fileName || req.body?.file_name || null,
+      format: req.body?.format || null,
+      mimeType: req.body?.mimeType || req.body?.mime_type || null,
+      source: req.body?.source || "client",
+      relatedId: req.body?.relatedId || req.body?.related_id || null,
+      asset: req.body?.asset || req.body?.meta || req.body?.payload || {},
+    });
+    const id = await saveGeneratedAsset(record);
+    const items = await getGeneratedAssets(1);
+    return res.status(201).json({
+      success: true,
+      message: "Media enregistre.",
+      id,
+      item: items[0] || null,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "MEDIA_HISTORY_SAVE_ERROR",
+        message: "Impossible d'enregistrer le media genere.",
+        details: error.message,
+      },
     });
   }
 });
@@ -4365,7 +4570,7 @@ app.post("/api/patterns/csv", (req, res) => {
   }
 });
 
-function generateCouponPdfHandler(req, res) {
+async function generateCouponPdfHandler(req, res) {
   try {
     const coupon = Array.isArray(req.body?.coupon) ? req.body.coupon : [];
     if (!coupon.length) {
@@ -4395,6 +4600,18 @@ function generateCouponPdfHandler(req, res) {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Length", String(pdfBuffer.length));
+    await saveGeneratedAsset(
+      buildGeneratedAssetRecord(req, {
+        kind: "pdf",
+        action: "download_coupon_pdf",
+        label: isDetailed ? "Coupon PDF detaille" : isQuick ? "Coupon PDF rapide" : "Coupon PDF resume",
+        fileName: filename,
+        format: "pdf",
+        mimeType: "application/pdf",
+        source: String(req?.body?.source || "coupon").trim() || "coupon",
+        asset: req.body || {},
+      })
+    );
     return res.send(pdfBuffer);
   } catch (error) {
     return res.status(500).json({
@@ -4435,6 +4652,18 @@ async function generateCouponImageHandler(req, res) {
       const filename = `coupon-fc25-${isStory ? "story" : isPremium ? "premium" : "image"}-${Date.now()}.svg`;
       res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      await saveGeneratedAsset(
+        buildGeneratedAssetRecord(req, {
+          kind: "image",
+          action: isStory ? "download_coupon_story" : isPremium ? "download_coupon_premium" : "download_coupon_image",
+          label: isStory ? "Snap story coupon" : isPremium ? "Image premium coupon" : "Image coupon",
+          fileName: filename,
+          format: "svg",
+          mimeType: "image/svg+xml",
+          source: String(req?.body?.source || "coupon").trim() || "coupon",
+          asset: req.body || {},
+        })
+      );
       return res.send(svg);
     }
     const output = await rasterizeSvg(svg, format);
@@ -4442,6 +4671,18 @@ async function generateCouponImageHandler(req, res) {
     const filename = `coupon-fc25-${isStory ? "story" : isPremium ? "premium" : "image"}-${Date.now()}.${ext}`;
     res.setHeader("Content-Type", format === "jpg" ? "image/jpeg" : "image/png");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    await saveGeneratedAsset(
+      buildGeneratedAssetRecord(req, {
+        kind: "image",
+        action: isStory ? "download_coupon_story" : isPremium ? "download_coupon_premium" : "download_coupon_image",
+        label: isStory ? "Snap story coupon" : isPremium ? "Image premium coupon" : "Image coupon",
+        fileName: filename,
+        format: ext,
+        mimeType: format === "jpg" ? "image/jpeg" : "image/png",
+        source: String(req?.body?.source || "coupon").trim() || "coupon",
+        asset: req.body || {},
+      })
+    );
     return res.send(output);
   } catch (error) {
     return res.status(500).json({
@@ -4663,21 +4904,66 @@ function normalizeTelegramFilter(text = "") {
   return normalizeLookupText(String(text || ""));
 }
 
-function extractTelegramMode(text = "") {
+function telegramTextMatches(text = "", keywords = []) {
   const normalized = normalizeTelegramFilter(text);
-  if (normalized.includes("pack")) return "pack";
-  if (normalized.includes("premium")) return "premium";
-  if (normalized.includes("story") || normalized.includes("snap")) return "story";
-  if (normalized.includes("image")) return "image";
-  if (normalized.includes("pdf")) return "pdf";
-  if (normalized.includes("validate") || normalized.includes("validation")) return "validate";
-  if (normalized.includes("history")) return "history";
-  if (normalized.includes("watchlist")) return "watchlist";
-  if (normalized.includes("journal")) return "journal";
-  if (normalized.includes("multi")) return "multi";
-  if (normalized.includes("ladder") || normalized.includes("echelle")) return "ladder";
-  if (normalized.includes("status") || normalized.includes("etat")) return "status";
-  if (normalized.includes("help") || normalized.includes("menu") || normalized.includes("commandes")) return "help";
+  return keywords.some((keyword) => normalized.includes(normalizeLookupText(keyword)));
+}
+
+function resolveTelegramActionKey(text = "") {
+  const normalized = normalizeTelegramFilter(text).replace(/^tg[:\s-]*/, "").trim();
+  if (!normalized) return "";
+
+  const actionGroups = [
+    { key: "dashboard", aliases: ["dashboard", "tableau de bord", "tableau", "resume", "accueil", "home"] },
+    { key: "status", aliases: ["status", "statut", "statue", "etat", "state", "health"] },
+    { key: "live", aliases: ["live", "direct", "en cours", "match live", "matchs live", "stream"] },
+    { key: "upcoming", aliases: ["upcoming", "a venir", "avenir", "avenue", "match a venir", "matchs a venir"] },
+    { key: "finished", aliases: ["finished", "termines", "termine", "terminees", "terminee", "match termine", "matchs termines"] },
+    { key: "history", aliases: ["history", "historique", "archives"] },
+    { key: "watchlist", aliases: ["watchlist", "watch nice", "favoris", "favorites", "suivi"] },
+    { key: "journal", aliases: ["journal", "log", "rapport", "performance"] },
+    { key: "tracking", aliases: ["tracking", "tracker", "suivi des matchs", "suivi matchs"] },
+    { key: "coupon", aliases: ["coupon", "coupeau", "ticket", "bon"] },
+    { key: "premium", aliases: ["premium", "pro", "premium image"] },
+    { key: "story", aliases: ["story", "snap", "story image"] },
+    { key: "ladder", aliases: ["ladder", "echelle", "60 30 10"] },
+    { key: "multi", aliases: ["multi", "plusieurs profils", "comparatif"] },
+    { key: "image", aliases: ["image", "visuel", "photo", "png", "jpg", "jpeg"] },
+    { key: "pdf", aliases: ["pdf", "document", "rapport"] },
+    { key: "pack", aliases: ["pack", "bundle", "groupe", "ensemble"] },
+    { key: "validate", aliases: ["validate", "validation", "valider", "valide"] },
+    { key: "lastmatch", aliases: ["lastmatch", "dernier match", "match courant", "match"] },
+    { key: "menu", aliases: ["menu", "help", "aide", "assistance", "commandes"] },
+  ];
+
+  for (const group of actionGroups) {
+    if (group.aliases.some((alias) => normalized === normalizeLookupText(alias) || normalized.includes(normalizeLookupText(alias)))) {
+      return group.key;
+    }
+  }
+
+  return normalized;
+}
+
+function extractTelegramMode(text = "") {
+  const normalized = resolveTelegramActionKey(text);
+  if (normalized === "pack") return "pack";
+  if (normalized === "premium") return "premium";
+  if (normalized === "story") return "story";
+  if (normalized === "image") return "image";
+  if (normalized === "pdf") return "pdf";
+  if (normalized === "validate") return "validate";
+  if (normalized === "history") return "history";
+  if (normalized === "watchlist") return "watchlist";
+  if (normalized === "journal") return "journal";
+  if (normalized === "tracking") return "tracking";
+  if (normalized === "premium") return "premium";
+  if (normalized === "story") return "story";
+  if (normalized === "ladder") return "ladder";
+  if (normalized === "multi") return "multi";
+  if (normalized === "status") return "status";
+  if (normalized === "dashboard") return "dashboard";
+  if (normalized === "menu") return "help";
   return null;
 }
 
@@ -4720,55 +5006,58 @@ function extractTelegramMatchId(text = "") {
 }
 
 function resolveTelegramCallbackCommand(data = "", session = null) {
-  const normalized = normalizeTelegramFilter(data).replace(/^tg[:\s-]*/, "").trim();
-  if (!normalized) return "";
-  if (normalized === "dashboard") return "/dashboard";
-  if (normalized === "status") return "/status";
-  if (normalized === "live") return "/live";
-  if (normalized === "upcoming") return "/upcoming";
-  if (normalized === "finished") return "/finished";
-  if (normalized === "history") return "/history";
-  if (normalized === "watchlist") return "/watchlist";
-  if (normalized === "journal") return "/journal";
-  if (normalized === "coupon") return "/coupon";
-  if (normalized === "image") return "/coupon image";
-  if (normalized === "pdf") return "/coupon pdf";
-  if (normalized === "pack") return "/coupon pack";
-  if (normalized === "validate") return "/coupon validate";
-  if (normalized === "lastmatch") {
+  const action = resolveTelegramActionKey(data);
+  if (!action) return "";
+  if (action === "dashboard") return "/dashboard";
+  if (action === "status") return "/status";
+  if (action === "live") return "/live";
+  if (action === "upcoming") return "/upcoming";
+  if (action === "finished") return "/finished";
+  if (action === "history") return "/history";
+  if (action === "watchlist") return "/watchlist";
+  if (action === "journal") return "/journal";
+  if (action === "tracking") return "/tracking";
+  if (action === "coupon") return "/coupon";
+  if (action === "image") return "/coupon image";
+  if (action === "pdf") return "/coupon pdf";
+  if (action === "pack") return "/coupon pack";
+  if (action === "validate") return "/coupon validate";
+  if (action === "menu") return "/help";
+  if (action === "lastmatch") {
     const matchId = String(session?.lastMatchId || "").trim();
     return matchId ? `/match ${matchId}` : "/match";
   }
-  return `/${normalized.replace(/^\/+/, "")}`;
+  return `/${action.replace(/^\/+/, "")}`;
 }
 
 function buildTelegramHelpText() {
   return [
-    "SOLITFIFPRO225 | Telegram Control Hub",
-    "Tu peux utiliser le bot sans ouvrir le site.",
+    "SOLITFIFPRO225 | Tour de contrôle Telegram",
+    "Tu peux piloter le site avec un niveau de confort premium, sans ouvrir le navigateur.",
     "",
-    "Menu rapide: /dashboard ou les boutons inline pour tout piloter.",
+    "Menu rapide: les boutons inline donnent accès aux actions clés en un geste.",
     "",
     "Commandes rapides:",
-    "/start ou /help - menu complet",
-    "/dashboard - resume complet du site",
-    "/status - sante du systeme",
-    "/live - matchs live",
+    "/start ou /help - menu complet et pilotage direct",
+    "/dashboard - tableau de bord complet",
+    "/status - etat du systeme",
+    "/live - matchs en direct",
     "/upcoming - matchs a venir",
     "/finished - matchs termines",
     "/match ID - details d'un match",
-    "/coupon size=3 risk=balanced league=all - generer un coupon",
-    "/coupon image - envoyer l'image du dernier coupon",
-    "/coupon pdf - envoyer le PDF du dernier coupon",
+    "/coupon size=3 risk=balanced league=all - generer un ticket",
+    "/coupon image - envoyer le visuel du dernier ticket",
+    "/coupon pdf - envoyer le PDF du dernier ticket",
     "/coupon pack - texte + image + PDF",
     "/coupon validate - verifier le ticket",
-    "/ladder - coupler 60/30/10",
+    "/ladder - repartir 60/30/10",
     "/multi - comparer plusieurs profils",
-    "/history - historique coupon",
+    "/history - historique des tickets",
     "/watchlist - watchlist Telegram",
-    "/journal - journal performance",
+    "/journal - journal de performance",
+    "/tracking - etat du tracker de matchs",
     "",
-    "Astuce: en texte libre, tu peux aussi demander une analyse ou une action.",
+    "Astuce: en texte libre, tu peux aussi demander une analyse, une synthese ou une action precise.",
   ].join("\n");
 }
 
@@ -4777,13 +5066,15 @@ function buildTelegramStatusText(data = {}) {
   const db = data?.db || {};
   const coupons = data?.couponStats?.data?.stats || data?.couponStats?.data || {};
   return [
-    "STATUT SOLITFIFPRO225",
-    `Serveur: ${health?.success === false ? "KO" : "OK"}`,
+    "ETAT SYSTEME | SOLITFIFPRO225",
+    `Serveur principal: ${health?.success === false ? "attention requise" : "stable"}`,
     `Uptime: ${health?.uptimeSec ?? 0}s`,
-    `DB: ${db?.status || health?.database?.status || "unknown"}`,
-    `Coupons: ${coupons?.total ?? 0}`,
-    `Win rate: ${coupons?.winRate ?? 0}%`,
-    `Profit: ${coupons?.profit ?? 0}`,
+    `Base de donnees: ${db?.status || health?.database?.status || "unknown"}`,
+    `Couverture coupons: ${coupons?.total ?? 0}`,
+    `Taux de gain: ${coupons?.winRate ?? 0}%`,
+    `Profit cumule: ${coupons?.profit ?? 0}`,
+    "",
+    "Lecture rapide: le bot est pret pour les actions fortes et les envois Telegram.",
   ].join("\n");
 }
 
@@ -4791,28 +5082,32 @@ function buildTelegramMenuKeyboard() {
   return {
     inline_keyboard: [
       [
-        { text: "Dashboard", callback_data: "tg:dashboard" },
-        { text: "Statut", callback_data: "tg:status" },
+        { text: "Tableau de bord", callback_data: "tg:dashboard" },
+        { text: "État système", callback_data: "tg:status" },
       ],
       [
-        { text: "Live", callback_data: "tg:live" },
-        { text: "A venir", callback_data: "tg:upcoming" },
-        { text: "Termines", callback_data: "tg:finished" },
+        { text: "En direct", callback_data: "tg:live" },
+        { text: "À venir", callback_data: "tg:upcoming" },
+        { text: "Terminés", callback_data: "tg:finished" },
       ],
       [
-        { text: "Coupon", callback_data: "tg:coupon" },
-        { text: "Image", callback_data: "tg:image" },
-        { text: "PDF", callback_data: "tg:pdf" },
+        { text: "Ticket", callback_data: "tg:coupon" },
+        { text: "Visuel", callback_data: "tg:image" },
+        { text: "PDF pro", callback_data: "tg:pdf" },
       ],
       [
-        { text: "Pack", callback_data: "tg:pack" },
+        { text: "Pack premium", callback_data: "tg:pack" },
         { text: "Valider", callback_data: "tg:validate" },
         { text: "Historique", callback_data: "tg:history" },
       ],
       [
         { text: "Watchlist", callback_data: "tg:watchlist" },
         { text: "Journal", callback_data: "tg:journal" },
-        { text: "Match", callback_data: "tg:lastmatch" },
+        { text: "Dernier match", callback_data: "tg:lastmatch" },
+      ],
+      [
+        { text: "Suivi", callback_data: "tg:tracking" },
+        { text: "Aide", callback_data: "tg:menu" },
       ],
     ],
   };
@@ -4834,32 +5129,158 @@ function buildTelegramDashboardText(data = {}) {
   ].join(" | ");
   const lastCoupon = session?.lastCoupon?.summary || session?.lastCoupon?.coupon?.[0] || null;
   const lastCouponLine = lastCoupon
-    ? `Dernier coupon: ${Number(session?.lastCoupon?.summary?.totalSelections || session?.lastCoupon?.coupon?.length || 0)} selection(s) | Cote ${formatOddForTelegram(session?.lastCoupon?.summary?.combinedOdd)}`
-    : "Dernier coupon: aucun";
+    ? `Dernier ticket: ${Number(session?.lastCoupon?.summary?.totalSelections || session?.lastCoupon?.coupon?.length || 0)} selection(s) | Cote ${formatOddForTelegram(session?.lastCoupon?.summary?.combinedOdd)}`
+    : "Dernier ticket: aucun";
   return [
-    "TABLEAU DE BORD TELEGRAM",
+    "TABLEAU DE BORD | SOLITFIFPRO225",
     `Serveur: ${health?.success === false ? "KO" : "OK"}`,
-    `DB: ${db?.status || health?.database?.status || "unknown"}`,
-    `Live / A venir / Termines: ${liveCount} / ${upcomingCount} / ${finishedCount}`,
-    `Coupons: ${couponStats?.total ?? 0} | Win rate: ${couponStats?.winRate ?? 0}% | Profit: ${couponStats?.profit ?? 0}`,
-    `Session: ${preferenceLine}`,
-    `Mode: ${session?.lastMode || "aucun"} | Dernier match: ${session?.lastMatchId || "aucun"}`,
+    `Base de donnees: ${db?.status || health?.database?.status || "unknown"}`,
+    `Matchs live / a venir / termines: ${liveCount} / ${upcomingCount} / ${finishedCount}`,
+    `Tickets: ${couponStats?.total ?? 0} | Taux de gain: ${couponStats?.winRate ?? 0}% | Profit: ${couponStats?.profit ?? 0}`,
+    `Session premium: ${preferenceLine}`,
+    `Mode actuel: ${session?.lastMode || "aucun"} | Dernier match: ${session?.lastMatchId || "aucun"}`,
     lastCouponLine,
     "",
-    "Utilise les boutons ci-dessous pour naviguer.",
+    "Utilise les boutons ci-dessous pour piloter le bot avec precision.",
   ].join("\n");
+}
+
+function normalizePersistedMatch(match = {}) {
+  const teams = getMatchTeams(match);
+  const score = getMatchScore(match);
+  const odds = getMatchOdds(match);
+  const prediction = normalizePlainObject(match?.prediction);
+  return {
+    matchId: getMatchId(match),
+    teamHome: teams.home || "Equipe 1",
+    teamAway: teams.away || "Equipe 2",
+    league: getMatchLeague(match),
+    status: classifyMatchStatus(match),
+    minute: getMatchMinute(match),
+    startTimeUnix: Number(match?.startTimeUnix || 0) || null,
+    scoreHome: Number(score.home) || 0,
+    scoreAway: Number(score.away) || 0,
+    odds,
+    prediction,
+    source: "liveFeed",
+  };
+}
+
+function buildMatchTrackingCounts(matches = []) {
+  const buckets = { live: 0, upcoming: 0, finished: 0 };
+  for (const match of matches) {
+    const status = classifyMatchStatus(match);
+    if (status === "finished") buckets.finished += 1;
+    else if (status === "upcoming") buckets.upcoming += 1;
+    else buckets.live += 1;
+  }
+  buckets.total = matches.length;
+  return buckets;
+}
+
+async function runMatchTrackingCycle(reason = "scheduled") {
+  if (!matchTrackingConfig.enabled) return null;
+  if (matchTrackingRunning) return null;
+
+  matchTrackingRunning = true;
+  const startedAt = new Date().toISOString();
+  try {
+    const data = await withTimeout(getPenaltyMatches(), 25_000, null);
+    const matches = Array.isArray(data?.matches) ? data.matches : [];
+    const trackedMatches = matches.map(normalizePersistedMatch).filter((item) => item.matchId);
+    const counts = buildMatchTrackingCounts(trackedMatches);
+    matchTrackingRunCount += 1;
+    const finishedAt = new Date().toISOString();
+
+    await authDb.saveMatchTrackingSnapshot({
+      trackerKey: matchTrackingConfig.trackerKey,
+      enabled: true,
+      intervalSeconds: matchTrackingConfig.intervalSeconds,
+      totalRuns: matchTrackingRunCount,
+      source: "liveFeed",
+      fetchedAt: data?.fetchedAt || startedAt,
+      lastStartedAt: startedAt,
+      lastCompletedAt: finishedAt,
+      lastSuccessAt: finishedAt,
+      counts,
+      matches: trackedMatches,
+    });
+
+    return {
+      ok: true,
+      reason,
+      counts,
+      tracked: trackedMatches.length,
+      fetchedAt: data?.fetchedAt || startedAt,
+      startedAt,
+      completedAt: finishedAt,
+    };
+  } catch (error) {
+    const finishedAt = new Date().toISOString();
+    try {
+      await authDb.saveMatchTrackingSnapshot({
+        trackerKey: matchTrackingConfig.trackerKey,
+        enabled: true,
+        intervalSeconds: matchTrackingConfig.intervalSeconds,
+        totalRuns: matchTrackingRunCount,
+        source: "liveFeed",
+        lastStartedAt: startedAt,
+        lastCompletedAt: finishedAt,
+        lastErrorAt: finishedAt,
+        lastErrorText: error.message,
+        counts: { live: 0, upcoming: 0, finished: 0, total: 0 },
+        matches: [],
+        error: error.message,
+      });
+    } catch (_persistError) {}
+    return { ok: false, error: error.message, reason, startedAt, completedAt: finishedAt };
+  } finally {
+    matchTrackingRunning = false;
+  }
+}
+
+async function startMatchTrackingService() {
+  if (!matchTrackingConfig.enabled || matchTrackingTimer) return matchTrackingTimer;
+  try {
+    const persistedState = await authDb.getMatchTrackingState(matchTrackingConfig.trackerKey).catch(() => null);
+    if (persistedState?.totalRuns) {
+      matchTrackingRunCount = Number(persistedState.totalRuns) || 0;
+    }
+  } catch (_error) {}
+
+  setTimeout(() => {
+    runMatchTrackingCycle("startup").catch((error) => {
+      console.warn(`Match tracker startup error: ${error.message}`);
+    });
+  }, 10_000);
+
+  matchTrackingTimer = setInterval(() => {
+    runMatchTrackingCycle("interval").catch((error) => {
+      console.warn(`Match tracker interval error: ${error.message}`);
+    });
+  }, matchTrackingConfig.intervalSeconds * 1000);
+
+  console.log(
+    `Match tracker actif: intervalle ${matchTrackingConfig.intervalSeconds}s, cle ${matchTrackingConfig.trackerKey}`
+  );
+  return matchTrackingTimer;
 }
 
 function buildTelegramMatchListText(title, matches = [], limit = 8) {
   const rows = Array.isArray(matches) ? matches.slice(0, limit) : [];
-  if (!rows.length) return `${title}\nAucun match trouve.`;
-  const lines = [title];
+  if (!rows.length) return `${title}\nAucun match trouve pour le moment.`;
+  const lines = [
+    title,
+    `Sélection premium: ${rows.length} match${rows.length > 1 ? "s" : ""}`,
+    "",
+  ];
   rows.forEach((match, index) => {
     const start = formatDateTime(match?.startTimeUnix ? Number(match.startTimeUnix) * 1000 : match?.startTime ? Number(match.startTime) * 1000 : null);
     lines.push(
       `${index + 1}. ${match?.homeTeam || match?.teamHome || "Equipe 1"} vs ${match?.awayTeam || match?.teamAway || "Equipe 2"} | ${match?.league || "Ligue"} | ${match?.status || "-"} | ${start}`
     );
   });
+  lines.push("", "Si tu veux, je peux aussi ouvrir un match precis ou transformer cette liste en ticket.");
   return lines.join("\n");
 }
 
@@ -4871,21 +5292,22 @@ function buildTelegramMatchDetailsText(details = {}) {
   const exact = details?.exactScore?.primary?.score || details?.exactScore?.primary?.score || "-";
   const league = details?.leagueProfile?.title || match?.league || "-";
   const lines = [
-    `MATCH ${match?.teamHome || "Equipe 1"} vs ${match?.teamAway || "Equipe 2"}`,
+    `MATCH PRIORITAIRE | ${match?.teamHome || "Equipe 1"} vs ${match?.teamAway || "Equipe 2"}`,
     `Ligue: ${league}`,
     `Debut: ${formatDateTime(match?.startTimeUnix ? Number(match.startTimeUnix) * 1000 : match?.startTime ? Number(match.startTime) * 1000 : null)}`,
-    `Pari maitre: ${master?.pari_choisi || "N/A"}`,
-    `Confiance: ${master?.confiance_numerique ?? 0}%`,
+    `Lecture maitre: ${master?.pari_choisi || "N/A"}`,
+    `Confiance de lecture: ${master?.confiance_numerique ?? 0}%`,
   ];
   if (exact && exact !== "-") {
     lines.push(`Projection detaillee: ${exact}`);
   }
   if (Array.isArray(top3) && top3.length) {
-    lines.push("Top 3:");
+    lines.push("Top 3 recommandations:");
     top3.slice(0, 3).forEach((item, index) => {
       lines.push(`  ${index + 1}. ${item?.pari || "-"} | ${Number(item?.confiance || 0).toFixed(1)}%`);
     });
   }
+  lines.push("", "Si tu veux, je peux convertir ce match en ticket, visuel ou PDF.");
   return lines.join("\n");
 }
 
@@ -5036,6 +5458,21 @@ async function sendTelegramCouponHandler(req, res) {
         "Coupon image - SOLITFIFPRO225 | Signe: SOLITAIRE HACK"
       );
       try {
+        await saveGeneratedAsset(
+          buildGeneratedAssetRecord(req, {
+            kind: "image",
+            action: "send_telegram_image",
+            label: "Coupon Telegram image",
+            fileName: `coupon-fc25-${Date.now()}.${ext}`,
+            format: ext,
+            mimeType: mime,
+            source: "telegram",
+            relatedId: chatId,
+            asset: req.body || {},
+          })
+        );
+      } catch (_dbError) {}
+      try {
         await saveTelegramLog({
           kind: "coupon_image",
           status: "sent",
@@ -5173,6 +5610,21 @@ async function sendTelegramCouponPackHandler(req, res) {
       `coupon-fc25-${Date.now()}.${imageFormat === "jpg" ? "jpg" : "png"}`,
       "Coupon image - SOLITFIFPRO225 | Signe: SOLITAIRE HACK"
     );
+    try {
+      await saveGeneratedAsset(
+        buildGeneratedAssetRecord(req, {
+          kind: "image",
+          action: "send_telegram_pack_image",
+          label: "Pack Telegram image",
+          fileName: `coupon-fc25-${Date.now()}.${imageFormat === "jpg" ? "jpg" : "png"}`,
+          format: imageFormat === "jpg" ? "jpg" : "png",
+          mimeType: imageFormat === "jpg" ? "image/jpeg" : "image/png",
+          source: "telegram",
+          relatedId: chatId,
+          asset: req.body || {},
+        })
+      );
+    } catch (_dbError) {}
 
     const pdf = buildCouponPdfBuffer(req.body || {}, "quick");
     const pdfMessageId = await sendTelegramDocument(
@@ -5182,6 +5634,21 @@ async function sendTelegramCouponPackHandler(req, res) {
       `coupon-fc25-rapide-${Date.now()}.pdf`,
       "Coupon PDF rapide - SOLITFIFPRO225"
     );
+    try {
+      await saveGeneratedAsset(
+        buildGeneratedAssetRecord(req, {
+          kind: "pdf",
+          action: "send_telegram_pack_pdf",
+          label: "Pack Telegram PDF",
+          fileName: `coupon-fc25-rapide-${Date.now()}.pdf`,
+          format: "pdf",
+          mimeType: "application/pdf",
+          source: "telegram",
+          relatedId: chatId,
+          asset: req.body || {},
+        })
+      );
+    } catch (_dbError) {}
 
     try {
       await saveTelegramLog({
@@ -5229,8 +5696,8 @@ function buildTelegramLadderText(payload = {}) {
   const items = Array.isArray(payload?.items) ? payload.items : [];
   const totalStake = Number(payload?.totalStake || 0);
   const lines = [
-    "COUPON LADDER IA (60/30/10)",
-    `Total mise: ${Number.isFinite(totalStake) ? totalStake.toFixed(0) : "0"}`,
+    "LADDER STRATEGIQUE 60/30/10",
+    `Capital total: ${Number.isFinite(totalStake) ? totalStake.toFixed(0) : "0"}`,
     "",
   ];
   items.forEach((it, idx) => {
@@ -5249,6 +5716,7 @@ function buildTelegramLadderText(payload = {}) {
     lines.push("");
   });
   lines.push("Aucune combinaison n'est garantie gagnante. Gestion de risque obligatoire.");
+  lines.push("Lecture premium: 60/30/10 pour garder le contrôle sans surcharger le ticket.");
   lines.push("Signe: SOLITAIRE HACK");
   return lines.join("\n");
 }
@@ -5402,6 +5870,31 @@ async function executeTelegramSiteAction(action, state = {}) {
     return true;
   }
 
+  if (name === "show_tracking") {
+    if (session) session.lastMode = "tracking";
+    const tracking = await callLocalApi("/api/match-tracking/status").catch(() => null);
+    const tracker = tracking?.data?.tracker || {};
+    const state = tracking?.data?.state || {};
+    const runs = Array.isArray(tracking?.data?.runs) ? tracking.data.runs : [];
+    const matches = Array.isArray(tracking?.data?.matches) ? tracking.data.matches : [];
+    const lines = [
+      "SUIVI MATCHS | SOLITFIFPRO225",
+      `Actif: ${tracker?.enabled ? "oui" : "non"} | Intervalle: ${tracker?.intervalSeconds || matchTrackingConfig.intervalSeconds}s`,
+      `En cours: ${tracker?.running ? "oui" : "non"} | Runs: ${tracker?.lastRunCount ?? state?.totalRuns ?? 0}`,
+      `Dernier passage: ${state?.lastCompletedAt || state?.updatedAt || "n/a"}`,
+      `Matchs persistés: ${matches.length}`,
+    ];
+    if (runs.length) {
+      const lastRun = runs[0];
+      lines.push(`Dernier snapshot: ${lastRun?.createdAt || lastRun?.created_at || "n/a"} | ${lastRun?.status || "ok"}`);
+    }
+    lines.push("", "Le suivi tourne proprement et reste disponible pour les prochaines vérifications.");
+    await sendTelegramMessage(botToken, chatId, lines.join("\n"), {
+      reply_markup: buildTelegramMenuKeyboard(),
+    });
+    return true;
+  }
+
   if (name === "set_coupon_form") {
     if (session) {
       session.preferences = {
@@ -5416,7 +5909,7 @@ async function executeTelegramSiteAction(action, state = {}) {
       await sendTelegramMessage(
         botToken,
         chatId,
-        `Parametres Telegram mis a jour: taille ${session?.preferences?.size ?? state.size ?? 3}, ligue ${session?.preferences?.league || state.league || "all"}, risque ${session?.preferences?.risk || state.risk || "balanced"}, mise ${session?.preferences?.stake ?? state.stake ?? 1000}.`
+        `Paramètres Telegram mis à jour: taille ${session?.preferences?.size ?? state.size ?? 3}, ligue ${session?.preferences?.league || state.league || "all"}, risque ${session?.preferences?.risk || state.risk || "balanced"}, mise ${session?.preferences?.stake ?? state.stake ?? 1000}.`
       );
     }
     return true;
@@ -5470,9 +5963,10 @@ async function executeTelegramSiteAction(action, state = {}) {
       const summary = validation?.summary || {};
       const issues = Array.isArray(validation?.issues) ? validation.issues.slice(0, 5) : [];
       const lines = [
-        "VALIDATION COUPON",
+        "VALIDATION TICKET | Lecture technique",
         `Statut: ${validation?.status || "N/A"}`,
         `OK: ${summary.ok ?? 0} | A corriger: ${summary.toFix ?? 0} | Total: ${summary.total ?? 0}`,
+        "La validation garde un ton simple, clair et exploitable avant publication.",
         ...issues.map((issue, index) => `${index + 1}. ${issue?.message || issue?.code || "Alerte"}`),
       ];
       await sendTelegramMessage(botToken, chatId, lines.join("\n"));
@@ -5482,10 +5976,11 @@ async function executeTelegramSiteAction(action, state = {}) {
       const stats = couponData?.summary || {};
       const avg = Number(stats.averageConfidence || 0);
       const lines = [
-        "SIMULATION BANKROLL",
+        "SIMULATION BANKROLL | Lecture prudente",
         `Selections: ${Number(stats.totalSelections || couponData?.coupon?.length || 0)}`,
         `Cote combinee: ${formatOddForTelegram(stats.combinedOdd)}`,
         `Confiance moyenne: ${avg.toFixed(1)}%`,
+        "Cette lecture aide à garder une structure propre avant envoi ou publication.",
       ];
       await sendTelegramMessage(botToken, chatId, lines.join("\n"));
       return true;
@@ -5493,18 +5988,20 @@ async function executeTelegramSiteAction(action, state = {}) {
     if (name === "build_watchlist") {
       const watchlist = await callLocalApi(`/api/watchlist?userId=${encodeURIComponent(chatId)}`);
       const list = Array.isArray(watchlist?.data?.watchlist) ? watchlist.data.watchlist : [];
-      const lines = ["WATCHLIST TELEGRAM", `Total: ${list.length}`];
+      const lines = ["WATCHLIST TELEGRAM | Sélection privée", `Total: ${list.length}`];
       list.slice(0, 12).forEach((item, index) => lines.push(`${index + 1}. ${item}`));
+      lines.push("", "Ta sélection reste prête pour une relance rapide.");
       await sendTelegramMessage(botToken, chatId, lines.join("\n"));
       return true;
     }
     if (name === "analyze_journal" || name === "replay_journal") {
       const journal = await callLocalApi("/api/coupon/journal");
       const items = Array.isArray(journal?.data?.journal) ? journal.data.journal : [];
-      const lines = [name === "analyze_journal" ? "JOURNAL PERFORMANCE" : "REPLAY JOURNAL"];
+      const lines = [name === "analyze_journal" ? "JOURNAL PERFORMANCE | Lecture pro" : "REPLAY JOURNAL | Historique détaillé"];
       items.slice(0, 10).forEach((item, index) => {
         lines.push(`${index + 1}. ${item?.timestamp || "-"} | ${item?.status || "-"} | profit ${Number(item?.profit || 0)}`);
       });
+      lines.push("", "Le journal est synthétisé pour une lecture rapide et exploitable.");
       await sendTelegramMessage(botToken, chatId, lines.join("\n"));
       return true;
     }
@@ -5645,9 +6142,10 @@ async function handleTelegramWebhookUpdate(req, res) {
   const wantsHistory = mode === "history";
   const wantsWatchlist = mode === "watchlist";
   const wantsJournal = mode === "journal";
+  const wantsTracking = mode === "tracking";
   const wantsStatus = mode === "status";
-  const wantsDashboard = normalized.includes("dashboard");
-  const wantsHelp = mode === "help" || normalized.includes("start");
+  const wantsDashboard = mode === "dashboard" || telegramTextMatches(normalized, ["dashboard", "tableau de bord", "resume", "accueil"]);
+  const wantsHelp = mode === "help" || telegramTextMatches(normalized, ["start", "help", "menu", "aide", "commandes"]);
 
   const respond = async (messageText, extra = {}) => {
     await persistTelegramSession(session, chatMeta);
@@ -5835,13 +6333,14 @@ async function handleTelegramWebhookUpdate(req, res) {
             cote: p.cote,
           })),
         };
-        const validation = await callLocalApi("/api/coupon/validate", { method: "POST", body: payload });
-        const summary = validation?.summary || {};
-        const issues = Array.isArray(validation?.issues) ? validation.issues : [];
-        const lines = [
-          "VALIDATION COUPON",
+      const validation = await callLocalApi("/api/coupon/validate", { method: "POST", body: payload });
+      const summary = validation?.summary || {};
+      const issues = Array.isArray(validation?.issues) ? validation.issues : [];
+      const lines = [
+          "VALIDATION TICKET | Lecture technique",
           `Statut: ${validation?.status || "N/A"}`,
           `OK: ${summary.ok ?? 0} | A corriger: ${summary.toFix ?? 0} | Total: ${summary.total ?? 0}`,
+          "La validation garde un ton simple, clair et exploitable avant publication.",
         ];
         issues.slice(0, 5).forEach((issue, index) => {
           lines.push(`${index + 1}. ${issue?.message || issue?.code || "Alerte"}`);
@@ -5917,10 +6416,11 @@ async function handleTelegramWebhookUpdate(req, res) {
     if (wantsHistory) {
       const history = await callLocalApi("/api/coupon/history?limit=8");
       const items = Array.isArray(history?.items) ? history.items : [];
-      const lines = ["HISTORIQUE COUPONS"];
+      const lines = ["HISTORIQUE TICKETS | Archive propre"];
       items.slice(0, 8).forEach((item, index) => {
         lines.push(`${index + 1}. ${item?.timestamp || "-"} | ${item?.status || "-"} | ${Number(item?.summary?.matchesCount || item?.matches?.length || 0)} match(s)`);
       });
+      lines.push("", "Tu peux repartir de cet historique pour structurer la prochaine sélection.");
       if (session) session.lastMode = "history";
       return respond(lines.join("\n"));
     }
@@ -5928,10 +6428,11 @@ async function handleTelegramWebhookUpdate(req, res) {
     if (wantsWatchlist) {
       const data = await callLocalApi(`/api/watchlist?userId=${encodeURIComponent(chatId)}`);
       const watchlist = data?.data?.watchlist || [];
-      const lines = ["WATCHLIST TELEGRAM", `Total: ${watchlist.length}`];
+      const lines = ["WATCHLIST TELEGRAM | Sélection privée", `Total: ${watchlist.length}`];
       watchlist.slice(0, 12).forEach((item, index) => {
         lines.push(`${index + 1}. ${item}`);
       });
+      lines.push("", "Ta watchlist reste prête pour une reprise rapide.");
       if (session) session.lastMode = "watchlist";
       return respond(lines.join("\n"));
     }
@@ -5939,11 +6440,34 @@ async function handleTelegramWebhookUpdate(req, res) {
     if (wantsJournal) {
       const journal = await callLocalApi("/api/coupon/journal");
       const items = Array.isArray(journal?.data?.journal) ? journal.data.journal : [];
-      const lines = ["JOURNAL PERFORMANCE"];
+      const lines = ["JOURNAL PERFORMANCE | Lecture pro"];
       items.slice(0, 10).forEach((item, index) => {
         lines.push(`${index + 1}. ${item?.timestamp || "-"} | ${item?.status || "-"} | gain/profit ${Number(item?.profit || 0)}`);
       });
+      lines.push("", "Le journal est synthétisé pour une lecture rapide et exploitable.");
       if (session) session.lastMode = "journal";
+      return respond(lines.join("\n"));
+    }
+
+    if (wantsTracking) {
+      const tracking = await callLocalApi("/api/match-tracking/status").catch(() => null);
+      const tracker = tracking?.data?.tracker || {};
+      const state = tracking?.data?.state || {};
+      const runs = Array.isArray(tracking?.data?.runs) ? tracking.data.runs : [];
+      const matches = Array.isArray(tracking?.data?.matches) ? tracking.data.matches : [];
+      const lines = [
+        "SUIVI MATCHS | SOLITFIFPRO225",
+        `Actif: ${tracker?.enabled ? "oui" : "non"} | Intervalle: ${tracker?.intervalSeconds || matchTrackingConfig.intervalSeconds}s`,
+        `En cours: ${tracker?.running ? "oui" : "non"} | Runs: ${tracker?.lastRunCount ?? state?.totalRuns ?? 0}`,
+        `Dernier passage: ${state?.lastCompletedAt || state?.updatedAt || "n/a"}`,
+        `Matchs persistés: ${matches.length}`,
+      ];
+      if (runs.length) {
+        const lastRun = runs[0];
+        lines.push(`Dernier snapshot: ${lastRun?.createdAt || lastRun?.created_at || "n/a"} | ${lastRun?.status || "ok"}`);
+      }
+      lines.push("", "Le suivi reste disponible pour les prochains contrôles.");
+      if (session) session.lastMode = "tracking";
       return respond(lines.join("\n"));
     }
 
@@ -5968,12 +6492,14 @@ async function handleTelegramWebhookUpdate(req, res) {
           "history",
           "watchlist",
           "journal",
+          "tracking",
         ],
       },
       capabilities: {
         actions: [
           "show_dashboard",
           "show_status",
+          "show_tracking",
           "show_menu",
           "generate_coupon",
           "validate_ticket",
@@ -6794,6 +7320,13 @@ function startServer(startPort, triesLeft = MAX_PORT_TRIES) {
   const server = app.listen(startPort, () => {
     activeServerPort = startPort;
     console.log(`Serveur actif: http://localhost:${startPort}`);
+    if (matchTrackingConfig.enabled) {
+      setTimeout(() => {
+        startMatchTrackingService().catch((error) => {
+          console.warn(`Match tracker non demarre: ${error.message}`);
+        });
+      }, 5000);
+    }
     if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_URL) {
       setTimeout(() => {
         syncTelegramWebhook().catch((error) => {

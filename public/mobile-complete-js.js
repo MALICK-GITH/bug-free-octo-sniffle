@@ -274,6 +274,17 @@ class MobileCompleteOptimizer {
   }
 
   performRefresh() {
+    if (window.FC25UIState?.shouldBlockRefresh?.()) return;
+    const active = document.activeElement;
+    if (
+      active &&
+      typeof active.matches === "function" &&
+      active.matches(
+        'textarea, input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]), [contenteditable="true"]'
+      )
+    ) {
+      return;
+    }
     console.log('🔄 Performing pull-to-refresh...');
     
     // Show loading state

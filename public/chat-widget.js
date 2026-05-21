@@ -6,6 +6,25 @@
   const AUTO_REFRESH_ENABLED = false;
   let globalRefreshIntervalId = null;
 
+  function isTypingField(element) {
+    if (!element || typeof element.matches !== "function") return false;
+    return element.matches(
+      'textarea, input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]), [contenteditable="true"]'
+    );
+  }
+
+  function shouldBlockRefresh() {
+    const activeElement = document.activeElement;
+    const chatPanel = document.querySelector(".chat-panel:not(.chat-hidden)");
+    return Boolean(chatPanel) || isTypingField(activeElement);
+  }
+
+  window.FC25UIState = {
+    shouldBlockRefresh,
+    isChatOpen: () => Boolean(document.querySelector(".chat-panel:not(.chat-hidden)")),
+    isTyping: () => isTypingField(document.activeElement),
+  };
+
   function getSolitaireAIClient() {
     if (window.SolitaireAIClient) return window.SolitaireAIClient;
     return {

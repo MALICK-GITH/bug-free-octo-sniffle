@@ -1007,6 +1007,15 @@ async function sendCurrentMatchImageToTelegram() {
     const data = await res.json();
     if (!res.ok || !data?.success) throw new Error(data?.error || data?.message || "Erreur Telegram image");
     notifyAction("Coupon envoye", "Image du ticket match envoyee sur Telegram.");
+    window.dispatchEvent(
+      new CustomEvent("fc25:generated-media", {
+        detail: {
+          kind: "image",
+          page: window.location.pathname,
+          action: "send_match_telegram_image",
+        },
+      })
+    );
   } catch (error) {
     document.getElementById("sub").textContent = `Erreur Telegram image: ${error.message}`;
   } finally {
@@ -1153,6 +1162,15 @@ async function downloadCurrentMatchImage() {
     a.remove();
     URL.revokeObjectURL(url);
     notifyAction("Coupon envoye", "Image match telechargee.");
+    window.dispatchEvent(
+      new CustomEvent("fc25:generated-media", {
+        detail: {
+          kind: "image",
+          page: window.location.pathname,
+          action: "download_match_image",
+        },
+      })
+    );
   } catch (error) {
     document.getElementById("sub").textContent = `Erreur image: ${error.message}`;
   }

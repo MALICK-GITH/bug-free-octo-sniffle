@@ -2938,6 +2938,17 @@ async function sendCouponToTelegram(sendImage = false, mini = false) {
     });
     notifyEvent("Coupon envoye", `Telegram ${mini ? "mini" : sendImage ? "image" : "texte"} reussi.`);
     renderServerHistoryPanel();
+    if (sendImage) {
+      window.dispatchEvent(
+        new CustomEvent("fc25:generated-media", {
+          detail: {
+            kind: "image",
+            page: window.location.pathname,
+            action: "send_telegram_image",
+          },
+        })
+      );
+    }
   } catch (error) {
     if (panel) panel.innerHTML = `<p>Erreur Telegram: ${error.message}</p>`;
     pushAlert({ severity: "high", title: "Erreur Telegram", detail: error.message, type: "telegram_error" });
@@ -3105,6 +3116,15 @@ async function downloadCouponImage(mode = "default", forcedFormat) {
     notifyEvent(
       "Coupon envoye",
       `${mode === "story" ? "Snap story" : mode === "premium" ? "Image premium" : "Image coupon"} telecharge${mode === "story" ? "" : "e"}.`
+    );
+    window.dispatchEvent(
+      new CustomEvent("fc25:generated-media", {
+        detail: {
+          kind: "image",
+          page: window.location.pathname,
+          action: mode === "story" ? "download_coupon_story" : mode === "premium" ? "download_coupon_premium" : "download_coupon_image",
+        },
+      })
     );
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   } catch (error) {

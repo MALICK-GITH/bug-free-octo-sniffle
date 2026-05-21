@@ -326,8 +326,21 @@ class MobileUltraInteractions {
   }
 
   performRefresh() {
+    if (this.shouldSuppressRefresh()) return;
     // Trigger page refresh
     window.location.reload();
+  }
+
+  shouldSuppressRefresh() {
+    if (window.FC25UIState?.shouldBlockRefresh?.()) return true;
+    const active = document.activeElement;
+    return Boolean(
+      active &&
+        typeof active.matches === "function" &&
+        active.matches(
+          'textarea, input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]), [contenteditable="true"]'
+        )
+    );
   }
 
   setupSwipeGestures() {

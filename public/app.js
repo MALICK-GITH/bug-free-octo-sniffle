@@ -19,10 +19,335 @@ let denicheurPreviousFocus = null;
 let denicheurBodyScrollY = 0;
 const teamLogoMemoryCache = new Map();
 let lastLoadRequestId = 0;
+const GENERATED_MEDIA_FILTER_KEY = "fc25_generated_media_filter_v1";
+const GENERATED_MEDIA_LIMIT = 12;
+let generatedMediaFilter = "all";
 
 function siteLog(level, message, meta) {
   if (!window.SiteLogger || typeof window.SiteLogger[level] !== "function") return;
   window.SiteLogger[level](message, meta);
+}
+
+function loadGeneratedMediaFilter() {
+  try {
+    const stored = String(localStorage.getItem(GENERATED_MEDIA_FILTER_KEY) || "all").toLowerCase();
+    return ["all", "image", "pdf"].includes(stored) ? stored : "all";
+  } catch {
+    return "all";
+  }
+}
+
+function saveGeneratedMediaFilter(value) {
+  try {
+    localStorage.setItem(GENERATED_MEDIA_FILTER_KEY, String(value || "all"));
+  } catch {}
+}
+
+function normalizeMediaHref(page = "") {
+  const value = String(page || "").trim();
+  if (!value) return "";
+  if (value.startsWith("/")) return value;
+  try {
+    const url = new URL(value, window.location.origin);
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return value;
+  }
+}
+
+function getMediaKind(item = {}) {
+  const kind = String(item?.kind || "").toLowerCase();
+  const format = String(item?.format || "").toLowerCase();
+  const mimeType = String(item?.mimeType || item?.mime_type || "").toLowerCase();
+  if (kind.includes("pdf") || format === "pdf" || mimeType === "application/pdf") return "pdf";
+  return "image";
+}
+
+function getMediaSourceLabel(item = {}) {
+  const page = normalizeMediaHref(item?.page || "");
+  if (page.includes("coupon")) return "Coupon";
+  if (page.includes("match")) return "Match";
+  if (page.includes("suivre")) return "Suivi";
+  if (page) return "Site";
+  return String(item?.source || "Archive").trim() || "Archive";
+}
+
+function buildMediaThumbnailDataUri(item = {}) {
+  const kind = getMediaKind(item);
+  const format = String(item?.format || (kind === "pdf" ? "pdf" : "png")).toUpperCase();
+  const title = escapeHtml(String(item?.label || item?.action || "Media").trim().slice(0, 30) || "Media");
+  const page = escapeHtml(getMediaSourceLabel(item));
+  const action = escapeHtml(String(item?.action || "").trim().slice(0, 24) || (kind === "pdf" ? "Document" : "Image"));
+  const accent = kind === "pdf" ? "#ffd166" : "#42f56c";
+  const accent2 = kind === "pdf" ? "#ff8fab" : "#24d7ff";
+  const body = kind === "pdf"
+    ? `
+      <rect x="32" y="26" width="124" height="172" rx="18" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.18)" />
+      <path d="M122 26v34c0 8 6 14 14 14h20" fill="none" stroke="${accent}" stroke-width="10" stroke-linecap="round" />
+      <rect x="52" y="76" width="84" height="12" rx="6" fill="rgba(255,255,255,0.84)"/>
+      <rect x="52" y="100" width="64" height="10" rx="5" fill="rgba(255,255,255,0.55)"/>
+      <rect x="52" y="122" width="78" height="10" rx="5" fill="rgba(255,255,255,0.42)"/>
+      <rect x="52" y="146" width="70" height="10" rx="5" fill="rgba(255,255,255,0.32)"/>
+    `
+    : `
+      <rect x="24" y="24" width="140" height="176" rx="24" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.18)" />
+      <circle cx="94" cy="82" r="24" fill="${accent}" fill-opacity="0.2" stroke="${accent}" stroke-width="2"/>
+      <circle cx="94" cy="82" r="8" fill="${accent2}"/>
+      <path d="M50 140 C72 120, 90 110, 120 108 S156 118, 164 136" fill="none" stroke="${accent}" stroke-width="5" stroke-linecap="round" opacity="0.9"/>
+      <path d="M52 154 C74 140, 98 134, 122 136 S154 148, 162 160" fill="none" stroke="${accent2}" stroke-width="4" stroke-linecap="round" opacity="0.86"/>
+      <rect x="52" y="170" width="88" height="10" rx="5" fill="rgba(255,255,255,0.72)"/>
+    `;
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="320" height="220" viewBox="0 0 320 220">
+      <defs>
+        <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#0b1530"/>
+          <stop offset="50%" stop-color="#12254a"/>
+          <stop offset="100%" stop-color="#08111f"/>
+        </linearGradient>
+      </defs>
+      <rect width="320" height="220" rx="28" fill="url(#g)"/>
+      <circle cx="292" cy="22" r="130" fill="${accent}" fill-opacity="0.08"/>
+      <circle cx="22" cy="190" r="110" fill="${accent2}" fill-opacity="0.09"/>
+      ${body}
+      <rect x="182" y="36" width="106" height="26" rx="13" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.16)"/>
+      <text x="235" y="53" text-anchor="middle" fill="#f4fbff" font-size="13" font-family="Segoe UI, Arial, sans-serif" font-weight="700">${format}</text>
+      <text x="182" y="86" fill="#8fe5ff" font-size="15" font-family="Segoe UI, Arial, sans-serif" font-weight="700">${page}</text>
+      <text x="182" y="110" fill="#f4fbff" font-size="20" font-family="Segoe UI, Arial, sans-serif" font-weight="800">${title}</text>
+      <text x="182" y="136" fill="#c8d6ff" font-size="12" font-family="Segoe UI, Arial, sans-serif">${action}</text>
+      <text x="182" y="160" fill="#8c9dc0" font-size="11" font-family="Segoe UI, Arial, sans-serif">GALERIE MEDIA / HIGH-TECH</text>
+    </svg>
+  `.trim();
+
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function mediaMatchesFilter(item = {}, filter = "all") {
+  const kind = getMediaKind(item);
+  const normalized = String(filter || "all").toLowerCase();
+  return normalized === "all" || normalized === kind;
+}
+
+function renderGeneratedMediaFilters(items = []) {
+  const counts = items.reduce(
+    (acc, item) => {
+      const kind = getMediaKind(item);
+      acc.all += 1;
+      acc[kind] += 1;
+      return acc;
+    },
+    { all: 0, image: 0, pdf: 0 }
+  );
+
+  return `
+    <div class="generated-media-toolbar">
+      <div class="generated-media-toolbar-copy">
+        <p class="watchlist-kicker">Médias générés</p>
+        <h2>Galerie d'exports</h2>
+        <p>Miniatures instantanées, filtres rapides et accès direct à la page source pour garder le flux sous contrôle.</p>
+      </div>
+      <div class="generated-media-filter-group" role="tablist" aria-label="Filtrer les médias générés">
+        ${[
+          ["all", "Tous", counts.all],
+          ["image", "Images", counts.image],
+          ["pdf", "PDF", counts.pdf],
+        ]
+          .map(([value, label, count]) => `
+            <button
+              type="button"
+              class="generated-media-filter ${generatedMediaFilter === value ? "active" : ""}"
+              data-media-filter="${value}"
+              aria-pressed="${generatedMediaFilter === value ? "true" : "false"}"
+            >
+              <span>${label}</span>
+              <strong>${count}</strong>
+            </button>
+          `)
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderGeneratedMediaCards(items = []) {
+  return items
+    .map((item, index) => {
+      const href = normalizeMediaHref(item?.page || "");
+      const kind = getMediaKind(item);
+      const format = String(item?.format || (kind === "pdf" ? "PDF" : "IMG")).toUpperCase();
+      const createdAt = item?.createdAt ? new Date(item.createdAt).toLocaleString("fr-FR") : "Date inconnue";
+      const title = String(item?.label || item?.action || "Média").trim();
+      const action = String(item?.action || kind).trim();
+      const source = String(item?.source || "archive").trim();
+      const fileName = String(item?.fileName || item?.file_name || "").trim();
+      const relatedId = String(item?.relatedId || "").trim();
+      const thumb = buildMediaThumbnailDataUri(item);
+      const openLabel = href ? "Ouvrir source" : "Archive locale";
+      return `
+        <article class="generated-media-card" data-media-kind="${kind}" data-media-index="${index}">
+          <div class="generated-media-thumb" role="button" tabindex="0" data-media-view="${index}" aria-label="Agrandir ${escapeHtml(title)}">
+            <img src="${thumb}" alt="Miniature ${escapeHtml(title)}" loading="lazy" />
+            <div class="generated-media-thumb-badge">${escapeHtml(format)}</div>
+          </div>
+          <div class="generated-media-card-body">
+            <div class="watchlist-card-head">
+              <strong>${escapeHtml(title)}</strong>
+              <span>${escapeHtml(action)}</span>
+            </div>
+            <div class="generated-media-pills">
+              <span>${escapeHtml(createdAt)}</span>
+              <span>${escapeHtml(source)}</span>
+              <span>${escapeHtml(fileName || "sans-fichier")}</span>
+            </div>
+            <div class="generated-media-meta">
+              <span>${escapeHtml(relatedId || "sans-id")}</span>
+              <span>${escapeHtml(kind.toUpperCase())}</span>
+            </div>
+            <div class="generated-media-actions">
+              <button type="button" class="generated-media-open generated-media-view-btn" data-media-view="${index}">Aperçu plein écran</button>
+              ${href ? `<a class="generated-media-open" href="${href}">${openLabel}</a>` : '<span class="generated-media-open is-static">Archive</span>'}
+              <button type="button" class="generated-media-copy" data-media-copy="${escapeHtml(fileName || title)}">Copier titre</button>
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function ensureGeneratedMediaLightbox() {
+  let modal = document.getElementById("generatedMediaLightbox");
+  if (modal) return modal;
+
+  modal = document.createElement("div");
+  modal.id = "generatedMediaLightbox";
+  modal.className = "generated-media-lightbox hidden";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-hidden", "true");
+  modal.innerHTML = `
+    <div class="generated-media-lightbox-backdrop" data-media-close="1"></div>
+    <div class="generated-media-lightbox-panel" role="document">
+      <button type="button" class="generated-media-lightbox-close" data-media-close="1" aria-label="Fermer">×</button>
+      <div class="generated-media-lightbox-preview">
+        <img id="generatedMediaLightboxImage" alt="Aperçu média" />
+        <div id="generatedMediaLightboxPdf" class="generated-media-lightbox-pdf hidden"></div>
+      </div>
+      <div class="generated-media-lightbox-content">
+        <p class="watchlist-kicker">Aperçu plein écran</p>
+        <h3 id="generatedMediaLightboxTitle">Média</h3>
+        <p id="generatedMediaLightboxSubtitle"></p>
+        <div class="generated-media-lightbox-stats" id="generatedMediaLightboxStats"></div>
+        <div class="generated-media-lightbox-actions">
+          <a id="generatedMediaLightboxOpen" class="generated-media-open" href="#" target="_blank" rel="noreferrer">Ouvrir source</a>
+          <button type="button" id="generatedMediaLightboxCopy" class="generated-media-copy">Copier titre</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  modal.addEventListener("click", (event) => {
+    if (event.target && event.target.closest("[data-media-close]")) {
+      hideGeneratedMediaLightbox();
+    }
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideGeneratedMediaLightbox();
+  });
+
+  return modal;
+}
+
+function hideGeneratedMediaLightbox() {
+  const modal = document.getElementById("generatedMediaLightbox");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("generated-media-open");
+}
+
+function openGeneratedMediaLightbox(item = {}) {
+  const modal = ensureGeneratedMediaLightbox();
+  const thumb = buildMediaThumbnailDataUri(item);
+  const kind = getMediaKind(item);
+  const title = String(item?.label || item?.action || "Média").trim() || "Média";
+  const subtitle = [
+    String(item?.action || "").trim(),
+    String(item?.page || "").trim(),
+  ].filter(Boolean).join(" • ") || "Aucun détail supplémentaire";
+  const stats = [
+    item?.createdAt ? `Créé le ${new Date(item.createdAt).toLocaleString("fr-FR")}` : "Date inconnue",
+    item?.format ? `Format ${String(item.format).toUpperCase()}` : kind.toUpperCase(),
+    item?.source ? `Source ${String(item.source)}` : "Source archive",
+    item?.relatedId ? `ID ${String(item.relatedId)}` : null,
+  ].filter(Boolean);
+  const href = normalizeMediaHref(item?.page || "");
+
+  const image = document.getElementById("generatedMediaLightboxImage");
+  const pdf = document.getElementById("generatedMediaLightboxPdf");
+  const titleEl = document.getElementById("generatedMediaLightboxTitle");
+  const subtitleEl = document.getElementById("generatedMediaLightboxSubtitle");
+  const statsEl = document.getElementById("generatedMediaLightboxStats");
+  const openEl = document.getElementById("generatedMediaLightboxOpen");
+  const copyEl = document.getElementById("generatedMediaLightboxCopy");
+
+  if (image) {
+    image.src = thumb;
+    image.alt = `Aperçu ${title}`;
+    image.classList.toggle("hidden", kind === "pdf");
+  }
+  if (pdf) {
+    pdf.classList.toggle("hidden", kind !== "pdf");
+    pdf.innerHTML = kind === "pdf"
+      ? `
+        <div class="generated-media-pdf-card">
+          <span class="generated-media-pdf-chip">PDF</span>
+          <strong>${escapeHtml(title)}</strong>
+          <p>${escapeHtml(subtitle)}</p>
+          <div class="generated-media-pdf-bars">
+            <i></i><i></i><i></i>
+          </div>
+        </div>
+      `
+      : "";
+  }
+  if (titleEl) titleEl.textContent = title;
+  if (subtitleEl) subtitleEl.textContent = subtitle;
+  if (statsEl) {
+    statsEl.innerHTML = stats.map((text) => `<span>${escapeHtml(text)}</span>`).join("");
+  }
+  if (openEl) {
+    if (href) {
+      openEl.href = href;
+      openEl.classList.remove("is-static");
+      openEl.textContent = "Ouvrir source";
+    } else {
+      openEl.href = "#";
+      openEl.classList.add("is-static");
+      openEl.textContent = "Archive";
+    }
+  }
+  if (copyEl) {
+    copyEl.onclick = async () => {
+      const text = String(item?.fileName || title || "").trim();
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        copyEl.textContent = "Copié";
+        setTimeout(() => { copyEl.textContent = "Copier titre"; }, 1100);
+      } catch {
+        copyEl.textContent = "Erreur copie";
+        setTimeout(() => { copyEl.textContent = "Copier titre"; }, 1100);
+      }
+    };
+  }
+
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("generated-media-open");
 }
 
 function shouldLockDenicheurScroll() {
@@ -586,6 +911,114 @@ function renderWatchlistPanel(matches = []) {
       renderMatches();
     });
   });
+}
+
+async function renderGeneratedMediaPanel() {
+  const host = document.getElementById("generatedMediaPanel");
+  if (!host) return;
+
+  generatedMediaFilter = loadGeneratedMediaFilter();
+
+  try {
+    const res = await fetch(`/api/media/history?limit=${GENERATED_MEDIA_LIMIT}`, { cache: "no-store" });
+    const data = await res.json();
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const mediaItems = items.filter((item) => mediaMatchesFilter(item, generatedMediaFilter));
+    window.__generatedMediaItems = mediaItems;
+
+    if (!items.length) {
+      host.innerHTML = `
+        <div class="generated-media-shell">
+          ${renderGeneratedMediaFilters([])}
+          <div class="watchlist-shell watchlist-empty generated-media-empty">
+            <div>
+              <p class="watchlist-kicker">Médias générés</p>
+              <h2>Galerie vide pour l'instant</h2>
+              <p>Quand une image ou un PDF sera produit depuis coupon, match ou Telegram, il apparaîtra automatiquement ici.</p>
+            </div>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    host.innerHTML = `
+      <div class="generated-media-shell">
+        ${renderGeneratedMediaFilters(items)}
+        <div class="generated-media-hero">
+          <div class="generated-media-hero-copy">
+            <p class="watchlist-kicker">Bibliothèque temps réel</p>
+            <h3>Chaque export est archivé et rendu visible dans un flux premium.</h3>
+            <p>Tu retrouves ici les images et PDF produits depuis n'importe quelle page, avec miniatures, filtre, source et accès direct.</p>
+          </div>
+          <div class="generated-media-hero-stats">
+            <span>${items.length} total</span>
+            <strong>${mediaItems.length} affiché(s)</strong>
+            <small>${generatedMediaFilter === "all" ? "Vue complète" : generatedMediaFilter.toUpperCase()}</small>
+          </div>
+        </div>
+        <div class="generated-media-grid">
+          ${renderGeneratedMediaCards(mediaItems)}
+        </div>
+      </div>
+    `;
+
+    host.querySelectorAll("[data-media-filter]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const nextFilter = String(button.getAttribute("data-media-filter") || "all");
+        generatedMediaFilter = nextFilter;
+        saveGeneratedMediaFilter(nextFilter);
+        renderGeneratedMediaPanel();
+      });
+    });
+
+    host.querySelectorAll("[data-media-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const text = String(button.getAttribute("data-media-copy") || "").trim();
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = "Copié";
+          setTimeout(() => {
+            button.textContent = "Copier titre";
+          }, 1100);
+        } catch {
+          button.textContent = "Erreur copie";
+          setTimeout(() => {
+            button.textContent = "Copier titre";
+          }, 1100);
+        }
+      });
+    });
+
+    host.querySelectorAll("[data-media-view]").forEach((button) => {
+      const open = () => {
+        const index = Number(button.getAttribute("data-media-view"));
+        const item = Array.isArray(window.__generatedMediaItems) ? window.__generatedMediaItems[index] : null;
+        if (item) openGeneratedMediaLightbox(item);
+      };
+      button.addEventListener("click", open);
+      button.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      });
+    });
+  } catch (_error) {
+    host.innerHTML = `
+      <div class="generated-media-shell">
+        ${renderGeneratedMediaFilters([])}
+        <div class="watchlist-shell watchlist-empty generated-media-empty">
+          <div>
+            <p class="watchlist-kicker">Médias générés</p>
+            <h2>Archive indisponible</h2>
+            <p>La lecture de l'historique média a échoué, mais la génération continue de fonctionner.</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 }
 
 function updateWatchlistAlerts(matches = []) {
@@ -1711,6 +2144,7 @@ async function loadMatches() {
     renderSiteCommandCenter(allMatches);
     renderFrontlineStatus();
     renderWatchlistPanel(allMatches);
+    renderGeneratedMediaPanel();
     renderLeagueHeatmap(allMatches);
     renderMatchFinder(allMatches);
     renderMatches();
@@ -1720,6 +2154,7 @@ async function loadMatches() {
     hydrateDirectTeamLogos(allMatches).then(() => {
       if (requestId !== lastLoadRequestId) return;
       renderWatchlistPanel(allMatches);
+      renderGeneratedMediaPanel();
       renderMatchFinder(allMatches);
       renderMatches();
     });
@@ -1884,6 +2319,26 @@ function registerHomeSiteControl() {
 
 registerHomeSiteControl();
 renderFrontlineStatus();
+
+window.addEventListener("fc25:generated-media", () => {
+  if (document.getElementById("generatedMediaPanel")) {
+    renderGeneratedMediaPanel().then(() => {
+      const panel = document.getElementById("generatedMediaPanel");
+      if (panel) {
+        panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  }
+});
+
+Object.defineProperty(window, "GeneratedMediaPanel", {
+  configurable: false,
+  enumerable: true,
+  writable: false,
+  value: {
+    refresh: renderGeneratedMediaPanel,
+  },
+});
 
 // Écoute les mises à jour du cache intelligent
 window.addEventListener('fc25:matches-refreshed', (e) => {

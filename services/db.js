@@ -85,6 +85,23 @@ sqliteDb.exec(`
 `);
 
 sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS generated_assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    kind TEXT NOT NULL,
+    page TEXT,
+    action TEXT,
+    label TEXT,
+    file_name TEXT,
+    format TEXT,
+    mime_type TEXT,
+    source TEXT,
+    related_id TEXT,
+    asset_json TEXT
+  );
+`);
+
+sqliteDb.exec(`
   CREATE TABLE IF NOT EXISTS favorites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -106,6 +123,81 @@ sqliteDb.exec(`
 `);
 
 sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id TEXT NOT NULL UNIQUE,
+    team_home TEXT NOT NULL,
+    team_away TEXT NOT NULL,
+    league TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'upcoming',
+    minute INTEGER NOT NULL DEFAULT 0,
+    start_time_unix INTEGER,
+    score_home INTEGER NOT NULL DEFAULT 0,
+    score_away INTEGER NOT NULL DEFAULT 0,
+    odds_json TEXT,
+    prediction_json TEXT,
+    source TEXT,
+    last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS match_score_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id TEXT NOT NULL,
+    state_hash TEXT NOT NULL,
+    team_home TEXT NOT NULL,
+    team_away TEXT NOT NULL,
+    league TEXT NOT NULL,
+    status TEXT NOT NULL,
+    minute INTEGER NOT NULL DEFAULT 0,
+    score_home INTEGER NOT NULL DEFAULT 0,
+    score_away INTEGER NOT NULL DEFAULT 0,
+    source TEXT,
+    snapshot_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(match_id, state_hash)
+  );
+`);
+
+sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS match_tracking_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tracker_key TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'liveFeed',
+    status TEXT NOT NULL DEFAULT 'ok',
+    live_count INTEGER NOT NULL DEFAULT 0,
+    upcoming_count INTEGER NOT NULL DEFAULT 0,
+    finished_count INTEGER NOT NULL DEFAULT 0,
+    total_count INTEGER NOT NULL DEFAULT 0,
+    snapshot_json TEXT,
+    error_text TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS match_tracking_state (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tracker_key TEXT NOT NULL UNIQUE,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    interval_seconds INTEGER NOT NULL DEFAULT 60,
+    total_runs INTEGER NOT NULL DEFAULT 0,
+    last_started_at TEXT,
+    last_completed_at TEXT,
+    last_success_at TEXT,
+    last_error_at TEXT,
+    last_error_text TEXT,
+    last_snapshot_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+sqliteDb.exec(`
   CREATE TABLE IF NOT EXISTS mobile_devices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -119,6 +211,100 @@ sqliteDb.exec(`
     meta_json TEXT,
     UNIQUE(platform, device_id)
   );
+`);
+
+const sqliteUpsertTrackedMatchStmt = sqliteDb.prepare(`
+  INSERT INTO matches (
+    match_id, team_home, team_away, league, status, minute, start_time_unix,
+    score_home, score_away, odds_json, prediction_json, source, last_seen_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+  ON CONFLICT(match_id) DO UPDATE SET
+    team_home = excluded.team_home,
+    team_away = excluded.team_away,
+    league = excluded.league,
+    status = excluded.status,
+    minute = excluded.minute,
+    start_time_unix = excluded.start_time_unix,
+    score_home = excluded.score_home,
+    score_away = excluded.score_away,
+    odds_json = excluded.odds_json,
+    prediction_json = excluded.prediction_json,
+    source = excluded.source,
+    last_seen_at = datetime('now'),
+    updated_at = datetime('now')
+`);
+
+const sqliteInsertMatchTrackingRunStmt = sqliteDb.prepare(`
+  INSERT INTO match_tracking_runs (
+    tracker_key, source, status, live_count, upcoming_count, finished_count, total_count, snapshot_json, error_text
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const sqliteUpsertMatchTrackingStateStmt = sqliteDb.prepare(`
+  INSERT INTO match_tracking_state (
+    tracker_key, enabled, interval_seconds, total_runs, last_started_at, last_completed_at,
+    last_success_at, last_error_at, last_error_text, last_snapshot_json, updated_at, last_seen_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+  ON CONFLICT(tracker_key) DO UPDATE SET
+    enabled = excluded.enabled,
+    interval_seconds = excluded.interval_seconds,
+    total_runs = excluded.total_runs,
+    last_started_at = excluded.last_started_at,
+    last_completed_at = excluded.last_completed_at,
+    last_success_at = excluded.last_success_at,
+    last_error_at = excluded.last_error_at,
+    last_error_text = excluded.last_error_text,
+    last_snapshot_json = excluded.last_snapshot_json,
+    updated_at = datetime('now'),
+    last_seen_at = datetime('now')
+`);
+
+const sqliteSelectMatchTrackingStateStmt = sqliteDb.prepare(`
+  SELECT id, tracker_key, enabled, interval_seconds, total_runs, last_started_at, last_completed_at,
+         last_success_at, last_error_at, last_error_text, last_snapshot_json, created_at, updated_at, last_seen_at
+  FROM match_tracking_state
+  WHERE tracker_key = ?
+  LIMIT 1
+`);
+
+const sqliteSelectMatchTrackingRunsStmt = sqliteDb.prepare(`
+  SELECT id, tracker_key, source, status, live_count, upcoming_count, finished_count, total_count,
+         snapshot_json, error_text, created_at
+  FROM match_tracking_runs
+  WHERE tracker_key = ?
+  ORDER BY id DESC
+  LIMIT ?
+`);
+
+const sqliteSelectTrackedMatchesStmt = sqliteDb.prepare(`
+  SELECT id, match_id, team_home, team_away, league, status, minute, start_time_unix,
+         score_home, score_away, odds_json, prediction_json, source, last_seen_at, created_at, updated_at
+  FROM matches
+  ORDER BY updated_at DESC
+  LIMIT ?
+`);
+
+const sqliteSelectTrackedMatchStmt = sqliteDb.prepare(`
+  SELECT id, match_id, team_home, team_away, league, status, minute, start_time_unix,
+         score_home, score_away, odds_json, prediction_json, source, last_seen_at, created_at, updated_at
+  FROM matches
+  WHERE match_id = ?
+  LIMIT 1
+`);
+
+const sqliteInsertMatchScoreHistoryStmt = sqliteDb.prepare(`
+  INSERT OR IGNORE INTO match_score_history (
+    match_id, state_hash, team_home, team_away, league, status, minute, score_home, score_away, source, snapshot_json
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const sqliteSelectMatchScoreHistoryStmt = sqliteDb.prepare(`
+  SELECT id, match_id, state_hash, team_home, team_away, league, status, minute, score_home, score_away,
+         source, snapshot_json, created_at
+  FROM match_score_history
+  WHERE match_id = ?
+  ORDER BY id DESC
+  LIMIT ?
 `);
 
 sqliteDb.exec(`
@@ -264,6 +450,12 @@ const sqliteInsertAuditReportStmt = sqliteDb.prepare(`
   VALUES (?, ?, ?, ?)
 `);
 
+const sqliteInsertGeneratedAssetStmt = sqliteDb.prepare(`
+  INSERT INTO generated_assets (
+    kind, page, action, label, file_name, format, mime_type, source, related_id, asset_json
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
 const sqliteInsertFavoriteStmt = sqliteDb.prepare(`
   INSERT INTO favorites (user_id, coupon_id, coupon_json)
   VALUES (?, ?, ?)
@@ -294,6 +486,13 @@ const sqliteSelectTelegramHistoryStmt = sqliteDb.prepare(`
 const sqliteSelectAuditHistoryStmt = sqliteDb.prepare(`
   SELECT id, created_at, audit_id, action, payload_json, result_json
   FROM audit_reports
+  ORDER BY id DESC
+  LIMIT ?
+`);
+
+const sqliteSelectGeneratedAssetsStmt = sqliteDb.prepare(`
+  SELECT id, created_at, kind, page, action, label, file_name, format, mime_type, source, related_id, asset_json
+  FROM generated_assets
   ORDER BY id DESC
   LIMIT ?
 `);
@@ -487,6 +686,22 @@ function normalizeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function normalizeGeneratedAsset(entry = {}) {
+  const kind = String(entry.kind || entry.assetKind || "image").trim().toLowerCase() || "image";
+  return {
+    kind,
+    page: String(entry.page || entry.sourcePage || entry.pagePath || "").trim() || null,
+    action: String(entry.action || entry.sourceAction || "").trim() || null,
+    label: String(entry.label || entry.title || entry.name || "").trim() || null,
+    fileName: String(entry.fileName || entry.file_name || "").trim() || null,
+    format: String(entry.format || entry.fileFormat || "").trim().toLowerCase() || null,
+    mimeType: String(entry.mimeType || entry.mime_type || "").trim() || null,
+    source: String(entry.source || entry.origin || "").trim() || null,
+    relatedId: String(entry.relatedId || entry.related_id || entry.matchId || entry.couponId || "").trim() || null,
+    asset: normalizeObject(entry.asset || entry.meta || entry.payload || {}),
+  };
+}
+
 async function initMySql() {
   if (!mysqlRequested) return false;
   if (mysqlInitPromise) return mysqlInitPromise;
@@ -578,6 +793,25 @@ async function initMySql() {
       `);
 
       await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS generated_assets (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          kind VARCHAR(80) NOT NULL,
+          page VARCHAR(255) NULL,
+          action VARCHAR(255) NULL,
+          label VARCHAR(255) NULL,
+          file_name VARCHAR(255) NULL,
+          format VARCHAR(40) NULL,
+          mime_type VARCHAR(120) NULL,
+          source VARCHAR(255) NULL,
+          related_id VARCHAR(255) NULL,
+          asset_json LONGTEXT NULL,
+          KEY idx_generated_assets_created_at (created_at),
+          KEY idx_generated_assets_kind_created_at (kind, created_at)
+        )
+      `);
+
+      await mysqlPool.query(`
         CREATE TABLE IF NOT EXISTS favorites (
           id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -596,6 +830,88 @@ async function initMySql() {
           match_ids_json LONGTEXT NULL,
           snapshot_json LONGTEXT NULL,
           UNIQUE KEY uniq_watchlists_user_id (user_id)
+        )
+      `);
+
+      await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS matches (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          match_id VARCHAR(255) NOT NULL,
+          team_home VARCHAR(255) NOT NULL,
+          team_away VARCHAR(255) NOT NULL,
+          league VARCHAR(255) NOT NULL,
+          status VARCHAR(80) NOT NULL DEFAULT 'upcoming',
+          minute INT NOT NULL DEFAULT 0,
+          start_time_unix BIGINT NULL,
+          score_home INT NOT NULL DEFAULT 0,
+          score_away INT NOT NULL DEFAULT 0,
+          odds_json LONGTEXT NULL,
+          prediction_json LONGTEXT NULL,
+          source VARCHAR(120) NULL,
+          last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uniq_matches_match_id (match_id),
+          KEY idx_matches_league (league),
+          KEY idx_matches_status (status),
+          KEY idx_matches_updated_at (updated_at)
+        )
+      `);
+
+      await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS match_score_history (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          match_id VARCHAR(255) NOT NULL,
+          state_hash VARCHAR(255) NOT NULL,
+          team_home VARCHAR(255) NOT NULL,
+          team_away VARCHAR(255) NOT NULL,
+          league VARCHAR(255) NOT NULL,
+          status VARCHAR(80) NOT NULL,
+          minute INT NOT NULL DEFAULT 0,
+          score_home INT NOT NULL DEFAULT 0,
+          score_away INT NOT NULL DEFAULT 0,
+          source VARCHAR(120) NULL,
+          snapshot_json LONGTEXT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uniq_match_score_history_state (match_id, state_hash),
+          KEY idx_match_score_history_match_id_created_at (match_id, created_at)
+        )
+      `);
+
+      await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS match_tracking_runs (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          tracker_key VARCHAR(120) NOT NULL,
+          source VARCHAR(120) NOT NULL DEFAULT 'liveFeed',
+          status VARCHAR(40) NOT NULL DEFAULT 'ok',
+          live_count INT NOT NULL DEFAULT 0,
+          upcoming_count INT NOT NULL DEFAULT 0,
+          finished_count INT NOT NULL DEFAULT 0,
+          total_count INT NOT NULL DEFAULT 0,
+          snapshot_json LONGTEXT NULL,
+          error_text TEXT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          KEY idx_match_tracking_runs_tracker_key_created_at (tracker_key, created_at)
+        )
+      `);
+
+      await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS match_tracking_state (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          tracker_key VARCHAR(120) NOT NULL,
+          enabled TINYINT(1) NOT NULL DEFAULT 1,
+          interval_seconds INT NOT NULL DEFAULT 60,
+          total_runs INT NOT NULL DEFAULT 0,
+          last_started_at DATETIME NULL,
+          last_completed_at DATETIME NULL,
+          last_success_at DATETIME NULL,
+          last_error_at DATETIME NULL,
+          last_error_text TEXT NULL,
+          last_snapshot_json LONGTEXT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uniq_match_tracking_state_tracker_key (tracker_key)
         )
       `);
 
@@ -884,6 +1200,586 @@ async function getTelegramSession(chatId = "") {
   };
 }
 
+function normalizeTrackedMatchEntry(match = {}, extra = {}) {
+  const teamHome = String(match.teamHome || match.team1 || match.homeTeam || match.O1 || "").trim();
+  const teamAway = String(match.teamAway || match.team2 || match.awayTeam || match.O2 || "").trim();
+  const league = String(match.league || extra.league || "").trim() || "unknown";
+  const status = String(match.status || extra.status || "upcoming").trim().toLowerCase();
+  const minute = Number(match.minute ?? extra.minute ?? 0) || 0;
+  const startTimeUnix = Number(match.startTimeUnix ?? match.start_time_unix ?? extra.startTimeUnix ?? 0) || null;
+  const scoreHome = Number(match.scoreHome ?? match.score1 ?? match.homeScore ?? 0) || 0;
+  const scoreAway = Number(match.scoreAway ?? match.score2 ?? match.awayScore ?? 0) || 0;
+
+  return {
+    matchId: String(match.matchId || match.id || match.match_id || extra.matchId || "").trim(),
+    teamHome: teamHome || "Equipe 1",
+    teamAway: teamAway || "Equipe 2",
+    league,
+    status,
+    minute,
+    startTimeUnix,
+    scoreHome,
+    scoreAway,
+    odds: normalizeObject(match.odds || match.odd || {}),
+    prediction: normalizeObject(match.prediction || extra.prediction || {}),
+    source: String(match.source || extra.source || "liveFeed").trim(),
+  };
+}
+
+function buildMatchScoreStateHash(match = {}) {
+  return [match.status || "unknown", Number(match.minute) || 0, Number(match.scoreHome) || 0, Number(match.scoreAway) || 0].join("|");
+}
+
+function buildMatchScoreSnapshot(match = {}, extra = {}) {
+  return normalizeObject({
+    matchId: match.matchId || extra.matchId || null,
+    teamHome: match.teamHome || extra.teamHome || null,
+    teamAway: match.teamAway || extra.teamAway || null,
+    league: match.league || extra.league || null,
+    status: match.status || extra.status || null,
+    minute: Number(match.minute) || 0,
+    scoreHome: Number(match.scoreHome) || 0,
+    scoreAway: Number(match.scoreAway) || 0,
+    source: match.source || extra.source || "liveFeed",
+    odds: normalizeObject(match.odds || extra.odds || {}),
+    prediction: normalizeObject(match.prediction || extra.prediction || {}),
+    observedAt: extra.observedAt || new Date().toISOString(),
+  });
+}
+
+async function saveMatchScoreHistory(entry = {}) {
+  const match = normalizeTrackedMatchEntry(entry, entry);
+  if (!match.matchId) {
+    throw new Error("match_id requis");
+  }
+
+  const stateHash = buildMatchScoreStateHash(match);
+  const snapshot = buildMatchScoreSnapshot(match, entry.snapshot || entry);
+
+  if (await canUseMySql()) {
+    const [result] = await mysqlPool.execute(
+      `INSERT IGNORE INTO match_score_history (
+         match_id, state_hash, team_home, team_away, league, status, minute, score_home, score_away, source, snapshot_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        match.matchId,
+        stateHash,
+        match.teamHome,
+        match.teamAway,
+        match.league,
+        match.status,
+        match.minute,
+        match.scoreHome,
+        match.scoreAway,
+        match.source,
+        toJson(snapshot, {}),
+      ]
+    );
+    return {
+      matchId: match.matchId,
+      stateHash,
+      inserted: Number(result?.affectedRows) > 0,
+    };
+  }
+
+  const result = sqliteInsertMatchScoreHistoryStmt.run(
+    match.matchId,
+    stateHash,
+    match.teamHome,
+    match.teamAway,
+    match.league,
+    match.status,
+    match.minute,
+    match.scoreHome,
+    match.scoreAway,
+    match.source,
+    toJson(snapshot, {})
+  );
+  return {
+    matchId: match.matchId,
+    stateHash,
+    inserted: Number(result?.changes) > 0,
+  };
+}
+
+async function upsertTrackedMatch(entry = {}) {
+  const match = normalizeTrackedMatchEntry(entry);
+  if (!match.matchId) {
+    throw new Error("match_id requis");
+  }
+
+  if (await canUseMySql()) {
+    await mysqlPool.execute(
+      `INSERT INTO matches (
+         match_id, team_home, team_away, league, status, minute, start_time_unix,
+         score_home, score_away, odds_json, prediction_json, source, last_seen_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON DUPLICATE KEY UPDATE
+         team_home = VALUES(team_home),
+         team_away = VALUES(team_away),
+         league = VALUES(league),
+         status = VALUES(status),
+         minute = VALUES(minute),
+         start_time_unix = VALUES(start_time_unix),
+         score_home = VALUES(score_home),
+         score_away = VALUES(score_away),
+         odds_json = VALUES(odds_json),
+         prediction_json = VALUES(prediction_json),
+         source = VALUES(source),
+         last_seen_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP`,
+      [
+        match.matchId,
+        match.teamHome,
+        match.teamAway,
+        match.league,
+        match.status,
+        match.minute,
+        match.startTimeUnix,
+        match.scoreHome,
+        match.scoreAway,
+        toJson(match.odds, {}),
+        toJson(match.prediction, {}),
+        match.source,
+      ]
+    );
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, match_id, team_home, team_away, league, status, minute, start_time_unix, score_home, score_away, odds_json, prediction_json, source, last_seen_at, created_at, updated_at
+       FROM matches
+       WHERE match_id = ?
+       LIMIT 1`,
+      [match.matchId]
+    );
+    const row = rows[0];
+    try {
+      await saveMatchScoreHistory(match);
+    } catch (historyError) {
+      console.warn(`Impossible de persister l'historique du score pour ${match.matchId}: ${historyError.message}`);
+    }
+    return {
+      id: row?.id || null,
+      matchId: row?.match_id || match.matchId,
+      teamHome: row?.team_home || match.teamHome,
+      teamAway: row?.team_away || match.teamAway,
+      league: row?.league || match.league,
+      status: row?.status || match.status,
+      minute: Number(row?.minute) || match.minute,
+      startTimeUnix: row?.start_time_unix ? Number(row.start_time_unix) : match.startTimeUnix,
+      scoreHome: Number(row?.score_home) || match.scoreHome,
+      scoreAway: Number(row?.score_away) || match.scoreAway,
+      odds: parseJsonSafe(row?.odds_json, {}),
+      prediction: parseJsonSafe(row?.prediction_json, {}),
+      source: row?.source || match.source,
+      createdAt: normalizeDate(row?.created_at),
+      updatedAt: normalizeDate(row?.updated_at),
+      lastSeenAt: normalizeDate(row?.last_seen_at),
+    };
+  }
+
+  sqliteUpsertTrackedMatchStmt.run(
+    match.matchId,
+    match.teamHome,
+    match.teamAway,
+    match.league,
+    match.status,
+    match.minute,
+    match.startTimeUnix,
+    match.scoreHome,
+    match.scoreAway,
+    toJson(match.odds, {}),
+    toJson(match.prediction, {}),
+    match.source
+  );
+  const row = sqliteSelectTrackedMatchStmt.get(match.matchId);
+  try {
+    await saveMatchScoreHistory(match);
+  } catch (historyError) {
+    console.warn(`Impossible de persister l'historique du score pour ${match.matchId}: ${historyError.message}`);
+  }
+  return {
+    id: row?.id || null,
+    matchId: row?.match_id || match.matchId,
+    teamHome: row?.team_home || match.teamHome,
+    teamAway: row?.team_away || match.teamAway,
+    league: row?.league || match.league,
+    status: row?.status || match.status,
+    minute: Number(row?.minute) || match.minute,
+    startTimeUnix: row?.start_time_unix ? Number(row.start_time_unix) : match.startTimeUnix,
+    scoreHome: Number(row?.score_home) || match.scoreHome,
+    scoreAway: Number(row?.score_away) || match.scoreAway,
+    odds: parseJsonSafe(row?.odds_json, {}),
+    prediction: parseJsonSafe(row?.prediction_json, {}),
+    source: row?.source || match.source,
+    createdAt: row?.created_at || null,
+    updatedAt: row?.updated_at || null,
+    lastSeenAt: row?.last_seen_at || null,
+  };
+}
+
+async function saveMatchTrackingRun(entry = {}) {
+  const trackerKey = normalizeKey(entry.trackerKey, "default");
+  const snapshot = normalizeObject(entry.snapshot);
+  const counts = normalizeObject(entry.counts);
+  const status = String(entry.status || (entry.error ? "error" : "ok")).trim().toLowerCase();
+  const payload = {
+    trackerKey,
+    source: String(entry.source || "liveFeed").trim() || "liveFeed",
+    status,
+    liveCount: Number(counts.live ?? entry.liveCount ?? 0) || 0,
+    upcomingCount: Number(counts.upcoming ?? entry.upcomingCount ?? 0) || 0,
+    finishedCount: Number(counts.finished ?? entry.finishedCount ?? 0) || 0,
+    totalCount: Number(counts.total ?? entry.totalCount ?? 0) || 0,
+    snapshot,
+    errorText: entry.error ? String(entry.error) : null,
+  };
+
+  if (await canUseMySql()) {
+    const [result] = await mysqlPool.execute(
+      `INSERT INTO match_tracking_runs (
+         tracker_key, source, status, live_count, upcoming_count, finished_count, total_count, snapshot_json, error_text
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        payload.trackerKey,
+        payload.source,
+        payload.status,
+        payload.liveCount,
+        payload.upcomingCount,
+        payload.finishedCount,
+        payload.totalCount,
+        toJson(payload.snapshot, {}),
+        payload.errorText,
+      ]
+    );
+    return result.insertId;
+  }
+
+  const result = sqliteInsertMatchTrackingRunStmt.run(
+    payload.trackerKey,
+    payload.source,
+    payload.status,
+    payload.liveCount,
+    payload.upcomingCount,
+    payload.finishedCount,
+    payload.totalCount,
+    toJson(payload.snapshot, {}),
+    payload.errorText
+  );
+  return result.lastInsertRowid;
+}
+
+async function upsertMatchTrackingState(entry = {}) {
+  const trackerKey = normalizeKey(entry.trackerKey, "default");
+  const snapshot = normalizeObject(entry.snapshot);
+  const payload = {
+    trackerKey,
+    enabled: entry.enabled === false ? 0 : 1,
+    intervalSeconds: Math.max(10, Number(entry.intervalSeconds) || 60),
+    totalRuns: Math.max(0, Number(entry.totalRuns) || 0),
+    lastStartedAt: entry.lastStartedAt || null,
+    lastCompletedAt: entry.lastCompletedAt || null,
+    lastSuccessAt: entry.lastSuccessAt || null,
+    lastErrorAt: entry.lastErrorAt || null,
+    lastErrorText: entry.lastErrorText ? String(entry.lastErrorText) : null,
+    lastSnapshot: snapshot,
+  };
+
+  if (await canUseMySql()) {
+    await mysqlPool.execute(
+      `INSERT INTO match_tracking_state (
+         tracker_key, enabled, interval_seconds, total_runs, last_started_at, last_completed_at,
+         last_success_at, last_error_at, last_error_text, last_snapshot_json, last_seen_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON DUPLICATE KEY UPDATE
+         enabled = VALUES(enabled),
+         interval_seconds = VALUES(interval_seconds),
+         total_runs = VALUES(total_runs),
+         last_started_at = VALUES(last_started_at),
+         last_completed_at = VALUES(last_completed_at),
+         last_success_at = VALUES(last_success_at),
+         last_error_at = VALUES(last_error_at),
+         last_error_text = VALUES(last_error_text),
+         last_snapshot_json = VALUES(last_snapshot_json),
+         updated_at = CURRENT_TIMESTAMP,
+         last_seen_at = CURRENT_TIMESTAMP`,
+      [
+        payload.trackerKey,
+        payload.enabled,
+        payload.intervalSeconds,
+        payload.totalRuns,
+        payload.lastStartedAt,
+        payload.lastCompletedAt,
+        payload.lastSuccessAt,
+        payload.lastErrorAt,
+        payload.lastErrorText,
+        toJson(payload.lastSnapshot, {}),
+      ]
+    );
+    return getMatchTrackingState(trackerKey);
+  }
+
+  sqliteUpsertMatchTrackingStateStmt.run(
+    payload.trackerKey,
+    payload.enabled,
+    payload.intervalSeconds,
+    payload.totalRuns,
+    payload.lastStartedAt,
+    payload.lastCompletedAt,
+    payload.lastSuccessAt,
+    payload.lastErrorAt,
+    payload.lastErrorText,
+    toJson(payload.lastSnapshot, {})
+  );
+  return getMatchTrackingState(trackerKey);
+}
+
+async function saveMatchTrackingSnapshot(entry = {}) {
+  const trackerKey = normalizeKey(entry.trackerKey, "default");
+  const matches = Array.isArray(entry.matches) ? entry.matches : [];
+  const counts = {
+    live: Number(entry.counts?.live) || 0,
+    upcoming: Number(entry.counts?.upcoming) || 0,
+    finished: Number(entry.counts?.finished) || 0,
+    total: Number(entry.counts?.total) || matches.length,
+  };
+  const snapshot = {
+    counts,
+    source: String(entry.source || "liveFeed").trim() || "liveFeed",
+    fetchedAt: entry.fetchedAt || new Date().toISOString(),
+    matches,
+  };
+
+  for (const match of matches) {
+    await upsertTrackedMatch(match);
+  }
+
+  const state = await upsertMatchTrackingState({
+    trackerKey,
+    enabled: entry.enabled !== false,
+    intervalSeconds: entry.intervalSeconds || 60,
+    totalRuns: Number(entry.totalRuns) || 0,
+    lastStartedAt: entry.lastStartedAt || snapshot.fetchedAt,
+    lastCompletedAt: entry.lastCompletedAt || snapshot.fetchedAt,
+    lastSuccessAt: entry.lastSuccessAt || snapshot.fetchedAt,
+    lastErrorAt: entry.lastErrorAt || null,
+    lastErrorText: entry.lastErrorText || null,
+    snapshot,
+  });
+
+  await saveMatchTrackingRun({
+    trackerKey,
+    source: snapshot.source,
+    status: entry.error ? "error" : "ok",
+    counts,
+    snapshot,
+    error: entry.error || null,
+  });
+
+  return {
+    state,
+    snapshot,
+  };
+}
+
+async function getMatchTrackingState(trackerKey = "default") {
+  const safeKey = normalizeKey(trackerKey, "default");
+
+  if (await canUseMySql()) {
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, tracker_key, enabled, interval_seconds, total_runs, last_started_at, last_completed_at,
+              last_success_at, last_error_at, last_error_text, last_snapshot_json, created_at, updated_at, last_seen_at
+       FROM match_tracking_state
+       WHERE tracker_key = ?
+       LIMIT 1`,
+      [safeKey]
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      trackerKey: row.tracker_key,
+      enabled: Boolean(row.enabled),
+      intervalSeconds: Number(row.interval_seconds) || 60,
+      totalRuns: Number(row.total_runs) || 0,
+      lastStartedAt: normalizeDate(row.last_started_at),
+      lastCompletedAt: normalizeDate(row.last_completed_at),
+      lastSuccessAt: normalizeDate(row.last_success_at),
+      lastErrorAt: normalizeDate(row.last_error_at),
+      lastErrorText: row.last_error_text || null,
+      lastSnapshot: parseJsonSafe(row.last_snapshot_json, {}),
+      createdAt: normalizeDate(row.created_at),
+      updatedAt: normalizeDate(row.updated_at),
+      lastSeenAt: normalizeDate(row.last_seen_at),
+    };
+  }
+
+  const row = sqliteSelectMatchTrackingStateStmt.get(safeKey);
+  if (!row) return null;
+  return {
+    id: row.id,
+    trackerKey: row.tracker_key,
+    enabled: Boolean(row.enabled),
+    intervalSeconds: Number(row.interval_seconds) || 60,
+    totalRuns: Number(row.total_runs) || 0,
+    lastStartedAt: row.last_started_at || null,
+    lastCompletedAt: row.last_completed_at || null,
+    lastSuccessAt: row.last_success_at || null,
+    lastErrorAt: row.last_error_at || null,
+    lastErrorText: row.last_error_text || null,
+    lastSnapshot: parseJsonSafe(row.last_snapshot_json, {}),
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+    lastSeenAt: row.last_seen_at || null,
+  };
+}
+
+async function getMatchTrackingRuns(trackerKey = "default", limit = 20) {
+  const key = normalizeKey(trackerKey, "default");
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 20));
+
+  if (await canUseMySql()) {
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, tracker_key, source, status, live_count, upcoming_count, finished_count, total_count, snapshot_json, error_text, created_at
+       FROM match_tracking_runs
+       WHERE tracker_key = ?
+       ORDER BY id DESC
+       LIMIT ?`,
+      [key, safeLimit]
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      trackerKey: row.tracker_key,
+      source: row.source,
+      status: row.status,
+      counts: {
+        live: Number(row.live_count) || 0,
+        upcoming: Number(row.upcoming_count) || 0,
+        finished: Number(row.finished_count) || 0,
+        total: Number(row.total_count) || 0,
+      },
+      snapshot: parseJsonSafe(row.snapshot_json, {}),
+      error: row.error_text || null,
+      createdAt: normalizeDate(row.created_at),
+    }));
+  }
+
+  return sqliteSelectMatchTrackingRunsStmt.all(key, safeLimit).map((row) => ({
+    id: row.id,
+    trackerKey: row.tracker_key,
+    source: row.source,
+    status: row.status,
+    counts: {
+      live: Number(row.live_count) || 0,
+      upcoming: Number(row.upcoming_count) || 0,
+      finished: Number(row.finished_count) || 0,
+      total: Number(row.total_count) || 0,
+    },
+    snapshot: parseJsonSafe(row.snapshot_json, {}),
+    error: row.error_text || null,
+    createdAt: row.created_at,
+  }));
+}
+
+async function getTrackedMatches(limit = 50) {
+  const safeLimit = Math.max(1, Math.min(500, Number(limit) || 50));
+
+  if (await canUseMySql()) {
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, match_id, team_home, team_away, league, status, minute, start_time_unix, score_home, score_away, odds_json, prediction_json, source, last_seen_at, created_at, updated_at
+       FROM matches
+       ORDER BY updated_at DESC
+       LIMIT ?`,
+      [safeLimit]
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      matchId: row.match_id,
+      teamHome: row.team_home,
+      teamAway: row.team_away,
+      league: row.league,
+      status: row.status,
+      minute: Number(row.minute) || 0,
+      startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
+      scoreHome: Number(row.score_home) || 0,
+      scoreAway: Number(row.score_away) || 0,
+      odds: parseJsonSafe(row.odds_json, {}),
+      prediction: parseJsonSafe(row.prediction_json, {}),
+      source: row.source || null,
+      createdAt: normalizeDate(row.created_at),
+      updatedAt: normalizeDate(row.updated_at),
+      lastSeenAt: normalizeDate(row.last_seen_at),
+    }));
+  }
+
+  return sqliteSelectTrackedMatchesStmt.all(safeLimit).map((row) => ({
+    id: row.id,
+    matchId: row.match_id,
+    teamHome: row.team_home,
+    teamAway: row.team_away,
+    league: row.league,
+    status: row.status,
+    minute: Number(row.minute) || 0,
+    startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
+    scoreHome: Number(row.score_home) || 0,
+    scoreAway: Number(row.score_away) || 0,
+    odds: parseJsonSafe(row.odds_json, {}),
+    prediction: parseJsonSafe(row.prediction_json, {}),
+    source: row.source || null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+    lastSeenAt: row.last_seen_at || null,
+  }));
+}
+
+async function getMatchScoreHistory(matchId, limit = 120) {
+  const safeMatchId = String(matchId || "").trim();
+  const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 120));
+  if (!safeMatchId) {
+    return [];
+  }
+
+  if (await canUseMySql()) {
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, match_id, state_hash, team_home, team_away, league, status, minute, score_home, score_away, source, snapshot_json, created_at
+       FROM match_score_history
+       WHERE match_id = ?
+       ORDER BY id DESC
+       LIMIT ?`,
+      [safeMatchId, safeLimit]
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      matchId: row.match_id,
+      stateHash: row.state_hash,
+      teamHome: row.team_home,
+      teamAway: row.team_away,
+      league: row.league,
+      status: row.status,
+      minute: Number(row.minute) || 0,
+      scoreHome: Number(row.score_home) || 0,
+      scoreAway: Number(row.score_away) || 0,
+      source: row.source || null,
+      snapshot: parseJsonSafe(row.snapshot_json, {}),
+      createdAt: normalizeDate(row.created_at),
+    }));
+  }
+
+  return sqliteSelectMatchScoreHistoryStmt.all(safeMatchId, safeLimit).map((row) => ({
+    id: row.id,
+    matchId: row.match_id,
+    stateHash: row.state_hash,
+    teamHome: row.team_home,
+    teamAway: row.team_away,
+    league: row.league,
+    status: row.status,
+    minute: Number(row.minute) || 0,
+    scoreHome: Number(row.score_home) || 0,
+    scoreAway: Number(row.score_away) || 0,
+    source: row.source || null,
+    snapshot: parseJsonSafe(row.snapshot_json, {}),
+    createdAt: row.created_at || null,
+  }));
+}
+
 async function saveAuditReport(entry = {}) {
   const auditId = entry.auditId ? String(entry.auditId) : `AUD-${Date.now()}`;
   const savedOptions = buildSavedOptions(entry);
@@ -910,6 +1806,87 @@ async function saveAuditReport(entry = {}) {
     toJson(entry.result || {}, {})
   );
   return { id: result.lastInsertRowid, auditId };
+}
+
+async function saveGeneratedAsset(entry = {}) {
+  const asset = normalizeGeneratedAsset(entry);
+  if (await canUseMySql()) {
+    const [result] = await mysqlPool.execute(
+      `INSERT INTO generated_assets (
+         kind, page, action, label, file_name, format, mime_type, source, related_id, asset_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        asset.kind,
+        asset.page,
+        asset.action,
+        asset.label,
+        asset.fileName,
+        asset.format,
+        asset.mimeType,
+        asset.source,
+        asset.relatedId,
+        toJson(asset.asset, {}),
+      ]
+    );
+    return result.insertId;
+  }
+
+  const result = sqliteInsertGeneratedAssetStmt.run(
+    asset.kind,
+    asset.page,
+    asset.action,
+    asset.label,
+    asset.fileName,
+    asset.format,
+    asset.mimeType,
+    asset.source,
+    asset.relatedId,
+    toJson(asset.asset, {})
+  );
+  return result.lastInsertRowid;
+}
+
+async function getGeneratedAssets(limit = 20) {
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 20));
+
+  if (await canUseMySql()) {
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, created_at, kind, page, action, label, file_name, format, mime_type, source, related_id, asset_json
+       FROM generated_assets
+       ORDER BY id DESC
+       LIMIT ?`,
+      [safeLimit]
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      createdAt: normalizeDate(row.created_at),
+      kind: row.kind,
+      page: row.page || null,
+      action: row.action || null,
+      label: row.label || null,
+      fileName: row.file_name || null,
+      format: row.format || null,
+      mimeType: row.mime_type || null,
+      source: row.source || null,
+      relatedId: row.related_id || null,
+      asset: parseJsonSafe(row.asset_json, {}),
+    }));
+  }
+
+  return sqliteSelectGeneratedAssetsStmt.all(safeLimit).map((row) => ({
+    id: row.id,
+    createdAt: row.created_at || null,
+    kind: row.kind,
+    page: row.page || null,
+    action: row.action || null,
+    label: row.label || null,
+    fileName: row.file_name || null,
+    format: row.format || null,
+    mimeType: row.mime_type || null,
+    source: row.source || null,
+    relatedId: row.related_id || null,
+    asset: parseJsonSafe(row.asset_json, {}),
+  }));
 }
 
 async function getCouponHistory(limit = 20) {
@@ -1654,7 +2631,12 @@ async function getDbStatus() {
     const [validationRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM coupon_validations");
     const [telegramRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM telegram_logs");
     const [telegramSessionRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM telegram_sessions");
+    const [matchRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM matches");
+    const [trackingRunRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM match_tracking_runs");
+    const [trackingStateRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM match_tracking_state");
+    const [scoreHistoryRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM match_score_history");
     const [auditRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM audit_reports");
+    const [generatedAssetRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM generated_assets");
     const [updateRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM update_history");
     const [favoriteRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM favorites");
     const [watchlistRows] = await mysqlPool.query("SELECT COUNT(*) AS c FROM watchlists");
@@ -1673,7 +2655,12 @@ async function getDbStatus() {
         coupon_validations: Number(validationRows?.[0]?.c) || 0,
         telegram_logs: Number(telegramRows?.[0]?.c) || 0,
         telegram_sessions: Number(telegramSessionRows?.[0]?.c) || 0,
+        matches: Number(matchRows?.[0]?.c) || 0,
+        match_tracking_runs: Number(trackingRunRows?.[0]?.c) || 0,
+        match_tracking_state: Number(trackingStateRows?.[0]?.c) || 0,
+        match_score_history: Number(scoreHistoryRows?.[0]?.c) || 0,
         audit_reports: Number(auditRows?.[0]?.c) || 0,
+        generated_assets: Number(generatedAssetRows?.[0]?.c) || 0,
         update_history: Number(updateRows?.[0]?.c) || 0,
         favorites: Number(favoriteRows?.[0]?.c) || 0,
         watchlists: Number(watchlistRows?.[0]?.c) || 0,
@@ -1689,7 +2676,12 @@ async function getDbStatus() {
   const validationCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM coupon_validations").get().c;
   const telegramCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM telegram_logs").get().c;
   const telegramSessionCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM telegram_sessions").get().c;
+  const matchCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM matches").get().c;
+  const trackingRunCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM match_tracking_runs").get().c;
+  const trackingStateCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM match_tracking_state").get().c;
+  const scoreHistoryCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM match_score_history").get().c;
   const auditCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM audit_reports").get().c;
+  const generatedAssetCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM generated_assets").get().c;
   const updateCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM update_history").get().c;
   const favoriteCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM favorites").get().c;
   const watchlistCount = sqliteDb.prepare("SELECT COUNT(*) AS c FROM watchlists").get().c;
@@ -1709,7 +2701,12 @@ async function getDbStatus() {
       coupon_validations: Number(validationCount) || 0,
       telegram_logs: Number(telegramCount) || 0,
       telegram_sessions: Number(telegramSessionCount) || 0,
+      matches: Number(matchCount) || 0,
+      match_tracking_runs: Number(trackingRunCount) || 0,
+      match_tracking_state: Number(trackingStateCount) || 0,
+      match_score_history: Number(scoreHistoryCount) || 0,
       audit_reports: Number(auditCount) || 0,
+      generated_assets: Number(generatedAssetCount) || 0,
       update_history: Number(updateCount) || 0,
       favorites: Number(favoriteCount) || 0,
       watchlists: Number(watchlistCount) || 0,
@@ -1727,7 +2724,18 @@ module.exports = {
   saveTelegramLog,
   upsertTelegramSession,
   getTelegramSession,
+  upsertTrackedMatch,
+  saveMatchTrackingRun,
+  upsertMatchTrackingState,
+  saveMatchTrackingSnapshot,
+  getMatchTrackingState,
+  getMatchTrackingRuns,
+  getTrackedMatches,
+  saveMatchScoreHistory,
+  getMatchScoreHistory,
   saveAuditReport,
+  saveGeneratedAsset,
+  getGeneratedAssets,
   getCouponHistory,
   getTelegramHistory,
   saveUpdateEntry,

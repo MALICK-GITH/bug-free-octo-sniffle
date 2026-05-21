@@ -72,6 +72,18 @@
     return true;
   }
 
+  function shouldSuppressRefresh() {
+    if (window.FC25UIState?.shouldBlockRefresh?.()) return true;
+    const active = document.activeElement;
+    return Boolean(
+      active &&
+        typeof active.matches === "function" &&
+        active.matches(
+          'textarea, input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]), [contenteditable="true"]'
+        )
+    );
+  }
+
   function ensureNumericFieldValidation() {
     const rules = [
       { id: "sizeInput", min: 1, max: 12, label: "Nombre de matchs" },
@@ -133,6 +145,7 @@
     document.body.classList.add("has-quick-mobile-bar");
 
     safeBind("quickRefreshBtn", "click", () => {
+      if (shouldSuppressRefresh()) return;
       if (typeof window.loadMatches === "function") return window.loadMatches();
       location.reload();
     });
