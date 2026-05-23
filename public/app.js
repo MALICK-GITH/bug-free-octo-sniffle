@@ -1946,12 +1946,16 @@ function buildSiteCommandMetrics(matches = []) {
     ? Math.round(upcoming.reduce((acc, match) => acc + Number(match.reliabilityScore || 0), 0) / upcoming.length)
     : 0;
   const stableCount = upcoming.filter((m) => trendFlagCount(m) === 0).length;
+  const hotWindowCount = upcoming.filter((m) => {
+    const mins = minutesToStart(m);
+    return mins >= 0 && mins <= 25;
+  }).length;
   const qualityIndex = clamp(
     Math.round(avgReliability * 0.58 + (upcoming.length ? (stableCount / upcoming.length) * 100 : 0) * 0.26 + (live.length ? 72 : 58) * 0.16),
     5,
     99
   );
-  return { upcoming, live, top, avgReliability, stableCount, qualityIndex };
+  return { upcoming, live, top, avgReliability, stableCount, hotWindowCount, qualityIndex };
 }
 
 function renderSiteCommandCenter(matches = []) {
@@ -1959,6 +1963,12 @@ function renderSiteCommandCenter(matches = []) {
   if (!host) return;
 
   const metrics = buildSiteCommandMetrics(matches);
+  const leadMatch = metrics.top[0] || null;
+  const leadFinder = leadMatch ? prudentDenicheurScore(leadMatch) : 0;
+  const leadReliability = leadMatch ? Number(leadMatch.reliabilityScore || 0) : 0;
+  const leadTiming = leadMatch ? minutesToStart(leadMatch) : -1;
+  const leadTimingLabel =
+    leadTiming < 0 ? "Fenetre a confirmer" : leadTiming <= 5 ? "Immediate" : `Dans ${leadTiming} min`;
   const topRows = metrics.top.length
     ? metrics.top
       .map((match, index) => {
@@ -1985,13 +1995,37 @@ function renderSiteCommandCenter(matches = []) {
     metrics.qualityIndex >= 78 ? "command-good" : metrics.qualityIndex >= 62 ? "command-mid" : "command-low";
   const statusLabel =
     metrics.qualityIndex >= 78 ? "Flux premium" : metrics.qualityIndex >= 62 ? "Flux exploitable" : "Flux prudent";
+  const leadCard = leadMatch
+    ? `
+      <div class="command-signal-card">
+        <p class="command-kicker">Signal du moment</p>
+        <h3>${escapeHtml(leadMatch.teamHome)} vs ${escapeHtml(leadMatch.teamAway)}</h3>
+        <p class="command-signal-copy">ONE-DELUX remonte ce match en tete parce que le marche est plus lisible, la confiance reste exploitable et la fenetre d'ouverture est bonne.</p>
+        <div class="command-signal-pills">
+          <span>Confiance ${leadReliability}%</span>
+          <span>Denicheur ${leadFinder}</span>
+          <span>${escapeHtml(leadTimingLabel)}</span>
+        </div>
+        <div class="command-signal-actions">
+          <a class="command-pick-link" href="/match.html?id=${encodeURIComponent(leadMatch.id)}">Voir pourquoi</a>
+          <a class="command-secondary-link" href="/coupon.html">Construire le coupon</a>
+        </div>
+      </div>
+    `
+    : `
+      <div class="command-signal-card is-empty">
+        <p class="command-kicker">Signal du moment</p>
+        <h3>Le flux se recompose</h3>
+        <p class="command-signal-copy">Aucun signal fort n'est encore remonte. Le tableau garde les meilleurs candidats des que la fenetre devient plus propre.</p>
+      </div>
+    `;
 
   host.innerHTML = `
     <div class="command-head">
       <div>
         <p class="command-kicker">Pilotage intelligent</p>
         <h2>Centre de Commande</h2>
-        <p class="command-copy">Un seul endroit pour lire la qualite globale du flux, le parcours ideal et les meilleurs matchs a ouvrir maintenant.</p>
+        <p class="command-copy">Le coeur produit de ONE-DELUX: lire le signal, isoler les meilleures ouvertures et te guider jusqu'au coupon sans te noyer dans le bruit.</p>
       </div>
       <div class="command-score ${statusTone}">
         <span>Indice global</span>
@@ -1999,10 +2033,23 @@ function renderSiteCommandCenter(matches = []) {
         <small>${statusLabel}</small>
       </div>
     </div>
+    <div class="command-hero-grid">
+      ${leadCard}
+      <div class="command-proof-card">
+        <p class="command-kicker">Preuves rapides</p>
+        <h3>Pourquoi le flux attire l'attention</h3>
+        <div class="command-proof-list">
+          <span>${metrics.upcoming.length} matchs a venir</span>
+          <span>${metrics.hotWindowCount} dans la fenetre chaude</span>
+          <span>${metrics.stableCount} sans drift fort</span>
+          <span>Fiabilite moyenne ${metrics.avgReliability}%</span>
+        </div>
+      </div>
+    </div>
     <div class="command-grid">
       <article class="command-card">
         <strong>Parcours conseille</strong>
-        <p>1. Choisir un mode. 2. Ouvrir un detail match. 3. Construire le coupon. 4. Valider puis exporter.</p>
+        <p>1. Lire le signal du moment. 2. Ouvrir un detail match. 3. Construire le coupon. 4. Valider puis exporter.</p>
       </article>
       <article class="command-card">
         <strong>Sante du flux</strong>
@@ -2015,7 +2062,7 @@ function renderSiteCommandCenter(matches = []) {
     </div>
     <div class="command-subhead">
       <strong>Top ouvertures recommandees</strong>
-      <span>Detail match -> coupon -> validation</span>
+      <span>Voir pourquoi -> detail match -> coupon -> validation</span>
     </div>
     <div class="command-picks">${topRows}</div>
   `;
@@ -2078,7 +2125,7 @@ function renderMatches() {
           : effectiveMode === "live"
             ? "En cours"
             : "Termines";
-  subTitle.textContent = `${filtered.length} match(s) (${leagueLabel}, ${modeLabel}) - ${currentModeLabel}`;
+  subTitle.textContent = `ONE-DELUX - Le signal avant le coup d'envoi. ${filtered.length} match(s) (${leagueLabel}, ${modeLabel}) - ${currentModeLabel}`;
   renderSiteCommandCenter(byLeague);
   renderWatchlistPanel(allMatches);
 

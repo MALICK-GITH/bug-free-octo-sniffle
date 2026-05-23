@@ -1,5 +1,5 @@
 {
-  "name": "fifa-virtual-penalty-live",
+  "name": "one-delux",
   "version": "1.0.0",
   "description": "Site Node.js pour afficher uniquement les matchs FIFA virtuel penalty (1xBet LiveFeed).",
   "main": "server/index.js",

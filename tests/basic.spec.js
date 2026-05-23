@@ -1,5 +1,5 @@
 /**
- * SOLITFIFPRO225 - Basic E2E Tests
+ * ONE-DELUX - Basic E2E Tests
  * Phase 3: Tests End-to-End basiques
  * SOLITAIRE HACK SIGNATURE
  */
@@ -42,7 +42,7 @@ test.describe('Basic Navigation', () => {
     await visit(page, '/');
     
     // Check title
-    await expect(page).toHaveTitle(/SOLITFIFPRO225/);
+    await expect(page).toHaveTitle(/ONE-DELUX/);
     
     // Check main elements
     await expect(page.locator('h1')).toBeVisible();

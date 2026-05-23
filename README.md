@@ -1,4 +1,4 @@
-﻿# FC 25 Virtual Predictions
+﻿# ONE-DELUX
 
 ## Demarrage rapide
 
@@ -66,6 +66,36 @@ Si tu renseignes les variables `DB_HOST`, `DB_NAME`, `DB_USER` et `DB_PASSWORD`,
 - `GET /api/watchlist?userId=demo` -> watchlist synchronisee
 - `POST /api/watchlist` -> sauvegarder la watchlist
 - `POST /api/mobile/devices/register` -> enregistrer un appareil Android
+
+## Architecture consolidee
+
+Le serveur garde `server.js` comme point d'entree et de composition, avec extraction des routes critiques par domaine:
+
+- `server/routes/matches.js` -> matchs, details, cotes, predictions
+- `server/routes/coupon.js` -> generation, validation, favoris, historique, impression
+- `server/routes/watchlist.js` -> lecture et sauvegarde synchronisee
+- `server/routes/mobile.js` -> bootstrap Android, spec OpenAPI, enregistrement device
+- `server/routes/chat.js` -> chat IA et introspection provider
+
+La persistance est separee en deux roles:
+
+- `services/db.js` = stockage metier principal et fallback SQLite local
+- `services/database.js` = adaptateur PostgreSQL / service auxiliaire avec fallback vers `services/db.js`
+
+## Contrats API sensibles
+
+Les endpoints suivants doivent conserver leur enveloppe JSON actuelle sauf versionnement explicite:
+
+- `GET /api/matches/upcoming` -> `{ success, data: { matches, total }, meta }`
+- `GET /api/matches/live` -> `{ success, data: { matches, total }, meta }`
+- `GET /api/matches/:id/details` -> `{ success, source, match, prediction, bettingMarkets, ... }`
+- `GET /api/coupon` -> `{ success, source, coupon, summary, ... }`
+- `POST /api/coupon/validate` -> `{ success, source, ...report }`
+- `GET /api/watchlist` -> `{ success, data: { watchlist, total, userId, snapshot, updatedAt }, meta }`
+- `POST /api/watchlist` -> `{ success, data: { watchlist, total, userId, snapshot, updatedAt }, meta }`
+- `GET /api/mobile/bootstrap` -> `{ success, data, meta }`
+- `POST /api/mobile/devices/register` -> `{ success, data, meta }`
+- `POST /api/chat` -> `{ success, provider, model, answer, actions, ... }`
 
 ## Notes
 

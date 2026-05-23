@@ -168,6 +168,121 @@ h1 {
   font-size: 0.93rem;
 }
 
+.hero-signal-strip {
+  margin: 1rem 1.25rem 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.95fr);
+  gap: 0.9rem;
+}
+
+.hero-signal-lead,
+.hero-signal-points,
+.action-lane-card,
+.command-signal-card,
+.command-proof-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: linear-gradient(165deg, rgba(13, 23, 41, 0.92), rgba(8, 12, 24, 0.96));
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.28);
+}
+
+.hero-signal-lead {
+  padding: 1rem 1.05rem;
+}
+
+.hero-signal-kicker {
+  display: inline-block;
+  margin-bottom: 0.45rem;
+  color: #8fe5ff;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.hero-signal-lead strong {
+  display: block;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  color: #f4fbff;
+}
+
+.hero-signal-lead p {
+  margin: 0.5rem 0 0;
+  color: rgba(219, 232, 251, 0.8);
+  line-height: 1.5;
+}
+
+.hero-signal-points {
+  display: grid;
+  gap: 0.55rem;
+  align-content: center;
+  padding: 0.95rem 1rem;
+}
+
+.hero-signal-points span,
+.command-proof-list span,
+.command-signal-pills span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  border-radius: 999px;
+  padding: 0.35rem 0.72rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #ecf9ff;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.action-lane {
+  margin: 1rem 1.25rem 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.action-lane-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.95rem 1rem;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.action-lane-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(66, 245, 108, 0.34);
+}
+
+.action-lane-card span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(66, 245, 108, 0.92), rgba(36, 215, 255, 0.95));
+  color: #06111b;
+  font-family: "Chakra Petch", sans-serif;
+  font-weight: 800;
+}
+
+.action-lane-card strong,
+.command-signal-card h3,
+.command-proof-card h3 {
+  font-family: "Chakra Petch", sans-serif;
+  color: #f4fbff;
+}
+
+.action-lane-card p,
+.command-signal-copy {
+  margin: 0;
+  color: rgba(210, 225, 245, 0.76);
+  line-height: 1.45;
+}
+
 .denicheur-hero-row {
   margin: 1rem 1.25rem 0;
   display: flex;
@@ -1004,6 +1119,59 @@ body.generated-media-open {
   justify-content: space-between;
   gap: 0.9rem;
   align-items: flex-start;
+}
+
+.command-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.85fr);
+  gap: 0.9rem;
+  margin-bottom: 0.95rem;
+}
+
+.command-signal-card,
+.command-proof-card {
+  padding: 1rem;
+}
+
+.command-signal-card.is-empty {
+  opacity: 0.92;
+}
+
+.command-signal-card h3,
+.command-proof-card h3 {
+  margin: 0.18rem 0 0.45rem;
+}
+
+.command-signal-pills,
+.command-proof-list,
+.command-signal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.command-signal-pills,
+.command-proof-list {
+  margin-top: 0.85rem;
+}
+
+.command-signal-actions {
+  margin-top: 0.95rem;
+}
+
+.command-secondary-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0.65rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f3fbff;
+  text-decoration: none;
+  font-family: "Chakra Petch", sans-serif;
+  font-weight: 700;
 }
 
 .command-kicker {
@@ -2614,6 +2782,14 @@ footer {
   .match-card {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .hero-signal-strip,
+  .command-hero-grid,
+  .action-lane {
+    grid-template-columns: 1fr;
   }
 }
 
