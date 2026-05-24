@@ -2191,7 +2191,6 @@ async function loadMatches() {
     renderSiteCommandCenter(allMatches);
     renderFrontlineStatus();
     renderWatchlistPanel(allMatches);
-    renderGeneratedMediaPanel();
     renderLeagueHeatmap(allMatches);
     renderMatchFinder(allMatches);
     renderMatches();
@@ -2201,7 +2200,6 @@ async function loadMatches() {
     hydrateDirectTeamLogos(allMatches).then(() => {
       if (requestId !== lastLoadRequestId) return;
       renderWatchlistPanel(allMatches);
-      renderGeneratedMediaPanel();
       renderMatchFinder(allMatches);
       renderMatches();
     });
@@ -2366,26 +2364,6 @@ function registerHomeSiteControl() {
 
 registerHomeSiteControl();
 renderFrontlineStatus();
-
-window.addEventListener("fc25:generated-media", () => {
-  if (document.getElementById("generatedMediaPanel")) {
-    renderGeneratedMediaPanel().then(() => {
-      const panel = document.getElementById("generatedMediaPanel");
-      if (panel) {
-        panel.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    });
-  }
-});
-
-Object.defineProperty(window, "GeneratedMediaPanel", {
-  configurable: false,
-  enumerable: true,
-  writable: false,
-  value: {
-    refresh: renderGeneratedMediaPanel,
-  },
-});
 
 // Écoute les mises à jour du cache intelligent
 window.addEventListener('fc25:matches-refreshed', (e) => {

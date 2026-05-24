@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0a1628" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ONE-DELUX" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="application-name" content="ONE-DELUX" />
+  <meta name="msapplication-TileColor" content="#050508" />
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="robots" content="noindex,nofollow" />
+
+  <!-- Content Security Policy -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://api.the-odds-api.com https://www.thesportsdb.com; manifest-src 'self';">
+
+  <!-- Open Graph / Social -->
+  <meta property="og:title" content="ONE-DELUX - Galerie d'exports">
+  <meta property="og:description" content="Galerie d'images et PDF générés depuis l'application">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="/gallery.html">
+  <meta property="og:image" content="/icon-512.svg">
+
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>ONE-DELUX - Galerie d'exports</title>
+
+  <!-- Preconnect for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="dns-prefetch" href="https://api.the-odds-api.com">
+  <link rel="dns-prefetch" href="https://www.thesportsdb.com">
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/mobile.css" />
+  <link rel="stylesheet" href="/theme-system.css" />
+  <link rel="stylesheet" href="/global-enhancements.css" />
+</head>
+
+<body>
+  <!-- Skip Link for Accessibility -->
+  <a href="#main-content" class="skip-link">Aller au contenu principal</a>
+
+  <div class="bg-grid" aria-hidden="true"></div>
+  <header class="hero">
+    <p class="tag">Médias générés</p>
+    <h1>Galerie d'exports</h1>
+    <p>Miniatures instantanées, filtres rapides et accès direct à la page source pour garder le flux sous contrôle.</p>
+    <div class="controls">
+      <a class="coupon-page-link" href="/index.html">Retour à l'accueil</a>
+      <a class="coupon-page-link" href="/coupon.html">Page Coupon</a>
+      <a class="coupon-page-link" href="/suivre.html">Suivi des matchs</a>
+      <a class="coupon-page-link" href="/mode-emploi.html">Mode d'emploi</a>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="generated-media-panel" id="generatedMediaPanel" aria-live="polite"></section>
+  </main>
+
+  <footer>
+    <small id="updatedAt"></small>
+    <p class="legal-foot">
+      Informations et scores à titre indicatif. Paris interdits aux mineurs. Joue avec modération.
+      <a href="/mode-emploi.html">Mode d'emploi</a>
+      <a href="/suivre.html">Suivi</a>
+      <a href="/updates.html">Mises à jour</a>
+    </p>
+    <div class="site-signature">Signé par <strong>SOLITAIRE HACK</strong></div>
+  </footer>
+
+  <!-- Global Enhancement Scripts -->
+  <script src="/performance-optimizations.js" defer></script>
+  <script src="/accessibility-enhancements.js" defer></script>
+
+  <!-- Gallery Scripts -->
+  <script src="/site-api.js"></script>
+  <script src="/database-api.js" defer></script>
+  <script src="/gallery.js" defer></script>
+</body>
+
+</html>
