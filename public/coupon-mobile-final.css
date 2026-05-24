@@ -1,0 +1,79 @@
+/* Final mobile stabilization layer for coupon page.
+   Loaded last to override conflicting theme/mobile files. */
+
+@media (max-width: 900px) {
+  body.coupon-portal,
+  body.coupon-portal html {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden !important;
+  }
+
+  body.coupon-portal .page {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  body.coupon-portal .hero,
+  body.coupon-portal .controls,
+  body.coupon-portal .panel,
+  body.coupon-portal .actions,
+  body.coupon-portal .primary-grid,
+  body.coupon-portal .secondary-grid {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    transform: none !important;
+  }
+
+  body.coupon-portal .controls,
+  body.coupon-portal .actions,
+  body.coupon-portal .primary-grid,
+  body.coupon-portal .secondary-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  body.coupon-portal input,
+  body.coupon-portal select,
+  body.coupon-portal button,
+  body.coupon-portal a.back {
+    min-height: 44px !important;
+    font-size: 16px !important;
+    touch-action: manipulation;
+  }
+
+  /* Keep fixed bottom actions usable and above visual layers. */
+  body.coupon-portal .sticky-ticket-bar {
+    z-index: 10020 !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  /* Disable extra floating/overlay controls on mobile coupon.
+     They are useful on desktop but can steal taps on Android. */
+  body.coupon-portal .mobile-fab,
+  body.coupon-portal .fab-menu,
+  body.coupon-portal .panel-quick-actions,
+  body.coupon-portal .panel-pull-indicator,
+  body.coupon-portal .mobile-toast {
+    display: none !important;
+    pointer-events: none !important;
+  }
+
+  /* Prevent nested scroll areas from causing tap offset issues. */
+  body.coupon-portal .panel,
+  body.coupon-portal .secondary-grid {
+    max-height: none !important;
+    overflow: visible !important;
+    -webkit-overflow-scrolling: auto !important;
+  }
+}
+
+@media (max-width: 480px) {
+  body.coupon-portal .actions button {
+    white-space: normal !important;
+    word-break: break-word;
+    line-height: 1.2;
+  }
+}

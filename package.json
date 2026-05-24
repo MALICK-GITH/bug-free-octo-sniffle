@@ -1,0 +1,41 @@
+{
+  "name": "one-delux",
+  "version": "1.0.0",
+  "description": "Site Node.js pour afficher uniquement les matchs FIFA virtuel penalty (1xBet LiveFeed).",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node scripts/auto-update-server.js",
+    "start:direct": "node server/index.js",
+    "dev": "node server/index.js",
+    "lint": "eslint public --ext .js --max-warnings 200",
+    "check:server": "node --check server.js && node --check services/db.js && node --check services/database.js",
+    "check:update": "node --check scripts/auto-update-server.js",
+    "test": "playwright test"
+  },
+  "keywords": [
+    "node",
+    "express",
+    "fifa",
+    "virtual",
+    "penalty",
+    "1xbet"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "compression": "^1.8.1",
+    "dotenv": "^17.3.1",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^7.2.0",
+    "joi": "^17.13.3",
+    "morgan": "^1.10.1",
+    "mysql2": "^3.20.0",
+    "pg": "^8.20.0",
+    "sharp": "^0.34.5",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "eslint": "^8.57.1"
+  }
+}

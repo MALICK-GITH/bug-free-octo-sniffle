@@ -1,0 +1,432 @@
+/* Cache Management UI Styles */
+
+/* Cache Manager Container */
+.cache-manager-container {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background: linear-gradient(145deg, rgba(15, 25, 49, 0.95), rgba(8, 16, 32, 0.98));
+  border: 1px solid rgba(59, 231, 255, 0.3);
+  border-radius: 16px;
+  padding: 1rem;
+  z-index: 10000;
+  min-width: 300px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: all 0.3s ease;
+}
+
+.cache-manager-container.minimized {
+  padding: 0.5rem;
+  min-width: auto;
+}
+
+.cache-manager-container.hidden {
+  transform: translateX(-120%);
+  opacity: 0;
+}
+
+/* Cache Manager Header */
+.cache-manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(59, 231, 255, 0.2);
+}
+
+.cache-manager-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #3be7ff;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cache-manager-title::before {
+  content: '💾';
+  font-size: 1.1rem;
+}
+
+.cache-manager-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cache-control-btn {
+  background: rgba(59, 231, 255, 0.2);
+  border: 1px solid rgba(59, 231, 255, 0.3);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  color: #3be7ff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cache-control-btn:hover {
+  background: rgba(59, 231, 255, 0.3);
+  border-color: rgba(59, 231, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.cache-control-btn:active {
+  transform: translateY(0);
+}
+
+/* Cache Stats Display */
+.cache-stats-display {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.cache-manager-container.minimized .cache-stats-display {
+  display: none;
+}
+
+.cache-stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: rgba(10, 18, 34, 0.8);
+  border-radius: 8px;
+  border: 1px solid rgba(59, 231, 255, 0.15);
+}
+
+.cache-stat-label {
+  font-size: 0.8rem;
+  color: #9fb5d6;
+  font-weight: 600;
+}
+
+.cache-stat-value {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #42f56c;
+  font-family: 'Chakra Petch', monospace;
+}
+
+.cache-stat-value.warning {
+  color: #ffd166;
+}
+
+.cache-stat-value.error {
+  color: #ff5f79;
+}
+
+/* Cache Size Visualization */
+.cache-size-visualization {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: rgba(10, 18, 34, 0.8);
+  border-radius: 8px;
+  border: 1px solid rgba(59, 231, 255, 0.15);
+}
+
+.cache-size-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.cache-size-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3be7ff, #42f56c);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+  width: 0%;
+}
+
+.cache-size-fill.warning {
+  background: linear-gradient(90deg, #ffd166, #ffca8a);
+}
+
+.cache-size-fill.error {
+  background: linear-gradient(90deg, #ff5f79, #ff9bad);
+}
+
+.cache-size-text {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #d7e8ff;
+}
+
+.cache-size-percentage {
+  font-weight: 700;
+  font-family: 'Chakra Petch', monospace;
+}
+
+/* Cache Actions */
+.cache-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.cache-manager-container.minimized .cache-actions {
+  display: none;
+}
+
+.cache-action-btn {
+  background: linear-gradient(135deg, rgba(59, 231, 255, 0.2), rgba(59, 231, 255, 0.1));
+  border: 1px solid rgba(59, 231, 255, 0.3);
+  border-radius: 10px;
+  padding: 0.75rem;
+  color: #e8f4ff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.cache-action-btn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(59, 231, 255, 0.5);
+  box-shadow: 0 8px 24px rgba(59, 231, 255, 0.2);
+}
+
+.cache-action-btn:active {
+  transform: translateY(0);
+}
+
+.cache-action-btn.danger {
+  background: linear-gradient(135deg, rgba(255, 95, 121, 0.2), rgba(255, 95, 121, 0.1));
+  border-color: rgba(255, 95, 121, 0.3);
+  color: #ffc5cf;
+}
+
+.cache-action-btn.danger:hover {
+  border-color: rgba(255, 95, 121, 0.5);
+  box-shadow: 0 8px 24px rgba(255, 95, 121, 0.2);
+}
+
+/* Cache Details */
+.cache-details {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: rgba(8, 16, 32, 0.8);
+  border-radius: 8px;
+  border: 1px solid rgba(59, 231, 255, 0.15);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.cache-manager-container.minimized .cache-details {
+  display: none;
+}
+
+.cache-detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(59, 231, 255, 0.1);
+  font-size: 0.8rem;
+}
+
+.cache-detail-item:last-child {
+  border-bottom: none;
+}
+
+.cache-detail-key {
+  color: #9fb5d6;
+  font-weight: 600;
+}
+
+.cache-detail-value {
+  color: #d7e8ff;
+  font-family: 'Chakra Petch', monospace;
+}
+
+/* Cache Status Indicators */
+.cache-status-indicators {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.cache-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  background: rgba(10, 18, 34, 0.8);
+  border: 1px solid rgba(59, 231, 255, 0.2);
+  border-radius: 20px;
+  font-size: 0.75rem;
+}
+
+.cache-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9fb5d6;
+}
+
+.cache-status-indicator.active .cache-status-dot {
+  background: #42f56c;
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+.cache-status-indicator.warning .cache-status-dot {
+  background: #ffd166;
+}
+
+.cache-status-indicator.error .cache-status-dot {
+  background: #ff5f79;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.2); }
+}
+
+/* Cache Progress */
+.cache-progress-container {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: rgba(10, 18, 34, 0.8);
+  border-radius: 8px;
+  border: 1px solid rgba(59, 231, 255, 0.15);
+}
+
+.cache-progress-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.cache-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3be7ff, #42f56c);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+  width: 0%;
+}
+
+.cache-progress-text {
+  font-size: 0.8rem;
+  color: #d7e8ff;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Mobile Optimizations */
+@media (max-width: 768px) {
+  .cache-manager-container {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    min-width: auto;
+  }
+  
+  .cache-manager-header {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+  
+  .cache-stats-display {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  
+  .cache-actions {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+  
+  .cache-status-indicators {
+    justify-content: center;
+  }
+  
+  .cache-details {
+    max-height: 150px;
+  }
+}
+
+@media (max-width: 480px) {
+  .cache-manager-container {
+    padding: 0.75rem;
+  }
+  
+  .cache-manager-title {
+    font-size: 0.9rem;
+  }
+  
+  .cache-stat-item {
+    padding: 0.4rem;
+  }
+  
+  .cache-action-btn {
+    padding: 0.6rem;
+    font-size: 0.8rem;
+  }
+  
+  .cache-status-indicators {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .cache-manager-container {
+    background: linear-gradient(145deg, rgba(8, 16, 32, 0.98), rgba(4, 8, 16, 0.99));
+  }
+  
+  .cache-stat-item,
+  .cache-size-visualization,
+  .cache-action-btn,
+  .cache-details {
+    background: rgba(8, 16, 32, 0.9);
+  }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  .cache-status-dot {
+    animation: none !important;
+  }
+  
+  .cache-action-btn:hover {
+    transform: none;
+  }
+  
+  .cache-size-fill,
+  .cache-progress-fill {
+    transition: none;
+  }
+}
+
+/* High Contrast Support */
+@media (prefers-contrast: high) {
+  .cache-manager-container,
+  .cache-stat-item,
+  .cache-size-visualization,
+  .cache-action-btn,
+  .cache-details {
+    border-width: 2px;
+  }
+  
+  .cache-stat-value,
+  .cache-size-percentage,
+  .cache-detail-value {
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+  }
+}

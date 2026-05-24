@@ -1,0 +1,12 @@
+node_modules/
+*.log
+.env
+.DS_Store
+Thumbs.db
+*.tmp
+*.cache
+android-mobile-app/
+*.sqlite-shm
+*.sqlite-wal
+playwright-report/
+test-results/

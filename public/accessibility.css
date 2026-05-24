@@ -1,0 +1,172 @@
+/**
+ * SOLITFIFPRO225 - Accessibility Enhancements
+ * Phase 1: Skip links, focus styles, screen reader support
+ * SOLITAIRE HACK SIGNATURE
+ */
+
+/* ============================================
+   SKIP LINK
+   ============================================ */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--brand, #42f56c);
+  color: var(--bg-0, #000);
+  padding: 12px 24px;
+  border-radius: 0 0 12px 12px;
+  font-weight: 600;
+  text-decoration: none;
+  z-index: 10000;
+  transition: top 0.3s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: 3px solid var(--brand-2, #24d7ff);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   FOCUS STYLES
+   ============================================ */
+:focus-visible {
+  outline: 3px solid rgba(10, 132, 255, 0.92);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Focus styles for different element types */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--brand-2, #24d7ff);
+  outline-offset: 2px;
+}
+
+/* Skip focus ring for mouse users, but keep for keyboard */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ============================================
+   SCREEN READER UTILITIES
+   ============================================ */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.sr-only-focusable:active,
+.sr-only-focusable:focus {
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  padding: inherit !important;
+  margin: inherit !important;
+  overflow: visible !important;
+  clip: auto !important;
+  white-space: normal !important;
+}
+
+/* ============================================
+   ARIA LABELS AND ROLES
+   ============================================ */
+[aria-label]:not([aria-label=""]) {
+  position: relative;
+}
+
+/* Ensure interactive elements have proper cursor */
+[role="button"],
+[role="link"],
+[role="tab"],
+[role="menuitem"] {
+  cursor: pointer;
+}
+
+/* ============================================
+   REDUCED MOTION
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .bg-grid,
+  .particles-overlay {
+    display: none;
+  }
+}
+
+/* ============================================
+   HIGH CONTRAST MODE
+   ============================================ */
+@media (prefers-contrast: high) {
+  :root {
+    --border: rgba(255, 255, 255, 0.3);
+    --border-strong: rgba(255, 255, 255, 0.5);
+  }
+  
+  .match-card,
+  .panel,
+  .card {
+    border-width: 2px;
+  }
+  
+  button,
+  a {
+    text-decoration: underline;
+  }
+}
+
+/* ============================================
+   KEYBOARD NAVIGATION INDICATORS
+   ============================================ */
+.keyboard-navigation *:focus {
+  outline: 3px solid var(--brand, #42f56c) !important;
+  outline-offset: 2px !important;
+}
+
+/* ============================================
+   DISABLED ELEMENTS
+   ============================================ */
+[disabled],
+[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ============================================
+   ERROR MESSAGES
+   ============================================ */
+[aria-invalid="true"] {
+  border-color: var(--danger, #ff5f79);
+  box-shadow: 0 0 0 3px rgba(255, 95, 121, 0.2);
+}
+
+/* Live regions for announcements */
+[aria-live="polite"],
+[aria-live="assertive"] {
+  position: fixed;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}

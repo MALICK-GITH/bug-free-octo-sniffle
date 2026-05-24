@@ -1,0 +1,40 @@
+services:
+  # Service web principal
+  - type: web
+    name: fifa-virtual-predictions
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    
+    # Variables d'environnement
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DB_FILE
+        value: /opt/render/project/data/app.sqlite
+        
+    # Configuration du build
+    buildFilter:
+      paths:
+        - src/**
+        - public/**
+        - services/**
+        - server.js
+        - package.json
+        - package-lock.json
+        
+    # Configuration du scaling
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+      
+    # Configuration du disque persistant
+    disk:
+      name: fifa-data
+      mountPath: /opt/render/project/data
+      sizeGB: 1

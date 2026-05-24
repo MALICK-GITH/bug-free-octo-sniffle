@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a1628" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>ONE-DELUX - Mises a jour</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/pages-luxe.css" />
+  <link rel="stylesheet" href="/unified-system.css" />
+  <link rel="stylesheet" href="/mobile-optimizations.css" />
+  <link rel="stylesheet" href="/mobile-ultra-premium.css" />
+  <link rel="stylesheet" href="/signature.css" />
+  <link rel="stylesheet" href="/site-embellishment.css" />
+  <link rel="stylesheet" href="/updates.css" />
+</head>
+
+<body class="updates-page">
+  <main class="page updates-shell">
+    <nav class="page-link-cloud" aria-label="Navigation mises a jour">
+      <a class="back" href="/">Retour aux matchs</a>
+      <a class="back" href="/coupon.html">Page Coupon</a>
+      <a class="back" href="/mode-emploi.html">Mode d'emploi</a>
+      <a class="back" href="/about.html">A propos du createur</a>
+      <a class="back" href="/developpeur.html">Page Developpeur</a>
+    </nav>
+
+    <section class="hero updates-hero">
+      <p class="tag">Journal de version</p>
+      <h1>Ce que le site devient</h1>
+      <p class="subtitle">
+        ONE-DELUX - Le signal avant le coup d'envoi. Cette page n'est pas un espace de publication libre. Elle raconte l'evolution du site depuis sa creation:
+        ce qui a ete ajoute, ce que chaque changement apporte, ce qu'il complique parfois, et ce qui est deja en
+        preparation.
+      </p>
+      <div class="hero-metric-strip" aria-hidden="true">
+        <article class="hero-metric-card">
+          <span>Lecture</span>
+          <strong>Historique vivant</strong>
+          <em>Chaque version devient un repere public et lisible.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Valeur</span>
+          <strong>Avantages clairs</strong>
+          <em>Les gains concrets du site sont exposes sans jargon inutile.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Transparence</span>
+          <strong>Limites assumees</strong>
+          <em>Les compromis et points de vigilance restent visibles.</em>
+        </article>
+        <article class="hero-metric-card">
+          <span>Projection</span>
+          <strong>Future excitante</strong>
+          <em>Les evolutions a venir donnent une vraie direction produit.</em>
+        </article>
+      </div>
+    </section>
+
+    <section class="updates-stats" id="updatesStats" aria-live="polite"></section>
+
+    <section class="updates-layout">
+      <section class="panel updates-panel updates-editorial" aria-labelledby="storyTitle">
+        <div class="panel-head">
+          <div>
+            <h2 id="storyTitle">Lecture editoriale du produit</h2>
+            <p>Un resume de la progression du site, de ses forces, de ses compromis et de sa direction future.</p>
+          </div>
+          <button type="button" class="updates-refresh-btn" id="refreshUpdatesBtn">Rafraichir</button>
+        </div>
+
+        <div class="editorial-grid">
+          <article class="editorial-card editorial-card-positive">
+            <p class="editorial-kicker">Ce que le site apporte</p>
+            <h3>Des parcours plus rapides, plus lisibles, plus stables</h3>
+            <ul>
+              <li>Navigation plus directe entre matchs, coupon et suivi.</li>
+              <li>Lectures visuelles plus fortes pour guider la decision.</li>
+              <li>Persistance renforcee pour garder le contexte dans le temps.</li>
+            </ul>
+          </article>
+
+          <article class="editorial-card editorial-card-tradeoff">
+            <p class="editorial-kicker">Ce que cela coute</p>
+            <h3>Plus de structure, plus de donnees, plus de vigilance</h3>
+            <ul>
+              <li>Les historiques prennent plus de place mais deviennent utiles pour analyser.</li>
+              <li>Les visuels denses demandent de conserver une hiérarchie claire.</li>
+              <li>Les automatismes en arriere-plan doivent rester fiables et discrets.</li>
+            </ul>
+          </article>
+
+          <article class="editorial-card editorial-card-future">
+            <p class="editorial-kicker">Ce qui arrive</p>
+            <h3>Une page plus narrative, plus immersive et plus utile</h3>
+            <ul>
+              <li>Chronologie enrichie des ajouts majeurs depuis le lancement.</li>
+              <li>Comparaison plus nette entre gains immediats et limites restantes.</li>
+              <li>Mise en avant des prochaines fonctions pour maintenir l'enthousiasme.</li>
+            </ul>
+          </article>
+        </div>
+
+        <section class="editorial-roadmap" aria-labelledby="roadmapTitle">
+          <div class="panel-head panel-head-tight">
+            <div>
+              <h3 id="roadmapTitle">Direction produit</h3>
+              <p>Le site est pense comme un produit qui se raconte lui-meme au fil de ses ameliorations.</p>
+            </div>
+          </div>
+          <div class="roadmap-chips" aria-label="Axes de progression">
+            <span class="roadmap-chip is-live">Historique des changements</span>
+            <span class="roadmap-chip">Couverture coupon plus lisible</span>
+            <span class="roadmap-chip">Meilleure lecture des risques</span>
+            <span class="roadmap-chip">Suivi automatique en arriere-plan</span>
+            <span class="roadmap-chip">Archives produit plus claires</span>
+          </div>
+        </section>
+
+        <p class="updates-status" id="updatesStatus" aria-live="polite"></p>
+      </section>
+
+      <aside class="panel updates-highlight" id="latestUpdatePanel" aria-labelledby="latestUpdateTitle">
+        <div class="panel-head">
+          <div>
+            <h2 id="latestUpdateTitle">Derniere version</h2>
+            <p>Le dernier changement en date reste visible ici comme reference rapide.</p>
+          </div>
+        </div>
+        <article class="latest-update-card" id="latestUpdateCard">
+          <p class="latest-update-empty">Aucune mise a jour enregistree pour le moment.</p>
+        </article>
+      </aside>
+    </section>
+
+    <section class="panel updates-feed-panel" aria-labelledby="historyTitle">
+      <div class="panel-head">
+        <div>
+          <h2 id="historyTitle">Historique complet</h2>
+          <p>Toutes les versions enregistrees sont affichees du plus recent au plus ancien.</p>
+        </div>
+        <span class="updates-feed-count" id="updatesCount">0 entree</span>
+      </div>
+      <div class="updates-feed" id="updatesFeed"></div>
+    </section>
+  </main>
+
+  <footer class="site-signature updates-footer">Signe par <strong>SOLITAIRE HACK</strong></footer>
+
+  <script src="/global-ui-shell.js" defer></script>
+  <script src="/browser-sync.js" defer></script>
+  <script src="/updates.js" type="module"></script>
+</body>
+
+</html>

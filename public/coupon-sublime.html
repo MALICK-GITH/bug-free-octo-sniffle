@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="format-detection" content="telephone=no">
+  <title>COUP SUBLIME | ONE-DELUX</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="/coupon-sublime.css">
+</head>
+
+<body class="sublime-body">
+  <!-- Canvas d'ambiance immersive -->
+  <canvas id="ambientCanvas" class="ambient-canvas"></canvas>
+
+  <!-- Overlay de particules -->
+  <div id="particlesOverlay" class="particles-overlay"></div>
+
+  <!-- Navigation orbitale flottante -->
+  <nav class="orbital-nav" id="orbitalNav">
+    <button class="orbital-btn active" data-section="command" title="Command Center">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3" />
+        <path
+          d="M12 1v6m0 6v6m4.22-10.22l4.24-4.24M6.34 6.34L2.1 2.1m17.8 17.8l-4.24-4.24M6.34 17.66l-4.24 4.24M23 12h-6m-6 0H1m17.66-6.34l4.24-4.24" />
+      </svg>
+      <span>Command</span>
+    </button>
+    <button class="orbital-btn" data-section="predictor" title="Predictor 3D">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+        <polyline points="2 17 12 12 22 17" />
+        <polyline points="2 12 12 17 22 12" />
+      </svg>
+      <span>Predictor</span>
+    </button>
+    <button class="orbital-btn" data-section="analytics" title="Analytics Live">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 3v18h18" />
+        <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" />
+      </svg>
+      <span>Analytics</span>
+    </button>
+    <button class="orbital-btn" data-section="zen" title="Mode Zen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v4l3 3" />
+      </svg>
+      <span>Zen</span>
+    </button>
+    <button class="orbital-btn" data-section="social" title="Communaute">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+      </svg>
+      <span>Social</span>
+    </button>
+  </nav>
+
+  <!-- HUD Supérieur -->
+  <header class="hud-header" id="hudHeader">
+    <div class="hud-brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 100 100" class="logo-svg">
+          <defs>
+            <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#00f5ff" />
+              <stop offset="50%" style="stop-color:#7c3aed" />
+              <stop offset="100%" style="stop-color:#f59e0b" />
+            </linearGradient>
+          </defs>
+          <circle cx="50" cy="50" r="45" fill="none" stroke="url(#brandGradient)" stroke-width="3" />
+          <text x="50" y="55" text-anchor="middle" fill="url(#brandGradient)" font-size="20" font-weight="700">SF</text>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>COUP SUBLIME</h1>
+        <span class="brand-tagline">Prediction Engine v4.0</span>
+      </div>
+    </div>
+    <div class="hud-metrics">
+      <div class="metric-pill" id="winRatePill">
+        <span class="metric-label">WIN RATE</span>
+        <span class="metric-value" id="winRateValue">--</span>
+      </div>
+      <div class="metric-pill" id="roiPill">
+        <span class="metric-label">ROI</span>
+        <span class="metric-value" id="roiValue">--</span>
+      </div>
+      <div class="metric-pill pulse" id="liveIndicator">
+        <span class="live-dot"></span>
+        <span class="metric-label">LIVE</span>
+      </div>
+    </div>
+    <div class="hud-controls">
+      <button class="hud-btn" id="themeToggle" title="Changer theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5" />
+          <path
+            d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+        </svg>
+      </button>
+      <button class="hud-btn" id="fullscreenBtn" title="Plein ecran">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3" />
+        </svg>
+      </button>
+      <button class="hud-btn" id="menuBtn" title="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Menu Overlay -->
+  <div class="menu-overlay" id="menuOverlay">
+    <nav class="menu-nav">
+      <a href="/" class="menu-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+        <span>Accueil Matchs</span>
+      </a>
+      <a href="/coupon.html" class="menu-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        <span>Coupon Standard</span>
+      </a>
+      <a href="/mode-emploi.html" class="menu-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 16v-4m0-4h.01" />
+        </svg>
+        <span>Mode d'Emploi</span>
+      </a>
+      <a href="/about.html" class="menu-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+        <span>A Propos</span>
+      </a>
+    </nav>
+  </div>
+
+  <!-- Contenu Principal -->
+  <main class="sublime-main">
+
+    <!-- SECTION: Command Center -->
+    <section class="section command-section active" id="commandSection">
+      <div class="section-header">
+        <h2 class="section-title">
+          <span class="title-icon">⚡</span>
+          COMMAND CENTER
+        </h2>
+        <p class="section-desc">Generation intelligente avec IA predictive</p>
+      </div>
+
+      <div class="command-grid">
+        <!-- Panneau de Configuration -->
+        <div class="config-panel glass-panel">
+          <div class="panel-header">
+            <h3>Configuration</h3>
+            <div class="panel-actions">
+              <button class="action-btn" id="saveConfigBtn" title="Sauvegarder config">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+                  <polyline points="17 21 17 13 7 13 7 21" />
+                  <polyline points="7 3 7 8 15 8" />
+                </svg>
+              </button>
+              <button class="action-btn" id="loadConfigBtn" title="Charger config">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="config-sliders">
+            <div class="slider-group">
+              <label class="slider-label">
+                <span>Nombre de matchs</span>
+                <span class="slider-value" id="matchCountValue">3</span>
+              </label>
+              <input type="range" id="matchCountSlider" min="1" max="12" value="3" class="sublime-slider">
+              <div class="slider-marks">
+                <span>1</span><span>3</span><span>6</span><span>9</span><span>12</span>
+              </div>
+            </div>
+
+            <div class="slider-group">
+              <label class="slider-label">
+                <span>Mise totale</span>
+                <span class="slider-value" id="stakeValue">1,000 FCFA</span>
+              </label>
+              <input type="range" id="stakeSlider" min="100" max="50000" step="100" value="1000" class="sublime-slider">
+            </div>
+
+            <div class="slider-group">
+              <label class="slider-label">
+                <span>Confiance minimale IA</span>
+                <span class="slider-value" id="confidenceValue">72%</span>
+              </label>
+              <input type="range" id="confidenceSlider" min="50" max="95" value="72"
+                class="sublime-slider confidence-slider">
+              <div class="confidence-bar">
+                <div class="confidence-fill" id="confidenceFill" style="width: 72%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="config-selects">
+            <div class="select-group">
+              <label>Ligue</label>
+              <div class="custom-select" id="leagueSelect">
+                <button class="select-trigger">
+                  <span>Toutes les ligues</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                <div class="select-options">
+                  <div class="option active" data-value="all">Toutes les ligues</div>
+                  <div class="option" data-value="ligue1">Ligue 1</div>
+                  <div class="option" data-value="premier">Premier League</div>
+                  <div class="option" data-value="laliga">La Liga</div>
+                  <div class="option" data-value="seriea">Serie A</div>
+                  <div class="option" data-value="bundesliga">Bundesliga</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="select-group">
+              <label>Profil de risque</label>
+              <div class="risk-chips" id="riskChips">
+                <button class="risk-chip" data-risk="ultra_safe">
+                  <span class="risk-indicator" style="background: #10b981"></span>
+                  <span>Ultra-Safe</span>
+                </button>
+                <button class="risk-chip" data-risk="safe">
+                  <span class="risk-indicator" style="background: #3b82f6"></span>
+                  <span>Safe</span>
+                </button>
+                <button class="risk-chip active" data-risk="balanced">
+                  <span class="risk-indicator" style="background: #8b5cf6"></span>
+                  <span>Equilibre</span>
+                </button>
+                <button class="risk-chip" data-risk="aggressive">
+                  <span class="risk-indicator" style="background: #f59e0b"></span>
+                  <span>Agressif</span>
+                </button>
+                <button class="risk-chip" data-risk="max">
+                  <span class="risk-indicator" style="background: #ef4444"></span>
+                  <span>Max Gain</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panneau de Generation -->
+        <div class="generate-panel glass-panel">
+          <div class="ai-status" id="aiStatus">
+            <div class="ai-avatar">
+              <div class="avatar-ring"></div>
+              <div class="avatar-core">AI</div>
+            </div>
+            <div class="ai-info">
+              <span class="ai-name">SOLITAIRE AI</span>
+              <span class="ai-state" id="aiStateText">Pret a generer</span>
+            </div>
+            <div class="ai-confidence" id="aiConfidence">
+              <svg viewBox="0 0 36 36" class="confidence-ring">
+                <path class="confidence-ring-bg"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path class="confidence-ring-fill" id="confidenceRingFill"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+              </svg>
+              <span class="confidence-text" id="confidenceText">--</span>
+            </div>
+          </div>
+
+          <div class="generate-actions">
+            <button class="sublime-btn primary" id="generateSublimeBtn">
+              <span class="btn-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+              </span>
+              <span class="btn-text">GENERER COUP SUBLIME</span>
+              <div class="btn-glow"></div>
+            </button>
+
+            <div class="secondary-actions">
+              <button class="sublime-btn secondary" id="generateMultiBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                  <line x1="8" y1="21" x2="16" y2="21" />
+                  <line x1="12" y1="17" x2="12" y2="21" />
+                </svg>
+                <span>Multi-Strategies</span>
+              </button>
+              <button class="sublime-btn secondary" id="generateLadderBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="19" x2="12" y2="5" />
+                  <polyline points="5 12 12 5 19 12" />
+                </svg>
+                <span>Ladder IA</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="quick-stats" id="quickStats">
+            <div class="stat-item">
+              <span class="stat-value" id="potentialGain">--</span>
+              <span class="stat-label">Gain potentiel</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="totalOdds">--</span>
+              <span class="stat-label">Cote totale</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="successProb">--</span>
+              <span class="stat-label">Probabilite</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resultats -->
+      <div class="results-container" id="resultsContainer">
+        <div class="results-header">
+          <h3>Votre Coupon Sublime</h3>
+          <div class="results-actions">
+            <button class="action-btn" id="refreshResultsBtn" title="Rafraichir">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10" />
+                <polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+              </svg>
+            </button>
+            <button class="action-btn" id="shareResultsBtn" title="Partager">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="matches-grid" id="matchesGrid">
+          <!-- Les matchs seront injectes ici -->
+          <div class="empty-state">
+            <div class="empty-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v4l3 3" />
+              </svg>
+            </div>
+            <p>Cliquez sur "Generer" pour creer votre coupon sublime</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barre d'action sticky -->
+      <div class="action-bar" id="actionBar">
+        <button class="sublime-btn validate" id="validateBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span>Valider</span>
+        </button>
+        <button class="sublime-btn export" id="exportBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span>Exporter</span>
+        </button>
+        <button class="sublime-btn telegram" id="telegramBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+          <span>Telegram</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- SECTION: Predictor 3D -->
+    <section class="section predictor-section" id="predictorSection">
+      <div class="section-header">
+        <h2 class="section-title">
+          <span class="title-icon">🔮</span>
+          PREDICTOR 3D
+        </h2>
+        <p class="section-desc">Visualisation predictive avancee avec simulation Monte-Carlo</p>
+      </div>
+
+      <div class="predictor-container">
+        <div class="prediction-3d-view" id="prediction3dView">
+          <div class="view-controls">
+            <button class="view-btn active" data-view="globe">Globe</button>
+            <button class="view-btn" data-view="chart">Graph</button>
+            <button class="view-btn" data-view="matrix">Matrix</button>
+          </div>
+          <div class="visualization-canvas" id="vizCanvas">
+            <!-- Visualisation 3D sera rendue ici -->
+            <div class="viz-placeholder">
+              <div class="viz-globe">
+                <div class="globe-ring ring-1"></div>
+                <div class="globe-ring ring-2"></div>
+                <div class="globe-ring ring-3"></div>
+                <div class="globe-core"></div>
+              </div>
+              <p>Visualisation 3D activee apres generation</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="prediction-metrics">
+          <div class="metric-card glass-panel">
+            <div class="metric-icon">🎯</div>
+            <div class="metric-data">
+              <span class="metric-large" id="predAccuracy">94.2%</span>
+              <span class="metric-desc">Precision historique</span>
+            </div>
+          </div>
+          <div class="metric-card glass-panel">
+            <div class="metric-icon">📊</div>
+            <div class="metric-data">
+              <span class="metric-large" id="predSimulations">10K+</span>
+              <span class="metric-desc">Simulations/Monte-Carlo</span>
+            </div>
+          </div>
+          <div class="metric-card glass-panel">
+            <div class="metric-icon">⚡</div>
+            <div class="metric-data">
+              <span class="metric-large" id="predSpeed">
+                < 2s</span>
+                  <span class="metric-desc">Temps d'analyse</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION: Analytics Live -->
+    <section class="section analytics-section" id="analyticsSection">
+      <div class="section-header">
+        <h2 class="section-title">
+          <span class="title-icon">📈</span>
+          ANALYTICS LIVE
+        </h2>
+        <p class="section-desc">Tableau de bord temps reel avec indicateurs avances</p>
+      </div>
+
+      <div class="analytics-grid">
+        <div class="chart-container glass-panel">
+          <div class="chart-header">
+            <h4>Evolution Bankroll</h4>
+            <div class="chart-periods">
+              <button class="period-btn">24H</button>
+              <button class="period-btn active">7J</button>
+              <button class="period-btn">30J</button>
+              <button class="period-btn">Tout</button>
+            </div>
+          </div>
+          <div class="chart-area" id="bankrollChart">
+            <canvas id="bankrollCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="stats-container">
+          <div class="stat-block glass-panel">
+            <h4>Performance</h4>
+            <div class="stat-rows" id="performanceStats">
+              <div class="stat-row">
+                <span class="stat-name">Coupons generes</span>
+                <span class="stat-value positive">127</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-name">Taux de reussite</span>
+                <span class="stat-value positive">68.5%</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-name">Gain moyen</span>
+                <span class="stat-value positive">+2,450 FCFA</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-name">ROI moyen</span>
+                <span class="stat-value positive">+24.5%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="stat-block glass-panel">
+            <h4>Alertes Actives</h4>
+            <div class="alerts-list" id="alertsList">
+              <div class="alert-item warning">
+                <span class="alert-dot"></span>
+                <span class="alert-text">Cote en baisse: PSG vs OM</span>
+                <span class="alert-time">2m</span>
+              </div>
+              <div class="alert-item info">
+                <span class="alert-dot"></span>
+                <span class="alert-text">Match a fort potentiel detecte</span>
+                <span class="alert-time">5m</span>
+              </div>
+              <div class="alert-item success">
+                <span class="alert-dot"></span>
+                <span class="alert-text">Coupon valide avec 87% confiance</span>
+                <span class="alert-time">12m</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION: Mode Zen -->
+    <section class="section zen-section" id="zenSection">
+      <div class="zen-container">
+        <div class="zen-visualizer">
+          <div class="zen-breathing-circle" id="zenCircle">
+            <div class="breath-ring inhale"></div>
+            <div class="breath-ring exhale"></div>
+            <div class="zen-center">
+              <span class="zen-text">RESPIRE</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="zen-quote" id="zenQuote">
+          <p>"La victoire appartient au plus opiniatre."</p>
+          <span class="quote-author">- SOLITAIRE HACK</span>
+        </div>
+
+        <div class="zen-controls">
+          <button class="zen-btn" id="zenFocusBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <span>Mode Focus</span>
+          </button>
+          <button class="zen-btn" id="zenSoundBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07" />
+            </svg>
+            <span>Ambiance</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION: Social & Communaute -->
+    <section class="section social-section" id="socialSection">
+      <div class="section-header">
+        <h2 class="section-title">
+          <span class="title-icon">🏆</span>
+          COMMUNAUTE
+        </h2>
+        <p class="section-desc">Leaderboard, strategies gagnantes et partage social</p>
+      </div>
+
+      <div class="social-grid">
+        <div class="leaderboard-panel glass-panel">
+          <div class="panel-header">
+            <h3>Classement des Champions</h3>
+            <div class="period-tabs">
+              <button class="tab-btn active" data-period="week">Cette semaine</button>
+              <button class="tab-btn" data-period="month">Ce mois</button>
+              <button class="tab-btn" data-period="all">Tout</button>
+            </div>
+          </div>
+          <div class="leaderboard-list" id="leaderboardList">
+            <!-- Injecte via JS -->
+          </div>
+        </div>
+
+        <div class="achievements-panel glass-panel">
+          <h3>Vos Succes</h3>
+          <div class="achievements-grid" id="achievementsGrid">
+            <div class="achievement-card unlocked">
+              <div class="achievement-icon">🎯</div>
+              <span class="achievement-name">Premier Coupon</span>
+            </div>
+            <div class="achievement-card unlocked">
+              <div class="achievement-icon">🔥</div>
+              <span class="achievement-name">Serie Gagnante</span>
+            </div>
+            <div class="achievement-card locked">
+              <div class="achievement-icon">💎</div>
+              <span class="achievement-name">Maitre Predictor</span>
+            </div>
+            <div class="achievement-card locked">
+              <div class="achievement-icon">👑</div>
+              <span class="achievement-name">Legende</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="strategies-panel glass-panel">
+        <div class="panel-header">
+          <h3>Strategies Populaires</h3>
+          <button class="sublime-btn secondary" id="shareStrategyBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+            <span>Partager ma strategie</span>
+          </button>
+        </div>
+        <div class="strategies-list" id="strategiesList">
+          <!-- Injecte via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION: AR Scanner -->
+    <section class="section ar-section" id="arSection">
+      <div class="section-header">
+        <h2 class="section-title">
+          <span class="title-icon">📷</span>
+          SCANNER AR
+        </h2>
+        <p class="section-desc">Scannez vos tickets papier pour import instantane</p>
+      </div>
+
+      <div class="ar-container">
+        <div class="ar-viewport glass-panel" id="arViewport">
+          <video id="arVideo" autoplay playsinline muted></video>
+          <canvas id="arCanvas"></canvas>
+          <div class="ar-overlay">
+            <div class="scan-frame"></div>
+            <p>Placez le ticket dans le cadre</p>
+          </div>
+          <button class="ar-capture-btn" id="arCaptureBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="ar-results glass-panel" id="arResults">
+          <h3>Resultat du Scan</h3>
+          <div class="scan-placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="9" y1="21" x2="9" y2="9" />
+            </svg>
+            <p>Aucun ticket scanne</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION: Blockchain Trace -->
+    <section class="section blockchain-section" id="blockchainSection">
+      <div class="section-header">
+        <h2 class="section-title">
+          <span class="title-icon">🔗</span>
+          BLOCKCHAIN TRACE
+        </h2>
+        <p class="section-desc">Traçabilite immuable de vos predictions</p>
+      </div>
+
+      <div class="blockchain-container">
+        <div class="blockchain-stats glass-panel">
+          <div class="stat-row">
+            <span>Transactions</span>
+            <span class="blockchain-value" id="bcTxCount">127</span>
+          </div>
+          <div class="stat-row">
+            <span>Hash rate</span>
+            <span class="blockchain-value" id="bcHashRate">2.4 TH/s</span>
+          </div>
+          <div class="stat-row">
+            <span>Last block</span>
+            <span class="blockchain-value" id="bcLastBlock">#884,291</span>
+          </div>
+        </div>
+
+        <div class="blockchain-ledger glass-panel">
+          <h3>Ledger des Predictions</h3>
+          <div class="ledger-list" id="ledgerList">
+            <!-- Injecte via JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Overlay de chargement -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+      <div class="loading-spinner">
+        <div class="spinner-ring"></div>
+        <div class="spinner-core"></div>
+      </div>
+      <p class="loading-text">Generation en cours...</p>
+      <div class="loading-progress">
+        <div class="progress-bar" id="loadingProgress"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal d'export -->
+  <div class="modal-overlay" id="exportModal">
+    <div class="modal-content glass-panel">
+      <div class="modal-header">
+        <h3>Exporter votre Coupon</h3>
+        <button class="modal-close" id="closeExportModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="export-options">
+        <button class="export-option" data-format="image">
+          <div class="export-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+          </div>
+          <span class="export-name">Image HD</span>
+          <span class="export-desc">PNG haute qualite</span>
+        </button>
+        <button class="export-option" data-format="pdf">
+          <div class="export-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
+            </svg>
+          </div>
+          <span class="export-name">PDF</span>
+          <span class="export-desc">Document complet</span>
+        </button>
+        <button class="export-option" data-format="story">
+          <div class="export-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
+          </div>
+          <span class="export-name">Story</span>
+          <span class="export-desc">Format 9:16</span>
+        </button>
+        <button class="export-option" data-format="telegram">
+          <div class="export-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </div>
+          <span class="export-name">Telegram</span>
+          <span class="export-desc">Envoi direct</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Action Button mobile -->
+  <button class="fab" id="mobileFab">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  </button>
+
+  <script src="/coupon-sublime.js"></script>
+  <script src="/coupon-sublime-three.js"></script>
+  <script src="/coupon-sublime-social.js"></script>
+  <script src="/coupon-sublime-ar.js"></script>
+  <script src="/coupon-sublime-blockchain.js"></script>
+</body>
+
+</html>

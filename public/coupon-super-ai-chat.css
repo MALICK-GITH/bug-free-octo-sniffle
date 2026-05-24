@@ -1,0 +1,697 @@
+/* Super AI Coupon Generator - Magnificent Design */
+
+.super-ai-coupon-section {
+  background: linear-gradient(145deg, rgba(15, 25, 49, 0.95), rgba(8, 16, 32, 0.98));
+  border: 1px solid rgba(255, 209, 102, 0.4);
+  border-radius: 20px;
+  margin: 2rem 0;
+  overflow: hidden;
+  position: relative;
+  backdrop-filter: blur(20px);
+}
+
+.super-ai-coupon-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #ffd166, #ff5f79, #3be7ff, #42f56c);
+  background-size: 300% 100%;
+  animation: superGradientShift 8s ease-in-out infinite;
+  border-radius: 20px 20px 0 0;
+}
+
+@keyframes superGradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.super-ai-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2rem;
+  background: linear-gradient(135deg, rgba(255, 209, 102, 0.1), rgba(255, 95, 121, 0.05));
+  border-bottom: 1px solid rgba(255, 209, 102, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.super-ai-header::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  animation: superShimmer 3s infinite;
+}
+
+@keyframes superShimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+.super-ai-avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.super-ai-brain {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #ffd166, #ff5f79);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 8px 32px rgba(255, 209, 102, 0.4);
+  animation: superBrainPulse 2s ease-in-out infinite;
+}
+
+@keyframes superBrainPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 8px 32px rgba(255, 209, 102, 0.4); }
+  50% { transform: scale(1.05); box-shadow: 0 12px 48px rgba(255, 209, 102, 0.6); }
+}
+
+.brain-pulse-super {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 209, 102, 0.6);
+  animation: superPulseRing 2s ease-in-out infinite;
+}
+
+@keyframes superPulseRing {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+
+.super-ai-icon {
+  font-size: 2rem;
+  z-index: 1;
+  animation: superBrainRotate 10s linear infinite;
+}
+
+@keyframes superBrainRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.ai-status-indicator-super {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffd166;
+  border: 3px solid rgba(15, 25, 49, 0.9);
+  animation: superStatusBlink 2s ease-in-out infinite;
+}
+
+.ai-status-indicator-super.active {
+  background: #ffd166;
+}
+
+@keyframes superStatusBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.super-ai-info {
+  flex: 1;
+  margin-left: 1.5rem;
+}
+
+.super-ai-info h3 {
+  color: #ffd166;
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  font-family: 'Chakra Petch', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 20px rgba(255, 209, 102, 0.5);
+}
+
+.super-ai-subtitle {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.super-ai-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.super-ai-action-btn {
+  background: rgba(10, 18, 34, 0.8);
+  border: 1px solid rgba(255, 209, 102, 0.3);
+  color: #d8e7f8;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 1.2rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.super-ai-action-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: radial-gradient(circle, rgba(255, 209, 102, 0.3), transparent);
+  transition: all 0.3s ease;
+  transform: translate(-50%, -50%);
+}
+
+.super-ai-action-btn:hover::before {
+  width: 100%;
+  height: 100%;
+}
+
+.super-ai-action-btn:hover {
+  border-color: rgba(255, 209, 102, 0.6);
+  background: rgba(255, 209, 102, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(255, 209, 102, 0.3);
+}
+
+.super-ai-action-btn.active {
+  background: linear-gradient(135deg, #ffd166, #ff5f79);
+  border-color: transparent;
+  color: #000;
+  animation: superControlActive 2s ease-in-out infinite;
+}
+
+@keyframes superControlActive {
+  0%, 100% { box-shadow: 0 8px 24px rgba(255, 209, 102, 0.3); }
+  50% { box-shadow: 0 8px 32px rgba(255, 95, 121, 0.5); }
+}
+
+.super-ai-content {
+  padding: 2rem;
+}
+
+.super-ai-messages {
+  height: 400px;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.message.super-ai-message {
+  align-self: flex-start;
+}
+
+.message.user-message {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.super-ai-message .message-avatar {
+  background: linear-gradient(135deg, #ffd166, #ff5f79);
+}
+
+.user-message .message-avatar {
+  background: linear-gradient(135deg, #3be7ff, #42f56c);
+}
+
+.message-content {
+  background: rgba(10, 18, 34, 0.8);
+  border: 1px solid rgba(255, 209, 102, 0.2);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  color: #d8e7f8;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.user-message .message-content {
+  background: linear-gradient(135deg, rgba(59, 231, 255, 0.2), rgba(66, 245, 108, 0.2));
+  border-color: rgba(59, 231, 255, 0.3);
+}
+
+.message-content p {
+  margin: 0 0 0.5rem 0;
+}
+
+.message-content p:last-child {
+  margin-bottom: 0;
+}
+
+.message-content ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.message-content li {
+  margin-bottom: 0.25rem;
+}
+
+.message-time {
+  font-size: 0.7rem;
+  color: rgba(159, 181, 214, 0.6);
+  margin-top: 0.25rem;
+}
+
+.super-ai-suggestions {
+  padding: 1rem 1.5rem;
+  background: rgba(10, 18, 34, 0.6);
+  border-top: 1px solid rgba(255, 209, 102, 0.2);
+  border-bottom: 1px solid rgba(255, 209, 102, 0.2);
+  margin-bottom: 2rem;
+}
+
+.suggestions-header-super {
+  color: #ffd166;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.suggestions-grid-super {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 0.75rem;
+}
+
+.suggestion-btn-super {
+  background: rgba(10, 18, 34, 0.8);
+  border: 1px solid rgba(255, 209, 102, 0.3);
+  color: #d8e7f8;
+  padding: 0.75rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: left;
+  font-weight: 600;
+}
+
+.suggestion-btn-super:hover {
+  border-color: rgba(255, 209, 102, 0.6);
+  background: rgba(255, 209, 102, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(255, 209, 102, 0.3);
+}
+
+.super-ai-input {
+  padding: 1rem 1.5rem;
+  background: rgba(10, 18, 34, 0.8);
+  border-top: 1px solid rgba(255, 209, 102, 0.2);
+  margin-bottom: 2rem;
+}
+
+.input-container-super {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+#superAIInput {
+  flex: 1;
+  background: rgba(8, 16, 32, 0.9);
+  border: 1px solid rgba(255, 209, 102, 0.3);
+  border-radius: 12px;
+  padding: 0.75rem;
+  color: #d8e7f8;
+  font-size: 0.9rem;
+  font-family: 'Chakra Petch', sans-serif;
+  resize: none;
+  min-height: 44px;
+  max-height: 120px;
+  transition: all 0.3s ease;
+}
+
+#superAIInput:focus {
+  outline: none;
+  border-color: #ffd166;
+  box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.2);
+}
+
+#superAIInput::placeholder {
+  color: rgba(159, 181, 214, 0.5);
+}
+
+.send-btn-super {
+  background: linear-gradient(135deg, #ffd166, #ff5f79);
+  border: none;
+  color: #000;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.send-btn-super:hover:not(:disabled) {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(255, 209, 102, 0.4);
+}
+
+.send-btn-super:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input-status-super {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: rgba(159, 181, 214, 0.6);
+}
+
+.super-ai-coupon-preview {
+  background: linear-gradient(145deg, rgba(255, 209, 102, 0.1), rgba(255, 95, 121, 0.05));
+  border: 2px solid rgba(255, 209, 102, 0.3);
+  border-radius: 16px;
+  padding: 2rem;
+  margin-top: 2rem;
+  backdrop-filter: blur(10px);
+  animation: superPreviewSlide 0.6s ease;
+}
+
+@keyframes superPreviewSlide {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.super-ai-coupon-preview h4 {
+  color: #ffd166;
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0 0 1.5rem 0;
+  font-family: 'Chakra Petch', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 15px rgba(255, 209, 102, 0.4);
+}
+
+.coupon-summary {
+  background: rgba(8, 16, 32, 0.8);
+  border: 1px solid rgba(255, 209, 102, 0.2);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.coupon-type {
+  color: #ffd166;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  font-family: 'Chakra Petch', sans-serif;
+}
+
+.coupon-params {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.param {
+  background: rgba(255, 209, 102, 0.2);
+  color: #d8e7f8;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.coupon-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.metric {
+  text-align: center;
+  padding: 0.75rem;
+  background: rgba(255, 209, 102, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 209, 102, 0.2);
+}
+
+.metric-label {
+  display: block;
+  color: rgba(159, 181, 214, 0.8);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.metric-value {
+  color: #ffd166;
+  font-weight: 700;
+  font-size: 1rem;
+  font-family: 'Chakra Petch', sans-serif;
+}
+
+.coupon-preview-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.preview-action-btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'Chakra Petch', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.preview-action-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.2), transparent);
+  transition: all 0.3s ease;
+  transform: translate(-50%, -50%);
+}
+
+.preview-action-btn:hover::before {
+  width: 200%;
+  height: 200%;
+}
+
+.preview-action-btn.primary {
+  background: linear-gradient(135deg, #ffd166, #ff5f79);
+  color: #000;
+  box-shadow: 0 4px 16px rgba(255, 209, 102, 0.4);
+}
+
+.preview-action-btn.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(255, 209, 102, 0.6);
+}
+
+.preview-action-btn.secondary {
+  background: rgba(10, 18, 34, 0.8);
+  color: #d8e7f8;
+  border: 1px solid rgba(255, 209, 102, 0.3);
+}
+
+.preview-action-btn.secondary:hover {
+  border-color: rgba(255, 209, 102, 0.6);
+  background: rgba(255, 209, 102, 0.1);
+  transform: translateY(-2px);
+}
+
+.super-ai-notification {
+  position: fixed;
+  top: 2rem;
+  right: 2rem;
+  background: linear-gradient(135deg, rgba(255, 209, 102, 0.9), rgba(255, 95, 121, 0.9));
+  color: #000;
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+  z-index: 1000;
+  transform: translateX(100%);
+  transition: all 0.3s ease;
+  box-shadow: 0 8px 24px rgba(255, 209, 102, 0.4);
+}
+
+.super-ai-notification.show {
+  transform: translateX(0);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .super-ai-coupon-section {
+    margin: 1rem -1rem;
+    border-radius: 0;
+  }
+  
+  .super-ai-header {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+    padding: 1.5rem;
+  }
+  
+  .super-ai-info {
+    margin-left: 0;
+  }
+  
+  .super-ai-info h3 {
+    font-size: 1.2rem;
+  }
+  
+  .super-ai-content {
+    padding: 1rem;
+  }
+  
+  .super-ai-messages {
+    height: 300px;
+  }
+  
+  .suggestions-grid-super {
+    grid-template-columns: 1fr;
+  }
+  
+  .coupon-params {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .coupon-metrics {
+    grid-template-columns: 1fr;
+  }
+  
+  .coupon-preview-actions {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .super-ai-content {
+    padding: 0.5rem;
+  }
+  
+  .super-ai-brain {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .super-ai-icon {
+    font-size: 1.5rem;
+  }
+  
+  .super-ai-info h3 {
+    font-size: 1rem;
+  }
+  
+  .super-ai-subtitle {
+    font-size: 0.8rem;
+  }
+  
+  .super-ai-coupon-preview {
+    padding: 1rem;
+  }
+  
+  .super-ai-notification {
+    right: 1rem;
+    left: 1rem;
+    transform: translateY(-100%);
+  }
+  
+  .super-ai-notification.show {
+    transform: translateY(0);
+  }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .super-ai-coupon-section {
+    background: linear-gradient(145deg, rgba(8, 16, 32, 0.98), rgba(4, 8, 16, 0.99));
+  }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  .super-ai-brain,
+  .brain-pulse-super,
+  .super-ai-icon,
+  .ai-status-indicator-super,
+  .superGradientShift,
+  .superShimmer,
+  .superBrainPulse,
+  .superPulseRing,
+  .superStatusBlink,
+  .superControlActive,
+  .superPreviewSlide {
+    animation: none;
+  }
+  
+  .super-ai-action-btn:hover,
+  .send-btn-super:hover,
+  .suggestion-btn-super:hover,
+  .preview-action-btn:hover {
+    transform: none;
+  }
+}

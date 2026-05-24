@@ -1,0 +1,265 @@
+/* Page detail match — barre fuite + mise en page premium */
+
+/*
+  Conflits corrigés :
+  - global-theme-system.css impose body/.page/.hero + transition sur * (cassait fond + Chart.js)
+  - Fichiers CSS manquants retirés du HTML (404)
+*/
+
+.match-detail-body {
+  /* Reprend le fond d’origine match.css (écrasé par le thème global sinon) */
+  background:
+    radial-gradient(circle at 88% 8%, rgba(59, 231, 255, 0.22) 0%, transparent 28%),
+    radial-gradient(circle at 12% 2%, rgba(142, 255, 176, 0.17) 0%, transparent 26%),
+    linear-gradient(155deg, #070b16, #0d1529 40%, #16264b) !important;
+  color: #eaf3ff !important;
+  font-family: "Sora", system-ui, sans-serif !important;
+}
+
+.match-detail-body .page.match-detail-page {
+  /* Le thème met un fond uni sur .page — on garde le dégradé visible via le body */
+  background: transparent !important;
+  color: inherit !important;
+}
+
+.match-detail-body .hero {
+  /* Au-dessus des règles .hero du thème global */
+  background: linear-gradient(165deg, rgba(18, 28, 52, 0.92), rgba(8, 14, 28, 0.94)) !important;
+  color: #eaf3ff !important;
+  border-bottom: none !important;
+}
+
+.match-detail-body .panel {
+  background: linear-gradient(160deg, rgba(12, 22, 44, 0.88), rgba(8, 14, 28, 0.92)) !important;
+  color: #eaf3ff !important;
+}
+
+/* Chart.js : la transition CSS globale sur * provoque clignotements / rendu sale sur canvas */
+.match-detail-body canvas,
+.match-detail-body .chart-card canvas {
+  transition: none !important;
+  image-rendering: auto;
+}
+
+.match-detail-body svg {
+  transition: none !important;
+}
+
+/* Bloc graphiques interactifs : garder uniquement les transitions utiles (pas le * global) */
+.match-detail-body .chart-wrapper {
+  transition: opacity 0.28s ease, visibility 0.28s ease !important;
+}
+
+.match-detail-body .charts-container {
+  position: relative;
+  isolation: isolate;
+}
+
+.match-detail-page {
+  padding-top: 0;
+}
+
+.match-detail-bar {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  width: calc(100% + 1.8rem);
+  margin-left: -0.9rem;
+  margin-right: -0.9rem;
+  margin-bottom: 1rem;
+  padding: max(0.65rem, env(safe-area-inset-top, 0px)) max(0.85rem, env(safe-area-inset-right, 0px)) 0.75rem max(0.85rem, env(safe-area-inset-left, 0px));
+  background: linear-gradient(
+    165deg,
+    rgba(8, 14, 28, 0.97) 0%,
+    rgba(10, 20, 42, 0.92) 45%,
+    rgba(6, 12, 24, 0.88) 100%
+  );
+  border-bottom: 1px solid rgba(59, 231, 255, 0.22);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+
+.match-escape-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 48px;
+  padding: 0.45rem 1rem 0.45rem 0.55rem;
+  border-radius: 14px;
+  text-decoration: none;
+  color: #061018;
+  font-family: "Chakra Petch", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(125deg, #42f56c 0%, #3be7ff 48%, #8effb0 100%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow:
+    0 8px 28px rgba(66, 245, 108, 0.28),
+    0 1px 0 rgba(255, 255, 255, 0.45) inset;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.match-escape-btn:hover {
+  filter: brightness(1.06);
+  box-shadow:
+    0 12px 36px rgba(59, 231, 255, 0.32),
+    0 1px 0 rgba(255, 255, 255, 0.5) inset;
+}
+
+.match-escape-btn:active {
+  transform: scale(0.98);
+}
+
+.match-escape-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(6, 18, 32, 0.22);
+  color: #04121c;
+}
+
+.match-escape-icon svg {
+  display: block;
+}
+
+.match-escape-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.15;
+  text-align: left;
+}
+
+.match-escape-kicker {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  opacity: 0.72;
+}
+
+.match-escape-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.match-detail-aux {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem 0.5rem;
+  max-width: min(100%, 420px);
+}
+
+.match-aux-link {
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: "Chakra Petch", sans-serif;
+  text-decoration: none;
+  color: rgba(210, 228, 255, 0.88);
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 231, 255, 0.2);
+  background: rgba(12, 22, 44, 0.55);
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.match-aux-link:hover {
+  border-color: rgba(59, 231, 255, 0.45);
+  color: #fff;
+  background: rgba(20, 36, 68, 0.75);
+}
+
+.match-detail-page .hero {
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(165deg, rgba(18, 28, 52, 0.92), rgba(8, 14, 28, 0.94));
+  border: 1px solid rgba(59, 231, 255, 0.18);
+  box-shadow:
+    0 0 0 1px rgba(66, 245, 108, 0.06) inset,
+    0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+.match-detail-page .tag {
+  display: inline-block;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(59, 231, 255, 0.2), rgba(142, 255, 176, 0.15));
+  border: 1px solid rgba(59, 231, 255, 0.25);
+  letter-spacing: 0.12em;
+}
+
+.match-detail-page .panel {
+  border-radius: 18px;
+  border-color: rgba(59, 231, 255, 0.16);
+  background: linear-gradient(160deg, rgba(12, 22, 44, 0.88), rgba(8, 14, 28, 0.92));
+}
+
+@media (max-width: 760px) {
+  .match-detail-bar {
+    width: calc(100% + 1.32rem);
+    margin-left: -0.66rem;
+    margin-right: -0.66rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .match-detail-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .match-escape-btn {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .match-detail-aux {
+    max-width: none;
+    justify-content: center;
+  }
+
+  .match-aux-link {
+    flex: 1 1 auto;
+    text-align: center;
+    min-width: calc(50% - 0.25rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .match-escape-btn {
+    transition: none;
+  }
+}
+
+/* match-features-enhanced : marges négatives mobile cassent l’alignement dans .page */
+@media (max-width: 768px) {
+  .match-detail-body .interactive-charts-section,
+  .match-detail-body .ai-coach-conversational,
+  .match-detail-body .advanced-search-panel {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    border-radius: 16px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .match-detail-body .interactive-charts-section,
+  .match-detail-body .ai-coach-conversational,
+  .match-detail-body .advanced-search-panel {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}

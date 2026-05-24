@@ -1,0 +1,417 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SOLITFIFPRO225 Android API",
+    "version": "2026-04-18-android",
+    "description": "Spec de travail pour integrer une application Android avec le backend SOLITFIFPRO225."
+  },
+  "servers": [
+    {
+      "url": "https://fifaxpred.onrender.com",
+      "description": "Production"
+    },
+    {
+      "url": "http://localhost:3029",
+      "description": "Local"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check global",
+        "responses": {
+          "200": {
+            "description": "Etat du serveur"
+          }
+        }
+      }
+    },
+    "/api/mobile/bootstrap": {
+      "get": {
+        "summary": "Bootstrap mobile Android",
+        "responses": {
+          "200": {
+            "description": "Configuration fonctionnelle pour l'app mobile"
+          }
+        }
+      }
+    },
+    "/api/mobile/openapi": {
+      "get": {
+        "summary": "Recuperer cette spec OpenAPI",
+        "responses": {
+          "200": {
+            "description": "Spec JSON"
+          }
+        }
+      }
+    },
+    "/api/mobile/devices/register": {
+      "post": {
+        "summary": "Enregistrer un appareil Android",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceRegistrationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Appareil enregistre"
+          },
+          "400": {
+            "description": "Payload invalide"
+          }
+        }
+      }
+    },
+    "/api/matches/upcoming": {
+      "get": {
+        "summary": "Lister les matchs a venir",
+        "responses": {
+          "200": {
+            "description": "Liste de matchs"
+          }
+        }
+      }
+    },
+    "/api/matches/live": {
+      "get": {
+        "summary": "Lister les matchs live",
+        "responses": {
+          "200": {
+            "description": "Liste de matchs"
+          }
+        }
+      }
+    },
+    "/api/matches/{id}/details": {
+      "get": {
+        "summary": "Details complets d'un match",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Details match"
+          }
+        }
+      }
+    },
+    "/api/predictions/{matchId}": {
+      "get": {
+        "summary": "Prediction d'un match",
+        "parameters": [
+          {
+            "name": "matchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prediction"
+          }
+        }
+      }
+    },
+    "/api/coupon/generate": {
+      "post": {
+        "summary": "Generer un coupon",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CouponGenerateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Coupon genere"
+          }
+        }
+      }
+    },
+    "/api/coupon/validate": {
+      "post": {
+        "summary": "Valider un coupon",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation retournee"
+          }
+        }
+      }
+    },
+    "/api/coupon/history": {
+      "get": {
+        "summary": "Historique des coupons",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historique"
+          }
+        }
+      }
+    },
+    "/api/coupon/favorites": {
+      "get": {
+        "summary": "Favoris utilisateur",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Favoris"
+          }
+        }
+      }
+    },
+    "/api/coupon/favorite": {
+      "post": {
+        "summary": "Ajouter un coupon aux favoris",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "couponId"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "couponId": {
+                    "type": "string"
+                  },
+                  "coupon": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Favori ajoute"
+          }
+        }
+      }
+    },
+    "/api/watchlist": {
+      "get": {
+        "summary": "Lire la watchlist synchronisee",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Etat de watchlist"
+          }
+        }
+      },
+      "post": {
+        "summary": "Creer ou mettre a jour la watchlist",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchlistUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Watchlist enregistree"
+          }
+        }
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "summary": "Chat IA unifie",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reponse chat"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DeviceRegistrationRequest": {
+        "type": "object",
+        "required": [
+          "deviceId"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string",
+            "default": "android"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "pushToken": {
+            "type": "string"
+          },
+          "fcmToken": {
+            "type": "string"
+          },
+          "appVersion": {
+            "type": "string"
+          },
+          "meta": {
+            "type": "object"
+          }
+        }
+      },
+      "CouponGenerateRequest": {
+        "type": "object",
+        "properties": {
+          "size": {
+            "type": "integer",
+            "default": 3
+          },
+          "league": {
+            "type": "string",
+            "default": "all"
+          },
+          "risk": {
+            "type": "string",
+            "default": "balanced"
+          },
+          "stake": {
+            "type": "number",
+            "default": 1000
+          }
+        }
+      },
+      "WatchlistUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "matchIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "addMatchId": {
+            "type": "string"
+          },
+          "removeMatchId": {
+            "type": "string"
+          },
+          "snapshot": {
+            "type": "object"
+          }
+        }
+      },
+      "ChatRequest": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "context": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

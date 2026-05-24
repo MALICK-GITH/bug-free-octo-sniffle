@@ -1,0 +1,84 @@
+{
+  "name": "ONE-DELUX",
+  "short_name": "ONE-DELUX",
+  "description": "Prediction Engine avance avec visualisation 3D, trace et communaute.",
+  "start_url": "/coupon-sublime.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0a0f",
+  "theme_color": "#00f5ff",
+  "categories": [
+    "sports",
+    "entertainment",
+    "utilities"
+  ],
+  "lang": "fr",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "ONE-DELUX",
+      "short_name": "ONE-DELUX",
+      "description": "Ouvrir l'app ONE-DELUX",
+      "url": "/coupon-sublime.html",
+      "icons": [
+        {
+          "src": "/icon-192.svg",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Predictor 3D",
+      "short_name": "3D View",
+      "description": "Visualisation 3D des predictions",
+      "url": "/coupon-sublime.html#predictor",
+      "icons": [
+        {
+          "src": "/icon-192.svg",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Communaute",
+      "short_name": "Social",
+      "description": "Leaderboard et strategies",
+      "url": "/coupon-sublime.html#social",
+      "icons": [
+        {
+          "src": "/icon-192.svg",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/sublime-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "/screenshots/sublime-narrow.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ]
+}
