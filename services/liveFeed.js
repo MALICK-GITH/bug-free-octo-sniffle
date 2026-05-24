@@ -733,11 +733,18 @@ async function getPenaltyMatches() {
     console.log('[DEBUG] Penalty event leagues:', [...new Set(penaltyOnly.map(e => e.L || e.LE))]);
   }
   
-  const selected = penaltyOnly.length > 0 ? penaltyOnly : sportEvents;
-  const filterMode =
-    penaltyOnly.length > 0
-      ? "keyword-penalty"
-      : "group-fallback-gr-285";
+  // Combiner les deux sources: penalty + non-penalty
+  // Limiter à un mélange équilibré
+  const nonPenalty = sportEvents.filter(e => !isPenaltyEvent(e));
+  const maxPenalty = Math.min(penaltyOnly.length, 50);
+  const maxNonPenalty = Math.min(nonPenalty.length, 50);
+  
+  const selected = [
+    ...penaltyOnly.slice(0, maxPenalty),
+    ...nonPenalty.slice(0, maxNonPenalty)
+  ];
+  
+  const filterMode = "mixed-penalty-regular";
 
   return {
     fetchedAt: new Date().toISOString(),
