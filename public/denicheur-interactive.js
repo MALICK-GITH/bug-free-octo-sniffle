@@ -9,7 +9,9 @@ class DenicheurEnhanced {
       oddsMin: 1.5,
       oddsMax: 3.5,
       leagues: [],
-      timeWindow: 60
+      timeWindow: 60,
+      includePenalty: true,
+      includeRegular: true
     };
     
     this.init();
@@ -152,6 +154,27 @@ class DenicheurEnhanced {
             <span class="filter-value" id="timeValue">60</span>
           </label>
         </div>
+        <div class="filter-group">
+          <label class="filter-label">Type de ligues</label>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="includePenalty" checked>
+              <span>Ligues Penalty</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="includeRegular" checked>
+              <span>Ligues régulières</span>
+            </label>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">
+            Ligues spécifiques
+            <select id="leagueFilter" multiple>
+              <option value="">Toutes les ligues</option>
+            </select>
+          </label>
+        </div>
         <div class="filter-actions">
           <button class="filter-btn primary" id="applyFilters">Appliquer</button>
           <button class="filter-btn" id="resetFilters">Réinitialiser</button>
@@ -223,6 +246,31 @@ class DenicheurEnhanced {
     if (filterToggle && filterContent) {
       filterToggle.addEventListener('click', () => {
         filterContent.style.display = filterContent.style.display === 'none' ? 'block' : 'none';
+      });
+    }
+
+    // Penalty checkbox
+    const includePenalty = document.getElementById('includePenalty');
+    if (includePenalty) {
+      includePenalty.addEventListener('change', (e) => {
+        this.filterSettings.includePenalty = e.target.checked;
+      });
+    }
+
+    // Regular checkbox
+    const includeRegular = document.getElementById('includeRegular');
+    if (includeRegular) {
+      includeRegular.addEventListener('change', (e) => {
+        this.filterSettings.includeRegular = e.target.checked;
+      });
+    }
+
+    // League filter
+    const leagueFilter = document.getElementById('leagueFilter');
+    if (leagueFilter) {
+      leagueFilter.addEventListener('change', (e) => {
+        const selectedLeagues = Array.from(e.target.selectedOptions).map(option => option.value);
+        this.filterSettings.leagues = selectedLeagues.filter(l => l !== '');
       });
     }
   }
@@ -333,11 +381,37 @@ class DenicheurEnhanced {
     try {
       const response = await fetch('/api/matches/upcoming');
       const data = await response.json();
-      return data.matches || [];
+      const matches = data.matches || [];
+      
+      // Populate league selector
+      this.populateLeagueSelector(matches);
+      
+      return matches;
     } catch (error) {
       console.error('Failed to fetch matches:', error);
       return [];
     }
+  }
+
+  populateLeagueSelector(matches) {
+    const leagueFilter = document.getElementById('leagueFilter');
+    if (!leagueFilter) return;
+    
+    // Extract unique leagues
+    const leagues = [...new Set(matches.map(m => m.league).filter(Boolean))];
+    
+    // Clear existing options except the first one
+    while (leagueFilter.options.length > 1) {
+      leagueFilter.remove(1);
+    }
+    
+    // Add league options
+    leagues.forEach(league => {
+      const option = document.createElement('option');
+      option.value = league;
+      option.textContent = league;
+      leagueFilter.appendChild(option);
+    });
   }
 
   async analyzeMatches(matches) {
@@ -365,6 +439,16 @@ class DenicheurEnhanced {
       const minutesToStart = this.getMinutesToStart(match);
       if (minutesToStart > this.filterSettings.timeWindow) return false;
       
+      // Apply league type filter (penalty vs regular)
+      const isPenalty = this.isPenaltyLeague(match.league);
+      if (isPenalty && !this.filterSettings.includePenalty) return false;
+      if (!isPenalty && !this.filterSettings.includeRegular) return false;
+      
+      // Apply specific league filter
+      if (this.filterSettings.leagues.length > 0) {
+        if (!this.filterSettings.leagues.includes(match.league)) return false;
+      }
+      
       // Apply strict mode filters
       if (this.filterSettings.strictMode) {
         if (match.liquidity < 80) return false;
@@ -377,6 +461,13 @@ class DenicheurEnhanced {
   }
 
   // Utility Methods
+  isPenaltyLeague(leagueName) {
+    if (!leagueName) return false;
+    const normalized = String(leagueName).toLowerCase();
+    const penaltyKeywords = ['penalty', 'penalties', 'tir au but', 'tirs au but', 'shootout'];
+    return penaltyKeywords.some(keyword => normalized.includes(keyword));
+  }
+
   calculateConfidence(match) {
     // Enhanced confidence calculation
     let confidence = 50;
@@ -384,6 +475,16 @@ class DenicheurEnhanced {
     // Base confidence from API
     if (match.confiance) {
       confidence += match.confiance * 0.3;
+    }
+    
+    // Adjust confidence based on league type
+    const isPenalty = this.isPenaltyLeague(match.league);
+    if (isPenalty) {
+      // Penalty leagues have more predictable outcomes
+      confidence += 5;
+    } else {
+      // Regular leagues may have more variability
+      confidence -= 2;
     }
     
     // Time factor
@@ -668,7 +769,9 @@ class DenicheurEnhanced {
       oddsMax: 3.5,
       leagues: [],
       timeWindow: 60,
-      strictMode: this.filterSettings.strictMode
+      strictMode: this.filterSettings.strictMode,
+      includePenalty: true,
+      includeRegular: true
     };
     
     // Reset UI
@@ -676,6 +779,9 @@ class DenicheurEnhanced {
     const oddsMinFilter = document.getElementById('oddsMinFilter');
     const oddsMaxFilter = document.getElementById('oddsMaxFilter');
     const timeFilter = document.getElementById('timeFilter');
+    const includePenalty = document.getElementById('includePenalty');
+    const includeRegular = document.getElementById('includeRegular');
+    const leagueFilter = document.getElementById('leagueFilter');
     
     if (confidenceFilter) {
       confidenceFilter.value = 50;
@@ -692,6 +798,15 @@ class DenicheurEnhanced {
     if (timeFilter) {
       timeFilter.value = 60;
       document.getElementById('timeValue').textContent = '60 min';
+    }
+    if (includePenalty) {
+      includePenalty.checked = true;
+    }
+    if (includeRegular) {
+      includeRegular.checked = true;
+    }
+    if (leagueFilter) {
+      leagueFilter.selectedIndex = 0;
     }
     
     // Apply reset
