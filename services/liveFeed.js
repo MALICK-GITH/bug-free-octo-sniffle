@@ -721,7 +721,18 @@ async function getPenaltyMatches() {
   const payload = await fetchLiveFeedRaw();
   const events = Array.isArray(payload?.Value) ? payload.Value : [];
   const sportEvents = events.filter((event) => Number(event?.SI) === 85);
+  
+  // Debug: Log all league names from sport 85
+  console.log('[DEBUG] Total sport 85 events:', sportEvents.length);
+  const leagues = [...new Set(sportEvents.map(e => e.L || e.LE || 'Unknown'))];
+  console.log('[DEBUG] Leagues found:', leagues);
+  
   const penaltyOnly = sportEvents.filter(isPenaltyEvent);
+  console.log('[DEBUG] Penalty events found:', penaltyOnly.length);
+  if (penaltyOnly.length > 0) {
+    console.log('[DEBUG] Penalty event leagues:', [...new Set(penaltyOnly.map(e => e.L || e.LE))]);
+  }
+  
   const selected = penaltyOnly.length > 0 ? penaltyOnly : sportEvents;
   const filterMode =
     penaltyOnly.length > 0
