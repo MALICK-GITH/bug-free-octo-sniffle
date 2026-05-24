@@ -739,6 +739,20 @@ async function getPenaltyMatches() {
   const maxPenalty = Math.min(penaltyOnly.length, 50);
   const maxNonPenalty = Math.min(nonPenalty.length, 50);
   
+  // Debug: Log status codes for penalty vs non-penalty
+  console.log('[DEBUG] Penalty status codes:', penaltyOnly.slice(0, 5).map(e => ({
+    league: e.L || e.LE,
+    statusCode: e.SC?.GS,
+    statusText: e.SC?.SLS,
+    phase: e.SC?.CPS
+  })));
+  console.log('[DEBUG] Non-penalty status codes:', nonPenalty.slice(0, 5).map(e => ({
+    league: e.L || e.LE,
+    statusCode: e.SC?.GS,
+    statusText: e.SC?.SLS,
+    phase: e.SC?.CPS
+  })));
+  
   const selected = [
     ...penaltyOnly.slice(0, maxPenalty),
     ...nonPenalty.slice(0, maxNonPenalty)
