@@ -754,8 +754,8 @@ async function getPenaltyMatches() {
   })));
   
   const selected = [
-    ...penaltyOnly.slice(0, maxPenalty),
-    ...nonPenalty.slice(0, maxNonPenalty)
+    ...nonPenalty.slice(0, maxNonPenalty),
+    ...penaltyOnly.slice(0, maxPenalty)
   ];
   
   const filterMode = "mixed-penalty-regular";
