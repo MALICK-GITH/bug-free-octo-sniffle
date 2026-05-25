@@ -3,15 +3,39 @@
  * Cache offline et performance optimisée
  */
 
-const CACHE_NAME = 'one-delux-v1';
-const STATIC_CACHE = 'one-delux-static-v1';
-const DYNAMIC_CACHE = 'one-delux-dynamic-v1';
-const API_CACHE = 'one-delux-api-v1';
+const CACHE_NAME = 'one-delux-v2';
+const STATIC_CACHE = 'one-delux-static-v2';
+const DYNAMIC_CACHE = 'one-delux-dynamic-v2';
+const API_CACHE = 'one-delux-api-v2';
 
-// Assets statiques à mettre en cache
-const STATIC_ASSETS = [
+// Configuration du cache
+const CACHE_CONFIG = {
+  maxSize: 50 * 1024 * 1024, // 50MB maximum
+  maxEntries: 1000, // Maximum 1000 entrées par cache
+  staleWhileRevalidate: true, // Activer SWR
+  cacheWarming: true, // Activer le préchauffage
+  networkAware: true // Adapter selon la qualité du réseau
+};
+
+// Assets statiques à mettre en cache (priorité haute)
+const CRITICAL_ASSETS = [
   '/',
   '/index.html',
+  '/styles.css',
+  '/mobile.css',
+  '/mobile-optimizations.css',
+  '/mobile-ultra-premium.css',
+  '/theme-system.css',
+  '/global-enhancements.css',
+  '/site-api.js',
+  '/database-api.js',
+  '/icon-192.svg',
+  '/icon-512.svg',
+  '/manifest.webmanifest'
+];
+
+// Assets secondaires (priorité moyenne)
+const SECONDARY_ASSETS = [
   '/coupon.html',
   '/suivre.html',
   '/gallery.html',
@@ -19,57 +43,69 @@ const STATIC_ASSETS = [
   '/updates.html',
   '/about.html',
   '/developpeur.html',
-  '/styles.css',
-  '/mobile.css',
-  '/mobile-optimizations.css',
-  '/mobile-ultra-premium.css',
   '/gallery-mobile.css',
-  '/theme-system.css',
-  '/global-enhancements.css',
   '/pages-luxe.css',
   '/unified-system.css',
   '/signature.css',
   '/site-embellishment.css',
   '/updates.css',
-  '/site-api.js',
-  '/database-api.js',
   '/gallery.js',
   '/mobile-menu.js',
   '/global-ui-shell.js',
-  '/browser-sync.js',
-  '/icon-192.svg',
-  '/icon-512.svg',
-  '/manifest.webmanifest'
+  '/browser-sync.js'
 ];
 
-// Installation du service worker
+// Toutes les assets statiques
+const STATIC_ASSETS = [...CRITICAL_ASSETS, ...SECONDARY_ASSETS];
+
+// Installation du service worker avec Cache Warming
 self.addEventListener('install', (event) => {
   console.log('[Service Worker] Installation en cours...');
   
   event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => {
-        console.log('[Service Worker] Mise en cache des assets statiques');
-        return cache.addAll(STATIC_ASSETS);
-      })
-      .then(() => {
+    (async () => {
+      try {
+        // Cache Warming: Charger les assets critiques d'abord
+        if (CACHE_CONFIG.cacheWarming) {
+          console.log('[Service Worker] Cache Warming - Assets critiques');
+          const cache = await caches.open(STATIC_CACHE);
+          await cache.addAll(CRITICAL_ASSETS);
+          console.log('[Service Worker] Assets critiques mis en cache');
+          
+          // Charger les assets secondaires en arrière-plan
+          setTimeout(async () => {
+            try {
+              await cache.addAll(SECONDARY_ASSETS);
+              console.log('[Service Worker] Assets secondaires mis en cache');
+            } catch (error) {
+              console.warn('[Service Worker] Erreur cache secondaire:', error);
+            }
+          }, 1000);
+        } else {
+          // Charger tous les assets en une fois (ancienne méthode)
+          const cache = await caches.open(STATIC_CACHE);
+          await cache.addAll(STATIC_ASSETS);
+        }
+        
         console.log('[Service Worker] Installation terminée');
         return self.skipWaiting();
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('[Service Worker] Erreur lors de l\'installation:', error);
-      })
+      }
+    })()
   );
 });
 
-// Activation du service worker
+// Activation du service worker avec Cache Size Management
 self.addEventListener('activate', (event) => {
   console.log('[Service Worker] Activation en cours...');
   
   event.waitUntil(
-    caches.keys()
-      .then((cacheNames) => {
-        return Promise.all(
+    (async () => {
+      try {
+        // Nettoyer les anciens caches
+        const cacheNames = await caches.keys();
+        await Promise.all(
           cacheNames.map((cacheName) => {
             if (cacheName !== STATIC_CACHE && 
                 cacheName !== DYNAMIC_CACHE && 
@@ -79,11 +115,17 @@ self.addEventListener('activate', (event) => {
             }
           })
         );
-      })
-      .then(() => {
+        
+        // Nettoyer le cache si nécessaire (Cache Size Management)
+        await cleanupCache(DYNAMIC_CACHE);
+        await cleanupCache(API_CACHE);
+        
         console.log('[Service Worker] Activation terminée');
         return self.clients.claim();
-      })
+      } catch (error) {
+        console.error('[Service Worker] Erreur lors de l\'activation:', error);
+      }
+    })()
   );
 });
 
@@ -106,7 +148,11 @@ self.addEventListener('fetch', (event) => {
   if (request.destination === 'style' || 
       request.destination === 'script' || 
       request.destination === 'image') {
-    event.respondWith(cacheFirst(request));
+    if (CACHE_CONFIG.staleWhileRevalidate) {
+      event.respondWith(staleWhileRevalidate(request));
+    } else {
+      event.respondWith(cacheFirst(request));
+    }
     return;
   }
 
@@ -138,12 +184,41 @@ async function cacheFirst(request) {
     
     if (networkResponse && networkResponse.status === 200) {
       const cache = await caches.open(DYNAMIC_CACHE);
-      cache.put(request, networkResponse.clone());
+      await cache.put(request, networkResponse.clone());
+      await cleanupCacheIfNeeded(DYNAMIC_CACHE);
     }
     
     return networkResponse;
   } catch (error) {
     console.error('[Service Worker] Erreur cacheFirst:', error);
+    return new Response('Offline - Contenu non disponible', { 
+      status: 503,
+      statusText: 'Service Unavailable'
+    });
+  }
+}
+
+// Stale While Revalidate - Servir du cache tout en mettant à jour
+async function staleWhileRevalidate(request) {
+  try {
+    const cache = await caches.open(DYNAMIC_CACHE);
+    const cachedResponse = await cache.match(request);
+    
+    // Servir le cache immédiatement
+    const fetchPromise = fetch(request).then(async (networkResponse) => {
+      if (networkResponse && networkResponse.status === 200) {
+        await cache.put(request, networkResponse.clone());
+        await cleanupCacheIfNeeded(DYNAMIC_CACHE);
+      }
+      return networkResponse;
+    }).catch((error) => {
+      console.error('[Service Worker] Erreur fetch SWR:', error);
+    });
+    
+    // Retourner le cache si disponible, sinon attendre le réseau
+    return cachedResponse || (await fetchPromise);
+  } catch (error) {
+    console.error('[Service Worker] Erreur staleWhileRevalidate:', error);
     return new Response('Offline - Contenu non disponible', { 
       status: 503,
       statusText: 'Service Unavailable'
@@ -158,7 +233,8 @@ async function networkFirst(request) {
     
     if (networkResponse && networkResponse.status === 200) {
       const cache = await caches.open(DYNAMIC_CACHE);
-      cache.put(request, networkResponse.clone());
+      await cache.put(request, networkResponse.clone());
+      await cleanupCacheIfNeeded(DYNAMIC_CACHE);
     }
     
     return networkResponse;
@@ -216,7 +292,8 @@ async function apiCacheStrategy(request) {
         headers: headers
       });
       
-      cache.put(request, modifiedResponse);
+      await cache.put(request, modifiedResponse);
+      await cleanupCacheIfNeeded(API_CACHE);
     }
     
     return networkResponse;
@@ -224,6 +301,37 @@ async function apiCacheStrategy(request) {
     console.error('[Service Worker] Erreur apiCacheStrategy:', error);
     const cachedResponse = await caches.match(request);
     return cachedResponse || new Response('Offline', { status: 503 });
+  }
+}
+
+// Cache Size Management - Nettoyer le cache si nécessaire
+async function cleanupCache(cacheName) {
+  try {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    
+    if (keys.length > CACHE_CONFIG.maxEntries) {
+      // Supprimer les entrées les plus anciennes (LRU)
+      const keysToDelete = keys.slice(0, keys.length - CACHE_CONFIG.maxEntries);
+      await Promise.all(keysToDelete.map(key => cache.delete(key)));
+      console.log(`[Service Worker] Cache ${cacheName} nettoyé: ${keysToDelete.length} entrées supprimées`);
+    }
+  } catch (error) {
+    console.error('[Service Worker] Erreur cleanupCache:', error);
+  }
+}
+
+// Cleanup si nécessaire (vérifier la taille du cache)
+async function cleanupCacheIfNeeded(cacheName) {
+  try {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    
+    if (keys.length >= CACHE_CONFIG.maxEntries) {
+      await cleanupCache(cacheName);
+    }
+  } catch (error) {
+    console.error('[Service Worker] Erreur cleanupCacheIfNeeded:', error);
   }
 }
 
