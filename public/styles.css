@@ -139,6 +139,19 @@ footer {
   margin-right: 1.25rem;
 }
 
+.hero-slogan {
+  margin-left: 1.25rem;
+  margin-right: 1.25rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+  color: #ff3366;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(255, 51, 102, 0.5);
+}
+
 .tag {
   margin-top: -62px;
   margin-bottom: 0.4rem;
