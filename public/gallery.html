@@ -41,6 +41,9 @@
     rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/mobile.css" />
+  <link rel="stylesheet" href="/mobile-optimizations.css" />
+  <link rel="stylesheet" href="/mobile-ultra-premium.css" />
+  <link rel="stylesheet" href="/gallery-mobile.css" />
   <link rel="stylesheet" href="/theme-system.css" />
   <link rel="stylesheet" href="/global-enhancements.css" />
 </head>
@@ -51,6 +54,11 @@
 
   <div class="bg-grid" aria-hidden="true"></div>
   <header class="hero">
+    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Menu" aria-expanded="false">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
     <p class="tag">Médias générés</p>
     <h1>Galerie d'exports</h1>
     <p>Miniatures instantanées, filtres rapides et accès direct à la page source pour garder le flux sous contrôle.</p>
@@ -80,6 +88,7 @@
   <!-- Global Enhancement Scripts -->
   <script src="/performance-optimizations.js" defer></script>
   <script src="/accessibility-enhancements.js" defer></script>
+  <script src="/mobile-menu.js" defer></script>
 
   <!-- Gallery Scripts -->
   <script src="/site-api.js"></script>

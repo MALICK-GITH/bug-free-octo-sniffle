@@ -43,6 +43,8 @@
   <link rel="stylesheet" href="/denicheur-enhanced.css" />
   <link rel="stylesheet" href="/unified-system.css" />
   <link rel="stylesheet" href="/mobile.css" />
+  <link rel="stylesheet" href="/mobile-optimizations.css" />
+  <link rel="stylesheet" href="/mobile-ultra-premium.css" />
   <link rel="stylesheet" href="/signature.css" />
   <link rel="stylesheet" href="/chat-widget.css" />
   <link rel="stylesheet" href="/power-ui.css" />
@@ -59,6 +61,11 @@
 
   <div class="bg-grid" aria-hidden="true"></div>
   <header class="hero">
+    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Menu" aria-expanded="false">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
     <p class="tag">Live Feed 1xBet</p>
     <h1>ONE-DELUX</h1>
     <p id="subTitle">ONE-DELUX - Le signal avant le coup d'envoi. Hub FIFA virtuel, matchs live, details et exports.</p>
@@ -247,6 +254,7 @@
   <script src="/performance-optimizations.js" defer></script>
   <script src="/accessibility-enhancements.js" defer></script>
   <script src="/image-optimizer.js" defer></script>
+  <script src="/mobile-menu.js" defer></script>
 
   <!-- Main Application Module -->
   <script type="module" src="/main.js"></script>
