@@ -41,7 +41,8 @@ if ('serviceWorker' in navigator) {
   // Gérer le changement de contrôleur
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     console.log('[PWA] Nouveau contrôleur actif');
-    window.location.reload();
+    // Désactivé pour éviter les rechargements en boucle
+    // window.location.reload();
   });
 }
 
