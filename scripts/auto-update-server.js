@@ -16,7 +16,11 @@ function toBoolean(value, fallback = false) {
 }
 
 const AUTO_UPDATE_ENABLED =
-  toBoolean(process.env.AUTO_UPDATE_ENABLED, true) && !toBoolean(process.env.AUTO_UPDATE_DISABLED, false);
+  toBoolean(process.env.AUTO_UPDATE_ENABLED, true) && 
+  !toBoolean(process.env.AUTO_UPDATE_DISABLED, false) &&
+  !toBoolean(process.env.RENDER, false) && // Désactiver auto-update sur Render
+  !toBoolean(process.env.VERCEL, false) && // Désactiver auto-update sur Vercel
+  !toBoolean(process.env.HEROKU, false); // Désactiver auto-update sur Heroku
 const AUTO_INSTALL_ENABLED = toBoolean(process.env.AUTO_UPDATE_INSTALL, true);
 const AUTO_RESTART_DELAY_MS = Math.max(1500, Number(process.env.AUTO_UPDATE_RESTART_DELAY_MS || 3000) || 3000);
 const currentEnv = { ...process.env };
