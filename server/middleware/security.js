@@ -46,6 +46,18 @@ function createHelmetMiddleware({ reportOnly = false } = {}) {
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     crossOriginResourcePolicy: { policy: "same-origin" },
+    // Headers de sécurité supplémentaires
+    hsts: {
+      maxAge: 31536000, // 1 an
+      includeSubDomains: true,
+      preload: true
+    },
+    noSniff: true,
+    xssFilter: true,
+    frameguard: { action: 'deny' },
+    permittedCrossDomainPolicies: false,
+    ieNoOpen: true,
+    dnsPrefetchControl: { allow: false }
   });
 }
 

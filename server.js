@@ -5,6 +5,8 @@ const express = require("express");
 const sharp = require("sharp");
 const config = require("./server/config");
 const { createHelmetMiddleware, csrfProtection, requestTimingLogger } = require("./server/middleware/security");
+const { defaultRateLimiter, strictRateLimiter, couponRateLimiter, chatRateLimiter } = require("./server/middleware/rateLimiter");
+const { apiRequestLogger, suspiciousActivityDetector } = require("./server/middleware/auditLogger");
 const { apiNotFound, errorHandler } = require("./server/middleware/errors");
 const {
   validateBody,
@@ -83,6 +85,12 @@ app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(createHelmetMiddleware({ reportOnly: config.cspReportOnly }));
 app.use(requestTimingLogger);
+// Appliquer le rate limiter par défaut à toutes les routes API
+app.use('/api', defaultRateLimiter);
+// Logger les requêtes API
+app.use('/api', apiRequestLogger);
+// Détecter les activités suspectes
+app.use('/api', suspiciousActivityDetector);
 app.use(express.json({ limit: config.jsonLimit }));
 app.use(express.urlencoded({ extended: false, limit: config.jsonLimit }));
 app.use(csrfProtection({ allowedOrigins: config.allowedOrigins }));
