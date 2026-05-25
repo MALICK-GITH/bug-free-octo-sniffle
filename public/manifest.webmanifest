@@ -1,21 +1,71 @@
 {
-  "name": "ONE-DELUX",
+  "name": "ONE-DELUX - Engine de Predictions FIFA",
   "short_name": "ONE-DELUX",
-  "description": "Prediction Engine avance avec visualisation 3D, trace et communaute.",
-  "start_url": "/coupon-sublime.html",
+  "description": "Engine de predictions avance avec visualisation 3D, communaute et analytics pour les paris sportifs.",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "any",
-  "background_color": "#0a0a0f",
-  "theme_color": "#00f5ff",
+  "orientation": "portrait-primary",
+  "background_color": "#0a1628",
+  "theme_color": "#42f56c",
   "categories": [
     "sports",
     "entertainment",
-    "utilities"
+    "utilities",
+    "finance"
   ],
   "lang": "fr",
   "dir": "ltr",
+  "prefer_related_applications": false,
   "icons": [
+    {
+      "src": "/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
     {
       "src": "/icon-192.svg",
       "sizes": "192x192",
@@ -32,53 +82,67 @@
   "shortcuts": [
     {
       "name": "ONE-DELUX",
-      "short_name": "ONE-DELUX",
-      "description": "Ouvrir l'app ONE-DELUX",
-      "url": "/coupon-sublime.html",
+      "short_name": "Accueil",
+      "description": "Ouvrir l'accueil ONE-DELUX",
+      "url": "/",
       "icons": [
         {
-          "src": "/icon-192.svg",
-          "sizes": "192x192"
+          "src": "/icon-96.png",
+          "sizes": "96x96"
         }
       ]
     },
     {
-      "name": "Predictor 3D",
-      "short_name": "3D View",
-      "description": "Visualisation 3D des predictions",
-      "url": "/coupon-sublime.html#predictor",
+      "name": "Page Coupon",
+      "short_name": "Coupon",
+      "description": "Generer un coupon de predictions",
+      "url": "/coupon.html",
       "icons": [
         {
-          "src": "/icon-192.svg",
-          "sizes": "192x192"
+          "src": "/icon-96.png",
+          "sizes": "96x96"
         }
       ]
     },
     {
-      "name": "Communaute",
-      "short_name": "Social",
-      "description": "Leaderboard et strategies",
-      "url": "/coupon-sublime.html#social",
+      "name": "Suivi des Matchs",
+      "short_name": "Suivi",
+      "description": "Suivre les matchs en direct",
+      "url": "/suivre.html",
       "icons": [
         {
-          "src": "/icon-192.svg",
-          "sizes": "192x192"
+          "src": "/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Galerie",
+      "short_name": "Exports",
+      "description": "Voir les exports generes",
+      "url": "/gallery.html",
+      "icons": [
+        {
+          "src": "/icon-96.png",
+          "sizes": "96x96"
         }
       ]
     }
   ],
   "screenshots": [
     {
-      "src": "/screenshots/sublime-wide.png",
+      "src": "/screenshots/home-wide.png",
       "sizes": "1280x720",
       "type": "image/png",
-      "form_factor": "wide"
+      "form_factor": "wide",
+      "label": "Accueil ONE-DELUX"
     },
     {
-      "src": "/screenshots/sublime-narrow.png",
+      "src": "/screenshots/home-narrow.png",
       "sizes": "750x1334",
       "type": "image/png",
-      "form_factor": "narrow"
+      "form_factor": "narrow",
+      "label": "Accueil ONE-DELUX Mobile"
     }
   ]
 }
