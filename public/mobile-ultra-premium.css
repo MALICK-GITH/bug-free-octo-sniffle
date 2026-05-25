@@ -72,15 +72,15 @@
     display: block;
   }
 
+  /* Rendre les contrôles toujours visibles sur mobile */
   .controls {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease, opacity 0.3s ease;
-    opacity: 0;
+    max-height: none;
+    overflow: visible;
+    opacity: 1;
   }
 
   .controls.mobile-menu-open {
-    max-height: 500px;
+    max-height: none;
     opacity: 1;
   }
 }
