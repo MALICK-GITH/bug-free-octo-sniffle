@@ -182,12 +182,52 @@ const CACHE_CONFIG = {
 
 ---
 
+## 5. Correction du Problème de Rafraîchissement Constant
+
+### Commit: `6369aa1` - Corriger le problème de rafraîchissement constant en désactivant le rechargement automatique lors du changement de contrôleur PWA
+
+#### Problème identifié:
+- La page d'accueil rafraîchissait constamment
+- Le site ne pouvait pas être utilisé à cause de ce rafraîchissement en boucle
+
+#### Cause du problème:
+- Le `controllerchange` event dans `pwa-register.js` faisait un `window.location.reload()` automatique
+- Lorsque le service worker changeait de contrôleur, cela déclenchait un rechargement de la page
+- Cela pouvait créer une boucle infinie si le contrôleur changeait plusieurs fois
+
+#### Modification apportée:
+
+**PWA Register Script (`pwa-register.js`)**
+```javascript
+// Avant:
+navigator.serviceWorker.addEventListener('controllerchange', () => {
+  console.log('[PWA] Nouveau contrôleur actif');
+  window.location.reload();
+});
+
+// Après:
+navigator.serviceWorker.addEventListener('controllerchange', () => {
+  console.log('[PWA] Nouveau contrôleur actif');
+  // Désactivé pour éviter les rechargements en boucle
+  // window.location.reload();
+});
+```
+
+#### Avantages:
+- Plus de rafraîchissement constant de la page
+- Le site est maintenant utilisable
+- Les mises à jour du service worker se font manuellement via la notification
+- Plus stable et prévisible
+
+---
+
 ## Résumé des Commits
 
 1. **`1c46c3f`** - Ajouter le document de suggestions d'amélioration pour tous les systèmes
 2. **`5e2fcbd`** - Améliorer le PWA pour une expérience ultra immersive et fluide (manifest, service worker, optimisations CSS)
 3. **`2d3019a`** - Ajouter l'emoji 😈 comme signature et logo du système - Signé par SOLITAIRE HACK
 4. **`e62b366`** - Optimiser le cache PWA avec Cache Warming, Stale While Revalidate et Cache Size Management
+5. **`6369aa1`** - Corriger le problème de rafraîchissement constant en désactivant le rechargement automatique lors du changement de contrôleur PWA
 
 ---
 
@@ -259,9 +299,9 @@ const CACHE_CONFIG = {
 ## Statut de la Session
 
 **Date:** 25 Mai 2026  
-**Commits:** 4  
+**Commits:** 5  
 **Fichiers créés:** 7  
-**Fichiers modifiés:** 12  
+**Fichiers modifiés:** 13  
 **Statut:** ✅ Terminé avec succès
 
 ---
