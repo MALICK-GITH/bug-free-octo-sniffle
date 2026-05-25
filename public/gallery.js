@@ -176,10 +176,10 @@ function ensureGeneratedMediaLightbox() {
   lightbox.setAttribute("aria-hidden", "true");
   lightbox.innerHTML = `
     <div class="generated-media-lightbox-backdrop"></div>
-    <div class="generated-media-lightbox-content">
+    <div class="generated-media-lightbox-panel">
       <button type="button" class="generated-media-lightbox-close" aria-label="Fermer">×</button>
-      <div class="generated-media-lightbox-image"></div>
-      <div class="generated-media-lightbox-info"></div>
+      <div class="generated-media-lightbox-preview"></div>
+      <div class="generated-media-lightbox-content"></div>
     </div>
   `;
   document.body.appendChild(lightbox);
@@ -192,6 +192,7 @@ function ensureGeneratedMediaLightbox() {
     }
     lightbox.classList.add("hidden");
     lightbox.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("generated-media-open");
   };
 
   lightbox.querySelector(".generated-media-lightbox-close").addEventListener("click", close);
@@ -205,8 +206,8 @@ function ensureGeneratedMediaLightbox() {
 
 async function openGeneratedMediaLightbox(item = {}) {
   const lightbox = ensureGeneratedMediaLightbox();
-  const imageContainer = lightbox.querySelector(".generated-media-lightbox-image");
-  const infoContainer = lightbox.querySelector(".generated-media-lightbox-info");
+  const imageContainer = lightbox.querySelector(".generated-media-lightbox-preview");
+  const infoContainer = lightbox.querySelector(".generated-media-lightbox-content");
 
   const kind = getMediaKind(item);
   const title = String(item?.label || item?.action || "Média").trim();
@@ -253,6 +254,7 @@ async function openGeneratedMediaLightbox(item = {}) {
 
   lightbox.classList.remove("hidden");
   lightbox.setAttribute("aria-hidden", "false");
+  document.body.classList.add("generated-media-open");
 }
 
 function loadGeneratedMediaFilter() {
