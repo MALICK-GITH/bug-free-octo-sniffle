@@ -134,7 +134,7 @@ function renderGeneratedMediaCards(items = []) {
             </div>
             <div class="generated-media-actions">
               <button type="button" class="generated-media-open generated-media-view-btn" data-media-view="${index}">Aperçu plein écran</button>
-              ${href ? `<a class="generated-media-open" href="${href}">${openLabel}</a>` : '<span class="generated-media-open is-static">Archive</span>'}
+              ${item?.action === "download_coupon_image" && item?.asset ? `<button type="button" class="generated-media-open generated-media-download-btn" data-media-download="${index}">Télécharger</button>` : (href ? `<a class="generated-media-open" href="${href}">${openLabel}</a>` : '<span class="generated-media-open is-static">Archive</span>')}
               <button type="button" class="generated-media-copy" data-media-copy="${escapeHtml(fileName || title)}">Copier titre</button>
             </div>
           </div>
@@ -165,6 +165,11 @@ function ensureGeneratedMediaLightbox() {
   document.body.appendChild(lightbox);
 
   const close = () => {
+    // Revoke blob URL if exists
+    if (lightbox.dataset.blobUrl) {
+      URL.revokeObjectURL(lightbox.dataset.blobUrl);
+      delete lightbox.dataset.blobUrl;
+    }
     lightbox.classList.add("hidden");
     lightbox.setAttribute("aria-hidden", "true");
   };
@@ -178,7 +183,7 @@ function ensureGeneratedMediaLightbox() {
   return lightbox;
 }
 
-function openGeneratedMediaLightbox(item = {}) {
+async function openGeneratedMediaLightbox(item = {}) {
   const lightbox = ensureGeneratedMediaLightbox();
   const imageContainer = lightbox.querySelector(".generated-media-lightbox-image");
   const infoContainer = lightbox.querySelector(".generated-media-lightbox-info");
@@ -192,7 +197,31 @@ function openGeneratedMediaLightbox(item = {}) {
   if (kind === "pdf") {
     imageContainer.innerHTML = `<div class="generated-media-lightbox-placeholder">PDF: ${escapeHtml(fileName)}</div>`;
   } else {
-    imageContainer.innerHTML = `<img src="${item?.dataUrl || ""}" alt="${escapeHtml(title)}" />`;
+    // Try to regenerate the image from the stored asset data
+    if (item?.action === "download_coupon_image" && item?.asset) {
+      imageContainer.innerHTML = `<div class="generated-media-lightbox-placeholder">Chargement de l'image...</div>`;
+      try {
+        const response = await fetch("/api/coupon/image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...item.asset, format: "png" })
+        });
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          imageContainer.innerHTML = `<img src="${url}" alt="${escapeHtml(title)}" />`;
+          // Revoke URL after lightbox closes
+          lightbox.dataset.blobUrl = url;
+        } else {
+          imageContainer.innerHTML = `<div class="generated-media-lightbox-placeholder">Impossible de charger l'image</div>`;
+        }
+      } catch (error) {
+        console.error("Error loading image:", error);
+        imageContainer.innerHTML = `<div class="generated-media-lightbox-placeholder">Erreur de chargement</div>`;
+      }
+    } else {
+      imageContainer.innerHTML = `<div class="generated-media-lightbox-placeholder">Image non disponible</div>`;
+    }
   }
 
   infoContainer.innerHTML = `
@@ -309,6 +338,37 @@ async function renderGeneratedMediaPanel() {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           open();
+        }
+      });
+    });
+
+    host.querySelectorAll("[data-media-download]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const index = Number(button.getAttribute("data-media-download"));
+        const item = Array.isArray(window.__generatedMediaItems) ? window.__generatedMediaItems[index] : null;
+        if (item?.action === "download_coupon_image" && item?.asset) {
+          try {
+            const response = await fetch("/api/coupon/image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...item.asset, format: "png" })
+            });
+            if (response.ok) {
+              const blob = await response.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = item?.fileName || `coupon-${Date.now()}.png`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            } else {
+              console.error("Failed to download image");
+            }
+          } catch (error) {
+            console.error("Error downloading image:", error);
+          }
         }
       });
     });
