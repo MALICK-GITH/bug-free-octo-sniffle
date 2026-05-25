@@ -457,6 +457,10 @@ const sqliteInsertGeneratedAssetStmt = sqliteDb.prepare(`
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
+const sqliteDeleteGeneratedAssetStmt = sqliteDb.prepare(`
+  DELETE FROM generated_assets WHERE id = ?
+`);
+
 const sqliteInsertFavoriteStmt = sqliteDb.prepare(`
   INSERT INTO favorites (user_id, coupon_id, coupon_json)
   VALUES (?, ?, ?)
@@ -2651,6 +2655,57 @@ async function getCouponHistory(limit = 20) {
   }));
 }
 
+async function deleteGeneratedAsset(id) {
+  const safeId = Number(id);
+  if (!safeId || safeId <= 0) return false;
+
+  if (await canUsePostgres()) {
+    const result = await postgresPool.query(
+      `DELETE FROM generated_assets WHERE id = $1 RETURNING id`,
+      [safeId]
+    );
+    return result.rowCount > 0;
+  }
+  if (await canUseMySql()) {
+    const [result] = await mysqlPool.execute(
+      `DELETE FROM generated_assets WHERE id = ?`,
+      [safeId]
+    );
+    return result.affectedRows > 0;
+  }
+
+  const result = sqliteDeleteGeneratedAssetStmt.run(safeId);
+  return result.changes > 0;
+}
+
+async function deleteGeneratedAssets(ids = []) {
+  const safeIds = ids.map(Number).filter(id => id > 0);
+  if (!safeIds.length) return 0;
+
+  if (await canUsePostgres()) {
+    const result = await postgresPool.query(
+      `DELETE FROM generated_assets WHERE id = ANY($1)`,
+      [safeIds]
+    );
+    return result.rowCount || 0;
+  }
+  if (await canUseMySql()) {
+    const placeholders = safeIds.map(() => '?').join(',');
+    const [result] = await mysqlPool.execute(
+      `DELETE FROM generated_assets WHERE id IN (${placeholders})`,
+      safeIds
+    );
+    return result.affectedRows || 0;
+  }
+
+  let deleted = 0;
+  for (const id of safeIds) {
+    const result = sqliteDeleteGeneratedAssetStmt.run(id);
+    deleted += result.changes;
+  }
+  return deleted;
+}
+
 async function getTelegramHistory(limit = 20) {
   const safeLimit = Math.max(1, Math.min(200, Number(limit) || 20));
 
@@ -3669,6 +3724,8 @@ module.exports = {
   saveAuditReport,
   saveGeneratedAsset,
   getGeneratedAssets,
+  deleteGeneratedAsset,
+  deleteGeneratedAssets,
   getCouponHistory,
   getTelegramHistory,
   saveUpdateEntry,

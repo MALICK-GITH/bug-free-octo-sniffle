@@ -32,6 +32,8 @@ const {
   saveAuditReport,
   saveGeneratedAsset,
   getGeneratedAssets,
+  deleteGeneratedAsset,
+  deleteGeneratedAssets,
   getCouponHistory,
   getTelegramHistory,
   saveUpdateEntry,
@@ -3442,6 +3444,74 @@ app.post("/api/media/history", async (req, res) => {
       error: {
         code: "MEDIA_HISTORY_SAVE_ERROR",
         message: "Impossible d'enregistrer le media genere.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.delete("/api/media/history/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_ID",
+          message: "ID invalide.",
+        },
+      });
+    }
+    const deleted = await deleteGeneratedAsset(id);
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: "MEDIA_NOT_FOUND",
+          message: "Media non trouve.",
+        },
+      });
+    }
+    return res.json({
+      success: true,
+      message: "Media supprime.",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "MEDIA_DELETE_ERROR",
+        message: "Erreur de suppression du media.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.delete("/api/media/history", async (req, res) => {
+  try {
+    const ids = req.body?.ids;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_IDS",
+          message: "IDs invalides.",
+        },
+      });
+    }
+    const deleted = await deleteGeneratedAssets(ids);
+    return res.json({
+      success: true,
+      message: `${deleted} media(s) supprime(s).`,
+      deleted,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "MEDIA_BULK_DELETE_ERROR",
+        message: "Erreur de suppression des medias.",
         details: error.message,
       },
     });

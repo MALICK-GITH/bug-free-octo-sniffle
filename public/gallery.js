@@ -2,6 +2,7 @@
 
 const GENERATED_MEDIA_LIMIT = 200;
 let generatedMediaFilter = "all";
+let selectedMediaIds = new Set();
 
 function escapeHtml(text) {
   const div = document.createElement("div");
@@ -68,6 +69,9 @@ function renderGeneratedMediaFilters(items = []) {
     { all: 0, image: 0, pdf: 0 }
   );
 
+  const selectedCount = selectedMediaIds.size;
+  const allSelected = selectedCount > 0 && selectedCount === items.length;
+
   return `
     <div class="generated-media-toolbar">
       <div class="generated-media-toolbar-copy">
@@ -94,6 +98,17 @@ function renderGeneratedMediaFilters(items = []) {
           `)
           .join("")}
       </div>
+      <div class="generated-media-actions-group">
+        <button type="button" class="generated-media-select-all" id="selectAllMedia">
+          ${allSelected ? "Désélectionner tout" : "Sélectionner tout"}
+        </button>
+        <button type="button" class="generated-media-delete-selected" id="deleteSelectedMedia" ${selectedCount === 0 ? "disabled" : ""}>
+          Supprimer (${selectedCount})
+        </button>
+        <button type="button" class="generated-media-delete-all" id="deleteAllMedia">
+          Supprimer tout
+        </button>
+      </div>
     </div>
   `;
 }
@@ -112,8 +127,12 @@ function renderGeneratedMediaCards(items = []) {
       const relatedId = String(item?.relatedId || "").trim();
       const thumb = buildMediaThumbnailDataUri(item);
       const openLabel = href ? "Ouvrir source" : "Archive locale";
+      const isSelected = selectedMediaIds.has(item.id);
       return `
-        <article class="generated-media-card" data-media-kind="${kind}" data-media-index="${index}">
+        <article class="generated-media-card ${isSelected ? "selected" : ""}" data-media-kind="${kind}" data-media-index="${index}" data-media-id="${item.id}">
+          <div class="generated-media-checkbox">
+            <input type="checkbox" class="media-select-checkbox" data-media-id="${item.id}" ${isSelected ? "checked" : ""} aria-label="Sélectionner ${escapeHtml(title)}">
+          </div>
           <div class="generated-media-thumb" role="button" tabindex="0" data-media-view="${index}" aria-label="Agrandir ${escapeHtml(title)}">
             <img src="${thumb}" alt="Miniature ${escapeHtml(title)}" loading="lazy" />
             <div class="generated-media-thumb-badge">${escapeHtml(format)}</div>
@@ -135,6 +154,7 @@ function renderGeneratedMediaCards(items = []) {
             <div class="generated-media-actions">
               <button type="button" class="generated-media-open generated-media-view-btn" data-media-view="${index}">Aperçu plein écran</button>
               ${item?.action === "download_coupon_image" && item?.asset ? `<button type="button" class="generated-media-open generated-media-download-btn" data-media-download="${index}">Télécharger</button>` : (href ? `<a class="generated-media-open" href="${href}">${openLabel}</a>` : '<span class="generated-media-open is-static">Archive</span>')}
+              <button type="button" class="generated-media-delete" data-media-delete="${item.id}" aria-label="Supprimer ${escapeHtml(title)}">Supprimer</button>
               <button type="button" class="generated-media-copy" data-media-copy="${escapeHtml(fileName || title)}">Copier titre</button>
             </div>
           </div>
@@ -305,6 +325,118 @@ async function renderGeneratedMediaPanel() {
         generatedMediaFilter = nextFilter;
         saveGeneratedMediaFilter(nextFilter);
         renderGeneratedMediaPanel();
+      });
+    });
+
+    // Select all / deselect all
+    const selectAllBtn = document.getElementById("selectAllMedia");
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => {
+        const allSelected = selectedMediaIds.size === mediaItems.length;
+        if (allSelected) {
+          selectedMediaIds.clear();
+        } else {
+          mediaItems.forEach(item => selectedMediaIds.add(item.id));
+        }
+        renderGeneratedMediaPanel();
+      });
+    }
+
+    // Delete selected
+    const deleteSelectedBtn = document.getElementById("deleteSelectedMedia");
+    if (deleteSelectedBtn) {
+      deleteSelectedBtn.addEventListener("click", async () => {
+        if (selectedMediaIds.size === 0) return;
+        if (!confirm(`Supprimer ${selectedMediaIds.size} média(s) sélectionné(s)?`)) return;
+        try {
+          const response = await fetch("/api/media/history", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: Array.from(selectedMediaIds) })
+          });
+          const data = await response.json();
+          if (data.success) {
+            selectedMediaIds.clear();
+            renderGeneratedMediaPanel();
+          } else {
+            alert("Erreur lors de la suppression: " + (data.error?.message || data.message));
+          }
+        } catch (error) {
+          console.error("Error deleting selected media:", error);
+          alert("Erreur lors de la suppression");
+        }
+      });
+    }
+
+    // Delete all
+    const deleteAllBtn = document.getElementById("deleteAllMedia");
+    if (deleteAllBtn) {
+      deleteAllBtn.addEventListener("click", async () => {
+        if (items.length === 0) return;
+        if (!confirm(`Supprimer tous les ${items.length} médias? Cette action est irréversible.`)) return;
+        try {
+          const response = await fetch("/api/media/history", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: items.map(item => item.id) })
+          });
+          const data = await response.json();
+          if (data.success) {
+            selectedMediaIds.clear();
+            renderGeneratedMediaPanel();
+          } else {
+            alert("Erreur lors de la suppression: " + (data.error?.message || data.message));
+          }
+        } catch (error) {
+          console.error("Error deleting all media:", error);
+          alert("Erreur lors de la suppression");
+        }
+      });
+    }
+
+    // Checkbox selection
+    host.querySelectorAll(".media-select-checkbox").forEach((checkbox) => {
+      checkbox.addEventListener("change", (e) => {
+        const mediaId = Number(e.target.getAttribute("data-media-id"));
+        if (e.target.checked) {
+          selectedMediaIds.add(mediaId);
+        } else {
+          selectedMediaIds.delete(mediaId);
+        }
+        // Update the delete selected button state
+        const deleteSelectedBtn = document.getElementById("deleteSelectedMedia");
+        if (deleteSelectedBtn) {
+          deleteSelectedBtn.disabled = selectedMediaIds.size === 0;
+          deleteSelectedBtn.textContent = `Supprimer (${selectedMediaIds.size})`;
+        }
+        // Update the select all button text
+        const selectAllBtn = document.getElementById("selectAllMedia");
+        if (selectAllBtn) {
+          selectAllBtn.textContent = selectedMediaIds.size === mediaItems.length ? "Désélectionner tout" : "Sélectionner tout";
+        }
+      });
+    });
+
+    // Delete individual item
+    host.querySelectorAll("[data-media-delete]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const mediaId = Number(button.getAttribute("data-media-delete"));
+        if (!confirm("Supprimer ce média?")) return;
+        try {
+          const response = await fetch(`/api/media/history/${mediaId}`, {
+            method: "DELETE"
+          });
+          const data = await response.json();
+          if (data.success) {
+            selectedMediaIds.delete(mediaId);
+            renderGeneratedMediaPanel();
+          } else {
+            alert("Erreur lors de la suppression: " + (data.error?.message || data.message));
+          }
+        } catch (error) {
+          console.error("Error deleting media:", error);
+          alert("Erreur lors de la suppression");
+        }
       });
     });
 
