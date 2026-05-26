@@ -4,6 +4,8 @@
  */
 
 if ('serviceWorker' in navigator) {
+  let updateNotificationShown = false;
+  
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
       .then((registration) => {
@@ -14,12 +16,16 @@ if ('serviceWorker' in navigator) {
           const newWorker = registration.installing;
           
           newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller && !updateNotificationShown) {
               // Nouveau service worker disponible
               console.log('[PWA] Nouveau service worker disponible');
               
-              // Afficher une notification de mise à jour
-              showUpdateNotification();
+              // Afficher une notification de mise à jour uniquement si c'est une vraie mise à jour
+              // Vérifier si le nouveau worker est différent du contrôleur actuel
+              if (registration.waiting && registration.active) {
+                showUpdateNotification();
+                updateNotificationShown = true;
+              }
             }
           });
         });
@@ -133,6 +139,9 @@ function showUpdateNotification() {
     
     // Supprimer la notification
     notification.remove();
+    
+    // Réinitialiser le flag pour permettre les futures notifications
+    updateNotificationShown = false;
   });
 }
 
