@@ -24,6 +24,7 @@ const {
 } = require("./server/utils/validation");
 const { registerSystemRoutes } = require("./server/routes/system");
 const { registerAdvancedPredictionRoutes } = require("./server/routes/advancedPrediction");
+const { registerAIPredictionRoutes } = require("./server/routes/aiPrediction");
 const { API_URL, getPenaltyMatches, getStructure, getMatchPredictionDetails, getCouponSelection, validateCouponTicket } = require("./services/liveFeed");
 const { getLeagueProfiles } = require("./services/leagueProfiles");
 const { toFeatures, deduplicate, extractRules, buildDecisionEngine, toTrainReadyCSV } = require("./services/patternEngineV2");
@@ -99,6 +100,7 @@ app.use(express.static(path.join(__dirname, "public")));
 
 registerSystemRoutes(app, { startedAt: SERVER_STARTED_AT, getDbStatus, dbService: legacyDbService });
 registerAdvancedPredictionRoutes(app);
+registerAIPredictionRoutes(app);
 
 app.use((req, res, next) => {
   if (req.method !== "POST" || !isHeavyPostPath(req.path)) return next();

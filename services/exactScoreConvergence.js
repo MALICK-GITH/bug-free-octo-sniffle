@@ -21,6 +21,20 @@ const SCORES = [
   { score: "0-4", g1: 0, g2: 4, total: 4 },
   { score: "4-1", g1: 4, g2: 1, total: 5 },
   { score: "1-4", g1: 1, g2: 4, total: 5 },
+  { score: "4-2", g1: 4, g2: 2, total: 6 },
+  { score: "2-4", g1: 2, g2: 4, total: 6 },
+  { score: "4-3", g1: 4, g2: 3, total: 7 },
+  { score: "3-4", g1: 3, g2: 4, total: 7 },
+  { score: "5-0", g1: 5, g2: 0, total: 5 },
+  { score: "0-5", g1: 0, g2: 5, total: 5 },
+  { score: "5-1", g1: 5, g2: 1, total: 6 },
+  { score: "1-5", g1: 1, g2: 5, total: 6 },
+  { score: "5-2", g1: 5, g2: 2, total: 7 },
+  { score: "2-5", g1: 2, g2: 5, total: 7 },
+  { score: "5-3", g1: 5, g2: 3, total: 8 },
+  { score: "3-5", g1: 3, g2: 5, total: 8 },
+  { score: "5-4", g1: 5, g2: 4, total: 9 },
+  { score: "4-5", g1: 4, g2: 5, total: 9 },
 ];
 
 function clamp(value, min, max) {
