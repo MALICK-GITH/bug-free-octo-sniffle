@@ -109,7 +109,7 @@ async function generateAIPredictionViaAPI(matchData) {
   // Prédiction de score exact IA
   const exactScorePrediction = generateAIExactScore(score1, score2, minute, totalGoals);
   aiAnalysis.exactScore = exactScorePrediction;
-  aiReasons.push(`Score exact IA prédit: ${exactScorePrediction.score} (confiance: ${exactScoreProbability.toFixed(1)}%)`);
+  aiReasons.push(`Score exact IA prédit: ${exactScorePrediction.score} (confiance: ${(exactScorePrediction.probability * 100).toFixed(1)}%)`);
   
   // Recommandation de marché IA
   const marketRec = generateAIMarketRecommendation(markets, score1, score2, minute);
