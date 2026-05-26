@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const aiStatus = document.getElementById('aiStatus');
   const aiPredictionContent = document.getElementById('aiPredictionContent');
 
-  // Données du match (seront extraites de la page)
+  // Données du match (seront extraites de la même API que le système existant)
   let matchData = {
     team1: '',
     team2: '',
@@ -20,31 +20,46 @@ document.addEventListener('DOMContentLoaded', () => {
     markets: []
   };
 
-  // Extraire les données du match depuis la page
-  function extractMatchData() {
-    const titleElement = document.getElementById('title');
-    const subElement = document.getElementById('sub');
+  // Extraire les données du match depuis la même API que le système existant
+  async function extractMatchDataFromAPI() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const matchId = urlParams.get('id');
     
-    if (titleElement) {
-      const titleText = titleElement.textContent;
-      const teams = titleText.split(' vs ');
-      if (teams.length === 2) {
-        matchData.team1 = teams[0].trim();
-        matchData.team2 = teams[1].trim();
+    if (!matchId) {
+      console.error('ID du match non trouvé dans l\'URL');
+      return matchData;
+    }
+
+    try {
+      const res = await fetch(`/api/matches/${encodeURIComponent(matchId)}/details`, { cache: "no-store" });
+      const data = await res.json();
+      
+      if (!res.ok || !data.success) {
+        console.error('Erreur lors de la récupération des données du match:', data);
+        return matchData;
       }
-    }
 
-    // Extraire les marchés disponibles
-    const marketsPanel = document.getElementById('markets');
-    if (marketsPanel) {
-      const marketElements = marketsPanel.querySelectorAll('.market-item, .bet-option');
-      matchData.markets = Array.from(marketElements).map(el => ({
-        nom: el.textContent.trim(),
-        cote: parseFloat(el.dataset.odds) || 2.0
-      }));
-    }
+      const match = data.match || {};
+      const prediction = data.prediction || {};
+      
+      matchData = {
+        id: matchId,
+        team1: match.teamHome || '',
+        team2: match.teamAway || '',
+        league: match.league || '',
+        score1: match.score1 || 0,
+        score2: match.score2 || 0,
+        minute: match.minute || 0,
+        markets: data.bettingMarkets || [],
+        prediction: prediction
+      };
 
-    return matchData;
+      console.log('[AI Prediction] Données du match extraites depuis l\'API:', matchData);
+      return matchData;
+    } catch (error) {
+      console.error('Erreur lors de l\'extraction des données du match:', error);
+      return matchData;
+    }
   }
 
   // Mettre à jour le statut IA
@@ -153,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Générer la prédiction IA
   async function generateAIPrediction() {
-    const data = extractMatchData();
+    const data = await extractMatchDataFromAPI();
     
     if (!data.team1 || !data.team2) {
       displayError('Données du match non disponibles');
@@ -192,7 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Générer l'intégration complète
   async function generateIntegratedPrediction() {
-    const data = extractMatchData();
+    const data = await extractMatchDataFromAPI();
     
     if (!data.team1 || !data.team2) {
       displayError('Données du match non disponibles');
@@ -238,6 +253,6 @@ document.addEventListener('DOMContentLoaded', () => {
     generateIntegratedPredictionBtn.addEventListener('click', generateIntegratedPrediction);
   }
 
-  // Extraire les données au chargement
-  extractMatchData();
+  // Extraire les données au chargement (async)
+  extractMatchDataFromAPI();
 });
