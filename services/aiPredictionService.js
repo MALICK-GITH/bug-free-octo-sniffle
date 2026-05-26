@@ -6,6 +6,11 @@
 const { genererPredictionUnifiee } = require('./unifiedPrediction');
 const { buildExactScoreConvergence } = require('./exactScoreConvergence');
 const { predictionEngine } = require('./prediction');
+const config = require('../server/config');
+
+// Configuration de l'API IA depuis les variables d'environnement
+const AI_API_URL = config.aiApiUrl || '';
+const AI_API_KEY = config.aiApiKey || '';
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -19,17 +24,76 @@ function normalizeText(value) {
 }
 
 /**
- * Simule une prédiction IA via API
- * En production, ceci ferait un appel réel à une API d'IA
+ * Génère une prédiction IA via API réelle
+ * Fait un appel à l'API configurée dans .ENV
  */
 async function generateAIPredictionViaAPI(matchData) {
-  // Simulation d'un appel API avec délai
-  await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
-  
   const { team1, team2, league, markets, context } = matchData;
   const score1 = context?.score1 || 0;
   const score2 = context?.score2 || 0;
   const minute = context?.minute || 0;
+  
+  // Si aucune URL API n'est configurée, utiliser l'algorithme local
+  if (!AI_API_URL) {
+    console.log('[AI Prediction] Aucune URL API configurée, utilisation de l\'algorithme local');
+    return generateLocalAIPrediction(matchData);
+  }
+  
+  try {
+    // Appel à l'API réelle
+    const response = await fetch(AI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(AI_API_KEY && { 'Authorization': `Bearer ${AI_API_KEY}` })
+      },
+      body: JSON.stringify({
+        team1,
+        team2,
+        league,
+        score1,
+        score2,
+        minute,
+        markets,
+        timestamp: new Date().toISOString()
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API IA returned ${response.status}: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Transformer la réponse de l'API au format attendu
+    return {
+      timestamp: new Date().toISOString(),
+      source: "AI_API_REAL",
+      confidence: result.confidence || 0,
+      prediction: result.prediction || null,
+      reasoning: result.reasoning || [],
+      exactScore: result.exactScore || null,
+      marketRecommendation: result.marketRecommendation || null
+    };
+  } catch (error) {
+    console.error('[AI Prediction] Erreur lors de l\'appel API, fallback sur algorithme local:', error.message);
+    // Fallback sur l'algorithme local si l'API échoue
+    return generateLocalAIPrediction(matchData);
+  }
+}
+
+/**
+ * Algorithme IA local (fallback)
+ * Utilisé si aucune API n'est configurée ou si l'API échoue
+ */
+async function generateLocalAIPrediction(matchData) {
+  const { team1, team2, league, markets, context } = matchData;
+  const score1 = context?.score1 || 0;
+  const score2 = context?.score2 || 0;
+  const minute = context?.minute || 0;
+  
+  // Simulation d'un appel API avec délai
+  await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
   
   // Algorithme IA avancé pour générer une prédiction
   const aiAnalysis = {

@@ -29,4 +29,6 @@ module.exports = {
   androidPackageName: String(process.env.ANDROID_PACKAGE_NAME || "com.solitairehack.solitfifpro225").trim(),
   allowedOrigins: parseCsv(process.env.ALLOWED_ORIGINS),
   cspReportOnly: String(process.env.CSP_REPORT_ONLY || "0").trim() === "1",
+  aiApiUrl: String(process.env.AI_API_URL || process.env.API_URL || "").trim(),
+  aiApiKey: String(process.env.AI_API_KEY || "").trim(),
 };
