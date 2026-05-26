@@ -828,6 +828,11 @@ function riskConfig(profile = "balanced") {
 function pickCouponOption(details, profile = "balanced") {
   const cfg = riskConfig(profile);
   const master = details?.prediction?.maitre?.decision_finale || {};
+  const consensus = details?.prediction?.decision_consensus || {};
+  const consensusPrimary =
+    normalizeText(profile) === "safe" && consensus?.alternatives?.prudent
+      ? consensus.alternatives.prudent
+      : consensus?.primary;
   const top = details?.prediction?.analyse_avancee?.top_3_recommandations || [];
   const marketByName = new Map((details?.bettingMarkets || []).map((m) => [m.nom, m]));
   const leagueProfile = getLeagueProfile(details?.match?.league);
@@ -840,6 +845,31 @@ function pickCouponOption(details, profile = "balanced") {
         hasBias: Boolean(exactScore?.provenance?.hasBias),
         aligned: exactScore?.provenance?.aligned,
       }).signal;
+
+  const consensusMarket = consensusPrimary ? marketByName.get(consensusPrimary.pari) : null;
+  if (
+    consensusMarket &&
+    Number.isFinite(Number(consensusPrimary.confidence)) &&
+    Number(consensusPrimary.confidence) >= cfg.minConfidence &&
+    consensusMarket.cote >= cfg.minOdd &&
+    consensusMarket.cote <= cfg.maxOdd
+  ) {
+    return {
+      pari: consensusMarket.nom,
+      cote: consensusMarket.cote,
+      confiance: clamp(
+        Number(consensusPrimary.confidence) +
+          scoreMarketAgainstProfile(leagueProfile, consensusMarket.nom) * 0.28 +
+          exactScoreSignal,
+        0,
+        100
+      ),
+      source: normalizeText(profile) === "safe" && consensus?.alternatives?.prudent ? "CONSENSUS_SAFE" : "CONSENSUS",
+      probability: consensusPrimary.probability,
+      value: consensusPrimary.value,
+      risk: consensusPrimary.risk,
+    };
+  }
 
   const masterMarket = marketByName.get(master.pari_choisi);
   if (

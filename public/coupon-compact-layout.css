@@ -1,0 +1,567 @@
+/* Final compact layout layer for coupon.html */
+
+:root {
+  --coupon-page-max: 1180px;
+  --coupon-gap: 0.58rem;
+  --coupon-radius: 10px;
+  --coupon-radius-sm: 7px;
+  --coupon-surface: rgba(9, 16, 30, 0.9);
+  --coupon-surface-2: rgba(14, 24, 43, 0.78);
+  --coupon-border: rgba(104, 214, 238, 0.2);
+}
+
+body.coupon-portal {
+  padding:
+    calc(0.55rem + var(--safe-top))
+    calc(0.7rem + var(--safe-right))
+    calc(0.7rem + var(--safe-bottom))
+    calc(0.7rem + var(--safe-left));
+  background:
+    linear-gradient(145deg, #050810 0%, #0b1424 52%, #100c19 100%);
+}
+
+body.coupon-portal .page {
+  width: min(var(--coupon-page-max), 100%);
+}
+
+body.coupon-portal .page-link-cloud {
+  display: flex;
+  gap: 0.38rem;
+  margin-bottom: var(--coupon-gap);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.coupon-portal .back {
+  flex: 0 0 auto;
+  margin: 0;
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.42rem 0.62rem;
+  min-height: 34px;
+  font-size: 0.72rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+body.coupon-portal .hero,
+body.coupon-portal .controls,
+body.coupon-portal .panel {
+  border-radius: var(--coupon-radius);
+  border-color: var(--coupon-border);
+  background: linear-gradient(160deg, rgba(12, 20, 36, 0.94), rgba(7, 11, 21, 0.9));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+body.coupon-portal .hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.9fr);
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: var(--coupon-gap);
+  padding: 0.78rem 0.9rem;
+}
+
+body.coupon-portal .tag {
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+}
+
+body.coupon-portal h1 {
+  margin: 0.14rem 0;
+  font-size: clamp(1.36rem, 2.2vw, 2rem);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+body.coupon-portal .hero > p:not(.tag) {
+  max-width: 720px;
+  font-size: 0.82rem;
+  line-height: 1.38;
+}
+
+body.coupon-portal .coupon-hero-badges {
+  margin-top: 0.5rem;
+  gap: 0.35rem;
+}
+
+body.coupon-portal .coupon-chip {
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.24rem 0.44rem;
+  font-size: 0.68rem;
+}
+
+body.coupon-portal .hero-metric-strip {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0;
+}
+
+body.coupon-portal .hero-metric-card {
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.54rem;
+  min-height: 0;
+  border: 1px solid rgba(104, 214, 238, 0.15);
+  background: rgba(6, 12, 23, 0.58);
+}
+
+body.coupon-portal .hero-metric-card span,
+body.coupon-portal .hero-metric-card em {
+  font-size: 0.66rem;
+}
+
+body.coupon-portal .hero-metric-card strong {
+  display: block;
+  margin: 0.12rem 0;
+  font-size: 0.82rem;
+  line-height: 1.1;
+}
+
+body.coupon-portal .coupon-quickstart-panel,
+body.coupon-portal .coupon-core-controls,
+body.coupon-portal .coupon-main-actions-panel,
+body.coupon-portal .advanced-coupon-tools,
+body.coupon-portal .primary-grid {
+  margin-bottom: var(--coupon-gap);
+}
+
+body.coupon-portal .coupon-quickstart-panel,
+body.coupon-portal .coupon-main-actions-panel,
+body.coupon-portal .advanced-coupon-tools {
+  padding: 0.62rem;
+}
+
+body.coupon-portal .coupon-quickstart-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.48rem;
+}
+
+body.coupon-portal .coupon-quick-card {
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.55rem;
+}
+
+body.coupon-portal .coupon-quick-card strong {
+  margin-bottom: 0.18rem;
+  font-size: 0.82rem;
+}
+
+body.coupon-portal .coupon-quick-card p {
+  font-size: 0.72rem;
+  line-height: 1.34;
+}
+
+body.coupon-portal .controls {
+  grid-template-columns: 0.75fr 1.25fr 1fr 0.85fr;
+  gap: 0.48rem;
+  padding: 0.62rem;
+}
+
+body.coupon-portal .controls label {
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+body.coupon-portal .controls span {
+  font-size: 0.68rem;
+}
+
+body.coupon-portal .controls input,
+body.coupon-portal .controls select {
+  min-width: 0;
+  min-height: 36px;
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.42rem 0.52rem;
+  font-size: 0.86rem;
+}
+
+body.coupon-portal .coupon-simple-toggle-row {
+  margin-top: 0;
+  gap: 0.45rem;
+}
+
+body.coupon-portal #toggleCouponSimpleBtn {
+  min-height: 34px;
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.38rem 0.62rem;
+  font-size: 0.78rem;
+}
+
+body.coupon-portal #couponSimpleModeLabel {
+  font-size: 0.72rem;
+}
+
+body.coupon-portal .actions,
+body.coupon-portal .coupon-main-actions,
+body.coupon-portal .coupon-premium-actions,
+body.coupon-portal .coupon-secondary-actions {
+  gap: 0.38rem;
+  padding: 0;
+}
+
+body.coupon-portal .coupon-main-actions {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-top: 0.52rem;
+}
+
+body.coupon-portal .coupon-premium-actions {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-top: 0.38rem;
+}
+
+body.coupon-portal .coupon-secondary-actions {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+body.coupon-portal button {
+  letter-spacing: 0;
+}
+
+body.coupon-portal .actions button,
+body.coupon-portal #generateBtn,
+body.coupon-portal #validateBtn,
+body.coupon-portal #replaceWeakBtn,
+body.coupon-portal #sendTelegramBtn,
+body.coupon-portal #downloadImageBtn,
+body.coupon-portal #downloadPdfBtn {
+  min-width: 0;
+  min-height: 38px;
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.42rem 0.5rem;
+  font-size: 0.74rem;
+  line-height: 1.05;
+}
+
+body.coupon-portal .actions button::after {
+  display: none;
+}
+
+body.coupon-portal .advanced-coupon-tools summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.84rem;
+}
+
+body.coupon-portal .advanced-coupon-tools summary::after {
+  float: none;
+}
+
+body.coupon-portal .advanced-coupon-tools-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+body.coupon-portal .switch-line {
+  min-height: 36px;
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.36rem 0.48rem;
+}
+
+body.coupon-portal .export-luxe-panel {
+  margin: 0.55rem 0;
+  padding: 0.58rem;
+}
+
+body.coupon-portal .export-luxe-panel h3 {
+  font-size: 0.92rem;
+}
+
+body.coupon-portal .export-luxe-tagline,
+body.coupon-portal .format-note {
+  font-size: 0.7rem;
+  line-height: 1.32;
+}
+
+body.coupon-portal .primary-grid {
+  grid-template-columns: minmax(0, 1.42fr) minmax(300px, 0.72fr);
+  gap: var(--coupon-gap);
+  align-items: start;
+}
+
+body.coupon-portal .primary-grid > #result {
+  grid-row: span 3;
+}
+
+body.coupon-portal .panel {
+  padding: 0.68rem;
+}
+
+body.coupon-portal .panel-main {
+  min-height: 0;
+}
+
+body.coupon-portal .panel h3 {
+  margin-bottom: 0.42rem;
+  font-size: 0.95rem;
+}
+
+body.coupon-portal #result .meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.34rem;
+  margin-bottom: 0.55rem;
+}
+
+body.coupon-portal #result .meta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border: 1px solid rgba(104, 214, 238, 0.14);
+  border-radius: var(--coupon-radius-sm);
+  background: var(--coupon-surface-2);
+  padding: 0.32rem 0.42rem;
+  color: #dbeaff;
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+body.coupon-portal #result > ol {
+  list-style: none;
+  padding: 0;
+  gap: 0.42rem;
+}
+
+body.coupon-portal #result > ol > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) repeat(3, minmax(88px, 0.55fr));
+  gap: 0.32rem 0.42rem;
+  align-items: center;
+  border-radius: var(--coupon-radius);
+  padding: 0.55rem;
+  background: rgba(8, 14, 26, 0.82);
+}
+
+body.coupon-portal #result > ol > li > strong {
+  grid-column: 1 / -1;
+  font-size: 0.86rem;
+  line-height: 1.2;
+}
+
+body.coupon-portal #result > ol > li > span,
+body.coupon-portal #result > ol > li > a,
+body.coupon-portal #result .coach-pick-line {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.68rem;
+  line-height: 1.22;
+}
+
+body.coupon-portal #result > ol > li > span {
+  border-radius: var(--coupon-radius-sm);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.26rem 0.34rem;
+  color: #dceafe;
+}
+
+body.coupon-portal #result .confidence-track {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 8px;
+  margin-top: 0.08rem;
+}
+
+body.coupon-portal #result .stability-badge,
+body.coupon-portal #result .quality-badge {
+  margin: 0;
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.24rem 0.34rem;
+  font-size: 0.66rem;
+}
+
+body.coupon-portal #result .coach-pick-line {
+  grid-column: 1 / -1;
+  color: #b9d8f2;
+}
+
+body.coupon-portal #result .replay-list {
+  grid-column: 1 / -1;
+  display: none;
+}
+
+body.coupon-portal #result > ol > li > a {
+  justify-self: start;
+  border-radius: var(--coupon-radius-sm);
+  border: 1px solid rgba(104, 214, 238, 0.2);
+  padding: 0.28rem 0.42rem;
+}
+
+body.coupon-portal .validation-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+body.coupon-portal .validation-list li {
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.45rem;
+  font-size: 0.74rem;
+}
+
+body.coupon-portal .sticky-ticket-bar {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.42rem;
+  padding:
+    0.44rem max(0.58rem, env(safe-area-inset-left))
+    calc(0.48rem + env(safe-area-inset-bottom))
+    max(0.58rem, env(safe-area-inset-right));
+}
+
+body.coupon-portal .sticky-ticket-bar button {
+  min-width: 0;
+  min-height: 38px;
+  border-radius: var(--coupon-radius-sm);
+  padding: 0.42rem 0.32rem;
+  font-size: 0.74rem;
+}
+
+@media (max-width: 980px) {
+  body.coupon-portal {
+    padding:
+      calc(0.48rem + var(--safe-top))
+      calc(0.48rem + var(--safe-right))
+      calc(0.48rem + var(--safe-bottom))
+      calc(0.48rem + var(--safe-left));
+  }
+
+  body.coupon-portal .hero {
+    grid-template-columns: 1fr;
+  }
+
+  body.coupon-portal .hero-metric-strip {
+    grid-column: auto;
+    grid-row: auto;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  body.coupon-portal .controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.coupon-portal .coupon-main-actions,
+  body.coupon-portal .coupon-premium-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  body.coupon-portal .advanced-coupon-tools-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.coupon-portal .primary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body.coupon-portal .primary-grid > #result {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  body.coupon-portal .page {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+
+  body.coupon-portal .hero {
+    padding: 0.62rem;
+    gap: 0.48rem;
+  }
+
+  body.coupon-portal .hero > p:not(.tag) {
+    font-size: 0.75rem;
+    line-height: 1.28;
+  }
+
+  body.coupon-portal .hero-metric-strip {
+    display: none;
+  }
+
+  body.coupon-portal .coupon-quickstart-panel {
+    display: none;
+  }
+
+  body.coupon-portal .coupon-hero-badges {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  body.coupon-portal .coupon-chip {
+    text-align: center;
+    font-size: 0.62rem;
+  }
+
+  body.coupon-portal .controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.38rem;
+    padding: 0.5rem;
+  }
+
+  body.coupon-portal .controls input,
+  body.coupon-portal .controls select {
+    min-height: 34px;
+    padding: 0.36rem 0.44rem;
+    font-size: 16px;
+  }
+
+  body.coupon-portal .coupon-simple-toggle-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  body.coupon-portal .coupon-main-actions,
+  body.coupon-portal .coupon-premium-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  body.coupon-portal .coupon-secondary-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.coupon-portal .advanced-coupon-tools-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body.coupon-portal #result .meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.coupon-portal #result > ol > li {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0.48rem;
+  }
+
+  body.coupon-portal .panel,
+  body.coupon-portal .coupon-main-actions-panel,
+  body.coupon-portal .advanced-coupon-tools {
+    padding: 0.52rem;
+  }
+}
+
+@media (max-width: 390px) {
+  body.coupon-portal .back {
+    padding: 0.36rem 0.48rem;
+    font-size: 0.66rem;
+  }
+
+  body.coupon-portal h1 {
+    font-size: 1.18rem;
+  }
+
+  body.coupon-portal .coupon-hero-badges {
+    grid-template-columns: 1fr;
+  }
+
+  body.coupon-portal .controls {
+    grid-template-columns: 1fr !important;
+  }
+
+  body.coupon-portal #result > ol > li {
+    grid-template-columns: 1fr;
+  }
+
+  body.coupon-portal #result .meta {
+    grid-template-columns: 1fr;
+  }
+}

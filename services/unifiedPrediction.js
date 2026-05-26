@@ -1,4 +1,5 @@
 const { getLeagueProfile, getLeagueProfileSummary, scoreMarketAgainstProfile } = require("./leagueProfiles");
+const { buildConsensusPrediction, toMasterDecision } = require("./consensusPrediction");
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -423,11 +424,29 @@ function genererPredictionUnifiee({ team1, team2, league, context, bets }) {
   const bots = runBots({ team1, team2, league, paris: bets, score1, score2, minute });
   const maitre = maitrePronostics(bots, team1, team2, league);
   const avancee = analyseAvancee(team1, team2, league, bets, score1, score2, minute);
+  const decisionConsensus = buildConsensusPrediction({
+    team1,
+    team2,
+    league,
+    context: { score1, score2, minute },
+    bets,
+    bots,
+    analyseAvancee: avancee,
+  });
+  const maitreAvecConsensus = {
+    ...maitre,
+    decision_finale: toMasterDecision(decisionConsensus, maitre.decision_finale || {}),
+    meta: {
+      ...(maitre.meta || {}),
+      consensusVersion: decisionConsensus.version,
+      originalDecision: maitre.decision_finale || null,
+    },
+  };
 
   return {
     meta: {
       generatedAt: new Date().toISOString(),
-      version: "UNIFIED-PREDICTIONS-NODE-1.0",
+      version: "UNIFIED-PREDICTIONS-NODE-1.1",
       teams: `${team1} vs ${team2}`,
       league,
       context: { score1, score2, minute },
@@ -436,7 +455,8 @@ function genererPredictionUnifiee({ team1, team2, league, context, bets }) {
       leagueProfile: getLeagueProfileSummary(leagueProfile),
     },
     bots,
-    maitre,
+    maitre: maitreAvecConsensus,
+    decision_consensus: decisionConsensus,
     analyse_avancee: avancee,
   };
 }
