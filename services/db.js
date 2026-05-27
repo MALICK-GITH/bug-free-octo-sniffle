@@ -2300,17 +2300,9 @@ async function getTrackedMatches(limit = 50) {
   });
 
   if (await canUsePostgres()) {
-    // Requête schema-agnostic - seulement colonnes essentielles + COALESCE
+    // Requête minimale - seulement colonnes garanties d'exister
     const result = await postgresPool.query(
-      `SELECT 
-         id, match_id, league, status, minute, source,
-         COALESCE(team_home, team1) as team_home,
-         COALESCE(team_away, team2) as team_away,
-         COALESCE(score_home, score1, 0) as score_home,
-         COALESCE(score_away, score2, 0) as score_away,
-         COALESCE(odds_json, odds) as odds_json,
-         COALESCE(prediction_json, prediction) as prediction_json,
-         created_at, updated_at, last_seen_at
+      `SELECT id, match_id, league, status, minute, source, created_at, updated_at, last_seen_at
        FROM matches
        ORDER BY updated_at DESC
        LIMIT $1`,
@@ -2319,17 +2311,9 @@ async function getTrackedMatches(limit = 50) {
     return result.rows.map((row) => mapTrackedRow(row, (value, fallback) => value ?? fallback));
   }
   if (await canUseMySql()) {
-    // Requête schema-agnostic - seulement colonnes essentielles + COALESCE
+    // Requête minimale - seulement colonnes garanties d'exister
     const [rows] = await mysqlPool.execute(
-      `SELECT 
-         id, match_id, league, status, minute, source,
-         COALESCE(team_home, team1) as team_home,
-         COALESCE(team_away, team2) as team_away,
-         COALESCE(score_home, score1, 0) as score_home,
-         COALESCE(score_away, score2, 0) as score_away,
-         COALESCE(odds_json, odds) as odds_json,
-         COALESCE(prediction_json, prediction) as prediction_json,
-         created_at, updated_at, last_seen_at
+      `SELECT id, match_id, league, status, minute, source, created_at, updated_at, last_seen_at
        FROM matches
        ORDER BY updated_at DESC
        LIMIT ?`,
@@ -2338,17 +2322,9 @@ async function getTrackedMatches(limit = 50) {
     return rows.map((row) => mapTrackedRow(row));
   }
 
-  // SQLite schema-agnostic - seulement colonnes essentielles + COALESCE
+  // SQLite minimal - seulement colonnes garanties d'exister
   const sqliteRows = sqliteDb.prepare(
-    `SELECT 
-       id, match_id, league, status, minute, source,
-       COALESCE(team_home, team1) as team_home,
-       COALESCE(team_away, team2) as team_away,
-       COALESCE(score_home, score1, 0) as score_home,
-       COALESCE(score_away, score2, 0) as score_away,
-       COALESCE(odds_json, odds) as odds_json,
-       COALESCE(prediction_json, prediction) as prediction_json,
-       created_at, updated_at, last_seen_at
+    `SELECT id, match_id, league, status, minute, source, created_at, updated_at, last_seen_at
      FROM matches
      ORDER BY updated_at DESC
      LIMIT ?`
