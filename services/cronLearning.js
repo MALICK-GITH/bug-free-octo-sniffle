@@ -1,4 +1,4 @@
-const { getPenaltyMatches, getMatchPredictionDetails } = require("./liveFeed");
+const { getPenaltyMatches, getMatchPredictionDetails, fetchLiveFeedRaw } = require("./liveFeed");
 const { saveGeneratedAsset } = require("./db");
 
 function normalizeText(value = "") {
@@ -68,6 +68,17 @@ function summarizeBy(rows = [], keySelector = () => "unknown") {
 async function buildLearningRows(limit = 300) {
   const payload = await getPenaltyMatches();
   const matches = Array.isArray(payload?.matches) ? payload.matches : [];
+  const rawPayload = await fetchLiveFeedRaw();
+  const rawEvents = Array.isArray(rawPayload?.Value) ? rawPayload.Value : [];
+  const rawFinishedIds = rawEvents
+    .filter((event) => {
+      const gs = Number(event?.SC?.GS || 0);
+      const sls = normalizeText(event?.SC?.SLS || "");
+      const cps = normalizeText(event?.SC?.CPS || "");
+      return gs === 3 || sls.includes("termine") || cps.includes("termine");
+    })
+    .map((event) => String(event?.I || ""))
+    .filter(Boolean);
   const statusCounts = matches.reduce((acc, match) => {
     const key = isFinishedMatch(match)
       ? "finished"
@@ -75,13 +86,17 @@ async function buildLearningRows(limit = 300) {
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
-  const finished = matches.filter((match) => isFinishedMatch(match)).slice(0, limit);
+  const finishedMixed = matches.filter((match) => isFinishedMatch(match)).slice(0, limit);
+  const finishedIds = new Set([
+    ...finishedMixed.map((m) => String(m?.id || "")).filter(Boolean),
+    ...rawFinishedIds.slice(0, limit),
+  ]);
 
   const rows = [];
-  for (const match of finished) {
+  for (const matchId of finishedIds) {
     try {
-      const details = await getMatchPredictionDetails(match.id);
-      const resolved = details?.match || match;
+      const details = await getMatchPredictionDetails(matchId);
+      const resolved = details?.match || { id: matchId };
       const prediction = details?.prediction || {};
       const selected =
         prediction?.maitre?.decision_finale?.pari_choisi ||
@@ -112,9 +127,11 @@ async function buildLearningRows(limit = 300) {
       fetchedAt: payload?.fetchedAt || new Date().toISOString(),
       filterMode: payload?.filterMode || "unknown",
       totalFromFeed: matches.length,
-      finishedInFeed: finished.length,
+      finishedInFeed: finishedMixed.length,
+      totalRawEvents: rawEvents.length,
+      finishedInRawFeed: rawFinishedIds.length,
       statusCounts,
-      sampleFinishedMatchIds: finished.slice(0, 10).map((m) => String(m?.id || "")),
+      sampleFinishedMatchIds: Array.from(finishedIds).slice(0, 10),
       sampleStatuses: matches.slice(0, 12).map((m) => ({
         id: m?.id || null,
         status: m?.status || null,
