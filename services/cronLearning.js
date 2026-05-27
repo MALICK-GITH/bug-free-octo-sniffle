@@ -82,6 +82,13 @@ async function buildLearningRows(limit = 300) {
     })
     .map((event) => String(event?.I || ""))
     .filter(Boolean);
+  const rawFinishedEvents = rawEvents.filter((event) => {
+    const gs = Number(event?.SC?.GS || 0);
+    const sls = normalizeText(event?.SC?.SLS || "");
+    const cps = normalizeText(event?.SC?.CPS || "");
+    const info = normalizeText(event?.SC?.I || "");
+    return gs === 3 || sls.includes("termine") || cps.includes("termine") || info.includes("termine");
+  });
   const statusCounts = matches.reduce((acc, match) => {
     const key = isFinishedMatch(match)
       ? "finished"
@@ -96,7 +103,22 @@ async function buildLearningRows(limit = 300) {
   ]);
 
   const rows = [];
-  const finishedDatasetRows = [];
+  const finishedDatasetRows = rawFinishedEvents.slice(0, limit).map((event) => {
+    const fs = event?.SC?.FS || {};
+    const scoreHome = Number(fs?.S1 ?? fs?.H ?? fs?.Home ?? fs?.SA ?? 0) || 0;
+    const scoreAway = Number(fs?.S2 ?? fs?.A ?? fs?.Away ?? fs?.SB ?? 0) || 0;
+    return {
+      matchId: String(event?.I || ""),
+      teamHome: String(event?.O1 || "Equipe 1"),
+      teamAway: String(event?.O2 || "Equipe 2"),
+      league: String(event?.L || event?.LE || "unknown"),
+      scoreHome,
+      scoreAway,
+      finishedAt: new Date().toISOString(),
+      source: "cron-learning-raw-feed",
+      raw: event,
+    };
+  });
   for (const matchId of finishedIds) {
     try {
       const details = await getMatchPredictionDetails(matchId);
@@ -187,7 +209,12 @@ async function runLearningCron({ dryRun = false, debug = false } = {}) {
   const report = buildReport(rows);
 
   if (!dryRun) {
+    const datasetByMatchId = new Map();
     for (const entry of finishedDatasetRows) {
+      if (!entry?.matchId) continue;
+      datasetByMatchId.set(String(entry.matchId), entry);
+    }
+    for (const entry of datasetByMatchId.values()) {
       try {
         await upsertFinishedMatchDataset(entry);
       } catch (_error) {}
@@ -204,7 +231,7 @@ async function runLearningCron({ dryRun = false, debug = false } = {}) {
       asset: {
         ...report,
         scope: "mixed-penalty-regular",
-        savedFinishedMatches: finishedDatasetRows.length,
+        savedFinishedMatches: datasetByMatchId.size,
         diagnostics,
       },
     });
@@ -216,7 +243,7 @@ async function runLearningCron({ dryRun = false, debug = false } = {}) {
     report: {
       ...report,
       scope: "mixed-penalty-regular",
-      savedFinishedMatches: dryRun ? 0 : finishedDatasetRows.length,
+      savedFinishedMatches: dryRun ? 0 : new Set(finishedDatasetRows.map((entry) => String(entry?.matchId || ""))).size,
       diagnostics: debug ? diagnostics : undefined,
     },
   };
