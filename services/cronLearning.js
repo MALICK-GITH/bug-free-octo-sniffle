@@ -15,9 +15,11 @@ function isFinishedMatch(match = {}) {
   const statusCode = Number(match?.statusCode || 0);
   const statusText = normalizeText(match?.statusText || match?.status || "");
   const phase = normalizeText(match?.phase || "");
+  const infoText = normalizeText(match?.infoText || "");
   if (statusCode === 3) return true;
   if (statusText.includes("termine")) return true;
   if (phase.includes("termine")) return true;
+  if (infoText.includes("termine")) return true;
   return false;
 }
 
@@ -75,7 +77,8 @@ async function buildLearningRows(limit = 300) {
       const gs = Number(event?.SC?.GS || 0);
       const sls = normalizeText(event?.SC?.SLS || "");
       const cps = normalizeText(event?.SC?.CPS || "");
-      return gs === 3 || sls.includes("termine") || cps.includes("termine");
+      const info = normalizeText(event?.SC?.I || "");
+      return gs === 3 || sls.includes("termine") || cps.includes("termine") || info.includes("termine");
     })
     .map((event) => String(event?.I || ""))
     .filter(Boolean);
