@@ -2404,24 +2404,57 @@ async function getTrackedMatches(limit = 50) {
     }
   }
 
-  return sqliteSelectTrackedMatchesStmt.all(safeLimit).map((row) => ({
-    id: row.id,
-    matchId: row.match_id,
-    teamHome: row.team_home,
-    teamAway: row.team_away,
-    league: row.league,
-    status: row.status,
-    minute: Number(row.minute) || 0,
-    startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
-    scoreHome: Number(row.score_home) || 0,
-    scoreAway: Number(row.score_away) || 0,
-    odds: parseJsonSafe(row.odds_json, {}),
-    prediction: parseJsonSafe(row.prediction_json, {}),
-    source: row.source || null,
-    createdAt: row.created_at || null,
-    updatedAt: row.updated_at || null,
-    lastSeenAt: row.last_seen_at || null,
-  }));
+  try {
+    return sqliteSelectTrackedMatchesStmt.all(safeLimit).map((row) => ({
+      id: row.id,
+      matchId: row.match_id,
+      teamHome: row.team_home,
+      teamAway: row.team_away,
+      league: row.league,
+      status: row.status,
+      minute: Number(row.minute) || 0,
+      startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
+      scoreHome: Number(row.score_home) || 0,
+      scoreAway: Number(row.score_away) || 0,
+      odds: parseJsonSafe(row.odds_json, {}),
+      prediction: parseJsonSafe(row.prediction_json, {}),
+      source: row.source || null,
+      createdAt: row.created_at || null,
+      updatedAt: row.updated_at || null,
+      lastSeenAt: row.last_seen_at || null,
+    }));
+  } catch (error) {
+    const message = String(error?.message || "").toLowerCase();
+    if (!message.includes("team_home") && !message.includes("score_home")) {
+      throw error;
+    }
+    const legacyRows = sqliteDb.prepare(
+      `SELECT id, match_id, team1 AS team_home, team2 AS team_away, league, status, minute, start_time_unix,
+              score1 AS score_home, score2 AS score_away, odds AS odds_json, prediction AS prediction_json,
+              source, last_seen_at, created_at, updated_at
+       FROM matches
+       ORDER BY updated_at DESC
+       LIMIT ?`
+    ).all(safeLimit);
+    return legacyRows.map((row) => ({
+      id: row.id,
+      matchId: row.match_id,
+      teamHome: row.team_home,
+      teamAway: row.team_away,
+      league: row.league,
+      status: row.status,
+      minute: Number(row.minute) || 0,
+      startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
+      scoreHome: Number(row.score_home) || 0,
+      scoreAway: Number(row.score_away) || 0,
+      odds: parseJsonSafe(row.odds_json, {}),
+      prediction: parseJsonSafe(row.prediction_json, {}),
+      source: row.source || null,
+      createdAt: row.created_at || null,
+      updatedAt: row.updated_at || null,
+      lastSeenAt: row.last_seen_at || null,
+    }));
+  }
 }
 
 async function getMatchScoreHistory(matchId, limit = 120) {
