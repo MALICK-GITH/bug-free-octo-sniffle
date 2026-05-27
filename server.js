@@ -3294,11 +3294,13 @@ app.get("/api/cron/learn", async (req, res) => {
 
   try {
     const dryRun = String(req.query?.dryRun || "").trim() === "1";
-    const result = await runLearningCron({ dryRun });
+    const debug = String(req.query?.debug || "").trim() === "1";
+    const result = await runLearningCron({ dryRun, debug });
     return res.json({
       success: true,
       source: "cron-job.org",
       dryRun,
+      debug,
       data: result.report,
       meta: {
         timestamp: new Date().toISOString(),
@@ -7459,4 +7461,3 @@ function startServer(startPort, triesLeft = MAX_PORT_TRIES) {
 }
 
 startServer(DEFAULT_PORT);
-

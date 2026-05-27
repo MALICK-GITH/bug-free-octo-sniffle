@@ -58,6 +58,11 @@ function summarizeBy(rows = [], keySelector = () => "unknown") {
 async function buildLearningRows(limit = 300) {
   const payload = await getPenaltyMatches();
   const matches = Array.isArray(payload?.matches) ? payload.matches : [];
+  const statusCounts = matches.reduce((acc, match) => {
+    const key = String(match?.status || "unknown").toLowerCase();
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
   const finished = matches.filter((match) => String(match?.status || "").toLowerCase() === "finished").slice(0, limit);
 
   const rows = [];
@@ -89,7 +94,17 @@ async function buildLearningRows(limit = 300) {
       continue;
     }
   }
-  return rows;
+  return {
+    rows,
+    diagnostics: {
+      fetchedAt: payload?.fetchedAt || new Date().toISOString(),
+      filterMode: payload?.filterMode || "unknown",
+      totalFromFeed: matches.length,
+      finishedInFeed: finished.length,
+      statusCounts,
+      sampleFinishedMatchIds: finished.slice(0, 10).map((m) => String(m?.id || "")),
+    },
+  };
 }
 
 function buildReport(rows = []) {
@@ -112,8 +127,8 @@ function buildReport(rows = []) {
   };
 }
 
-async function runLearningCron({ dryRun = false } = {}) {
-  const rows = await buildLearningRows(300);
+async function runLearningCron({ dryRun = false, debug = false } = {}) {
+  const { rows, diagnostics } = await buildLearningRows(300);
   const report = buildReport(rows);
 
   if (!dryRun) {
@@ -129,6 +144,7 @@ async function runLearningCron({ dryRun = false } = {}) {
       asset: {
         ...report,
         scope: "mixed-penalty-regular",
+        diagnostics,
       },
     });
   }
@@ -139,6 +155,7 @@ async function runLearningCron({ dryRun = false } = {}) {
     report: {
       ...report,
       scope: "mixed-penalty-regular",
+      diagnostics: debug ? diagnostics : undefined,
     },
   };
 }
