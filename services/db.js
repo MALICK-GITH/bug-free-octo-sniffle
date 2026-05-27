@@ -2280,181 +2280,80 @@ async function getMatchTrackingRuns(trackerKey = "default", limit = 20) {
 
 async function getTrackedMatches(limit = 50) {
   const safeLimit = Math.max(1, Math.min(500, Number(limit) || 50));
+  const mapTrackedRow = (row = {}, parser = parseJsonSafe) => ({
+    id: row.id,
+    matchId: row.match_id,
+    teamHome: row.team_home ?? row.team1 ?? null,
+    teamAway: row.team_away ?? row.team2 ?? null,
+    league: row.league,
+    status: row.status,
+    minute: Number(row.minute) || 0,
+    startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
+    scoreHome: Number(row.score_home ?? row.score1 ?? 0) || 0,
+    scoreAway: Number(row.score_away ?? row.score2 ?? 0) || 0,
+    odds: parser(row.odds_json ?? row.odds, {}),
+    prediction: parser(row.prediction_json ?? row.prediction, {}),
+    source: row.source || null,
+    createdAt: row.created_at ? normalizeDate(row.created_at) : null,
+    updatedAt: row.updated_at ? normalizeDate(row.updated_at) : null,
+    lastSeenAt: row.last_seen_at ? normalizeDate(row.last_seen_at) : null,
+  });
 
   if (await canUsePostgres()) {
-    try {
-      const result = await postgresPool.query(
-        `SELECT id, match_id, team_home, team_away, league, status, minute, start_time_unix, score_home, score_away, odds_json, prediction_json, source, last_seen_at, created_at, updated_at
-         FROM matches
-         ORDER BY updated_at DESC
-         LIMIT $1`,
-        [safeLimit]
-      );
-      return result.rows.map((row) => ({
-        id: row.id,
-        matchId: row.match_id,
-        teamHome: row.team_home,
-        teamAway: row.team_away,
-        league: row.league,
-        status: row.status,
-        minute: Number(row.minute) || 0,
-        startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
-        scoreHome: Number(row.score_home) || 0,
-        scoreAway: Number(row.score_away) || 0,
-        odds: row.odds_json || {},
-        prediction: row.prediction_json || {},
-        source: row.source || null,
-        createdAt: normalizeDate(row.created_at),
-        updatedAt: normalizeDate(row.updated_at),
-        lastSeenAt: normalizeDate(row.last_seen_at),
-      }));
-    } catch (error) {
-      const message = String(error?.message || "").toLowerCase();
-      if (!message.includes("team_home") && !message.includes("score_home")) {
-        throw error;
-      }
-      const legacy = await postgresPool.query(
-        `SELECT id, match_id, team1 AS team_home, team2 AS team_away, league, status, minute, start_time_unix,
-                score1 AS score_home, score2 AS score_away, odds AS odds_json, prediction AS prediction_json,
-                source, last_seen_at, created_at, updated_at
-         FROM matches
-         ORDER BY updated_at DESC
-         LIMIT $1`,
-        [safeLimit]
-      );
-      return legacy.rows.map((row) => ({
-        id: row.id,
-        matchId: row.match_id,
-        teamHome: row.team_home,
-        teamAway: row.team_away,
-        league: row.league,
-        status: row.status,
-        minute: Number(row.minute) || 0,
-        startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
-        scoreHome: Number(row.score_home) || 0,
-        scoreAway: Number(row.score_away) || 0,
-        odds: row.odds_json || {},
-        prediction: row.prediction_json || {},
-        source: row.source || null,
-        createdAt: normalizeDate(row.created_at),
-        updatedAt: normalizeDate(row.updated_at),
-        lastSeenAt: normalizeDate(row.last_seen_at),
-      }));
-    }
-  }
-  if (await canUseMySql()) {
-    try {
-      const [rows] = await mysqlPool.execute(
-        `SELECT id, match_id, team_home, team_away, league, status, minute, start_time_unix, score_home, score_away, odds_json, prediction_json, source, last_seen_at, created_at, updated_at
-         FROM matches
-         ORDER BY updated_at DESC
-         LIMIT ?`,
-        [safeLimit]
-      );
-      return rows.map((row) => ({
-        id: row.id,
-        matchId: row.match_id,
-        teamHome: row.team_home,
-        teamAway: row.team_away,
-        league: row.league,
-        status: row.status,
-        minute: Number(row.minute) || 0,
-        startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
-        scoreHome: Number(row.score_home) || 0,
-        scoreAway: Number(row.score_away) || 0,
-        odds: parseJsonSafe(row.odds_json, {}),
-        prediction: parseJsonSafe(row.prediction_json, {}),
-        source: row.source || null,
-        createdAt: normalizeDate(row.created_at),
-        updatedAt: normalizeDate(row.updated_at),
-        lastSeenAt: normalizeDate(row.last_seen_at),
-      }));
-    } catch (error) {
-      const message = String(error?.message || "").toLowerCase();
-      if (!message.includes("team_home") && !message.includes("score_home")) {
-        throw error;
-      }
-      const [rows] = await mysqlPool.execute(
-        `SELECT id, match_id, team1 AS team_home, team2 AS team_away, league, status, minute, start_time_unix,
-                score1 AS score_home, score2 AS score_away, odds AS odds_json, prediction AS prediction_json,
-                source, last_seen_at, created_at, updated_at
-         FROM matches
-         ORDER BY updated_at DESC
-         LIMIT ?`,
-        [safeLimit]
-      );
-      return rows.map((row) => ({
-        id: row.id,
-        matchId: row.match_id,
-        teamHome: row.team_home,
-        teamAway: row.team_away,
-        league: row.league,
-        status: row.status,
-        minute: Number(row.minute) || 0,
-        startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
-        scoreHome: Number(row.score_home) || 0,
-        scoreAway: Number(row.score_away) || 0,
-        odds: parseJsonSafe(row.odds_json, {}),
-        prediction: parseJsonSafe(row.prediction_json, {}),
-        source: row.source || null,
-        createdAt: normalizeDate(row.created_at),
-        updatedAt: normalizeDate(row.updated_at),
-        lastSeenAt: normalizeDate(row.last_seen_at),
-      }));
-    }
-  }
-
-  try {
-    return sqliteSelectTrackedMatchesStmt.all(safeLimit).map((row) => ({
-      id: row.id,
-      matchId: row.match_id,
-      teamHome: row.team_home,
-      teamAway: row.team_away,
-      league: row.league,
-      status: row.status,
-      minute: Number(row.minute) || 0,
-      startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
-      scoreHome: Number(row.score_home) || 0,
-      scoreAway: Number(row.score_away) || 0,
-      odds: parseJsonSafe(row.odds_json, {}),
-      prediction: parseJsonSafe(row.prediction_json, {}),
-      source: row.source || null,
-      createdAt: row.created_at || null,
-      updatedAt: row.updated_at || null,
-      lastSeenAt: row.last_seen_at || null,
-    }));
-  } catch (error) {
-    const message = String(error?.message || "").toLowerCase();
-    if (!message.includes("team_home") && !message.includes("score_home")) {
-      throw error;
-    }
-    const legacyRows = sqliteDb.prepare(
-      `SELECT id, match_id, team1 AS team_home, team2 AS team_away, league, status, minute, start_time_unix,
-              score1 AS score_home, score2 AS score_away, odds AS odds_json, prediction AS prediction_json,
-              source, last_seen_at, created_at, updated_at
+    // Requête schema-agnostic avec COALESCE pour supporter team_home/team_away et team1/team2
+    const result = await postgresPool.query(
+      `SELECT 
+         id, match_id, league, status, minute, start_time_unix, source,
+         COALESCE(team_home, team1) as team_home,
+         COALESCE(team_away, team2) as team_away,
+         COALESCE(score_home, score1, 0) as score_home,
+         COALESCE(score_away, score2, 0) as score_away,
+         COALESCE(odds_json, odds) as odds_json,
+         COALESCE(prediction_json, prediction) as prediction_json,
+         created_at, updated_at, last_seen_at
        FROM matches
        ORDER BY updated_at DESC
-       LIMIT ?`
-    ).all(safeLimit);
-    return legacyRows.map((row) => ({
-      id: row.id,
-      matchId: row.match_id,
-      teamHome: row.team_home,
-      teamAway: row.team_away,
-      league: row.league,
-      status: row.status,
-      minute: Number(row.minute) || 0,
-      startTimeUnix: row.start_time_unix ? Number(row.start_time_unix) : null,
-      scoreHome: Number(row.score_home) || 0,
-      scoreAway: Number(row.score_away) || 0,
-      odds: parseJsonSafe(row.odds_json, {}),
-      prediction: parseJsonSafe(row.prediction_json, {}),
-      source: row.source || null,
-      createdAt: row.created_at || null,
-      updatedAt: row.updated_at || null,
-      lastSeenAt: row.last_seen_at || null,
-    }));
+       LIMIT $1`,
+      [safeLimit]
+    );
+    return result.rows.map((row) => mapTrackedRow(row, (value, fallback) => value ?? fallback));
   }
+  if (await canUseMySql()) {
+    // Requête schema-agnostic avec COALESCE pour supporter team_home/team_away et team1/team2
+    const [rows] = await mysqlPool.execute(
+      `SELECT 
+         id, match_id, league, status, minute, start_time_unix, source,
+         COALESCE(team_home, team1) as team_home,
+         COALESCE(team_away, team2) as team_away,
+         COALESCE(score_home, score1, 0) as score_home,
+         COALESCE(score_away, score2, 0) as score_away,
+         COALESCE(odds_json, odds) as odds_json,
+         COALESCE(prediction_json, prediction) as prediction_json,
+         created_at, updated_at, last_seen_at
+       FROM matches
+       ORDER BY updated_at DESC
+       LIMIT ?`,
+      [safeLimit]
+    );
+    return rows.map((row) => mapTrackedRow(row));
+  }
+
+  // SQLite schema-agnostic avec COALESCE
+  const sqliteRows = sqliteDb.prepare(
+    `SELECT 
+       id, match_id, league, status, minute, start_time_unix, source,
+       COALESCE(team_home, team1) as team_home,
+       COALESCE(team_away, team2) as team_away,
+       COALESCE(score_home, score1, 0) as score_home,
+       COALESCE(score_away, score2, 0) as score_away,
+       COALESCE(odds_json, odds) as odds_json,
+       COALESCE(prediction_json, prediction) as prediction_json,
+       created_at, updated_at, last_seen_at
+     FROM matches
+     ORDER BY updated_at DESC
+     LIMIT ?`
+  ).all(safeLimit);
+  return sqliteRows.map((row) => mapTrackedRow(row));
 }
 
 async function getMatchScoreHistory(matchId, limit = 120) {
