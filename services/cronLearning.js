@@ -11,6 +11,16 @@ function normalizeText(value = "") {
     .trim();
 }
 
+function isFinishedMatch(match = {}) {
+  const statusCode = Number(match?.statusCode || 0);
+  const statusText = normalizeText(match?.statusText || match?.status || "");
+  const phase = normalizeText(match?.phase || "");
+  if (statusCode === 3) return true;
+  if (statusText.includes("termine")) return true;
+  if (phase.includes("termine")) return true;
+  return false;
+}
+
 function classifyOutcome({ selected, scoreHome, scoreAway }) {
   const pick = normalizeText(selected);
   const totalGoals = Number(scoreHome || 0) + Number(scoreAway || 0);
@@ -59,11 +69,13 @@ async function buildLearningRows(limit = 300) {
   const payload = await getPenaltyMatches();
   const matches = Array.isArray(payload?.matches) ? payload.matches : [];
   const statusCounts = matches.reduce((acc, match) => {
-    const key = String(match?.status || "unknown").toLowerCase();
+    const key = isFinishedMatch(match)
+      ? "finished"
+      : normalizeText(match?.statusText || match?.status || match?.phase || "unknown");
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
-  const finished = matches.filter((match) => String(match?.status || "").toLowerCase() === "finished").slice(0, limit);
+  const finished = matches.filter((match) => isFinishedMatch(match)).slice(0, limit);
 
   const rows = [];
   for (const match of finished) {
@@ -103,6 +115,13 @@ async function buildLearningRows(limit = 300) {
       finishedInFeed: finished.length,
       statusCounts,
       sampleFinishedMatchIds: finished.slice(0, 10).map((m) => String(m?.id || "")),
+      sampleStatuses: matches.slice(0, 12).map((m) => ({
+        id: m?.id || null,
+        status: m?.status || null,
+        statusText: m?.statusText || null,
+        phase: m?.phase || null,
+        statusCode: m?.statusCode ?? null,
+      })),
     },
   };
 }
