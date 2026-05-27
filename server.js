@@ -28,6 +28,7 @@ const { registerAIPredictionRoutes } = require("./server/routes/aiPrediction");
 const { API_URL, getPenaltyMatches, getStructure, getMatchPredictionDetails, getCouponSelection, validateCouponTicket } = require("./services/liveFeed");
 const { getLeagueProfiles } = require("./services/leagueProfiles");
 const { toFeatures, deduplicate, extractRules, buildDecisionEngine, toTrainReadyCSV } = require("./services/patternEngineV2");
+const { runLearningCron } = require("./services/cronLearning");
 const {
   saveCouponGeneration,
   saveCouponValidation,
@@ -81,6 +82,7 @@ let matchTrackingTimer = null;
 let matchTrackingRunning = false;
 let matchTrackingRunCount = 0;
 let activeServerPort = DEFAULT_PORT;
+const CRON_SECRET = String(process.env.CRON_SECRET || "").trim();
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -137,6 +139,26 @@ function withTimeout(promise, timeoutMs, fallbackValue = null) {
         resolve(fallbackValue);
       });
   });
+}
+
+function isAuthorizedCronRequest(req) {
+  const configured = String(CRON_SECRET || "").trim();
+  if (!configured) {
+    return {
+      ok: false,
+      reason: "missing_server_secret",
+    };
+  }
+
+  const provided = String(req.query?.key || req.get("x-cron-secret") || "").trim();
+  if (!provided || provided !== configured) {
+    return {
+      ok: false,
+      reason: "invalid_secret",
+    };
+  }
+
+  return { ok: true };
 }
 
 function initialsFromName(name = "") {
@@ -3252,6 +3274,44 @@ app.get("/api/db/status", async (_req, res) => {
       success: false,
       message: "Impossible de lire le statut DB.",
       error: error.message,
+    });
+  }
+});
+
+app.get("/api/cron/learn", async (req, res) => {
+  const auth = isAuthorizedCronRequest(req);
+  if (!auth.ok) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: "CRON_FORBIDDEN",
+        message: auth.reason === "missing_server_secret"
+          ? "CRON_SECRET n'est pas configure sur le serveur."
+          : "Cle cron invalide.",
+      },
+    });
+  }
+
+  try {
+    const dryRun = String(req.query?.dryRun || "").trim() === "1";
+    const result = await runLearningCron({ dryRun });
+    return res.json({
+      success: true,
+      source: "cron-job.org",
+      dryRun,
+      data: result.report,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "CRON_LEARN_ERROR",
+        message: "Impossible d'executer le cron d'apprentissage.",
+        details: error.message,
+      },
     });
   }
 });
@@ -7399,5 +7459,4 @@ function startServer(startPort, triesLeft = MAX_PORT_TRIES) {
 }
 
 startServer(DEFAULT_PORT);
-
 
