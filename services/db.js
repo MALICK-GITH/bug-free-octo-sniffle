@@ -2300,10 +2300,10 @@ async function getTrackedMatches(limit = 50) {
   });
 
   if (await canUsePostgres()) {
-    // Requête schema-agnostic avec COALESCE pour supporter team_home/team_away et team1/team2
+    // Requête schema-agnostic - seulement colonnes essentielles + COALESCE
     const result = await postgresPool.query(
       `SELECT 
-         id, match_id, league, status, minute, start_time_unix, source,
+         id, match_id, league, status, minute, source,
          COALESCE(team_home, team1) as team_home,
          COALESCE(team_away, team2) as team_away,
          COALESCE(score_home, score1, 0) as score_home,
@@ -2319,10 +2319,10 @@ async function getTrackedMatches(limit = 50) {
     return result.rows.map((row) => mapTrackedRow(row, (value, fallback) => value ?? fallback));
   }
   if (await canUseMySql()) {
-    // Requête schema-agnostic avec COALESCE pour supporter team_home/team_away et team1/team2
+    // Requête schema-agnostic - seulement colonnes essentielles + COALESCE
     const [rows] = await mysqlPool.execute(
       `SELECT 
-         id, match_id, league, status, minute, start_time_unix, source,
+         id, match_id, league, status, minute, source,
          COALESCE(team_home, team1) as team_home,
          COALESCE(team_away, team2) as team_away,
          COALESCE(score_home, score1, 0) as score_home,
@@ -2338,10 +2338,10 @@ async function getTrackedMatches(limit = 50) {
     return rows.map((row) => mapTrackedRow(row));
   }
 
-  // SQLite schema-agnostic avec COALESCE
+  // SQLite schema-agnostic - seulement colonnes essentielles + COALESCE
   const sqliteRows = sqliteDb.prepare(
     `SELECT 
-       id, match_id, league, status, minute, start_time_unix, source,
+       id, match_id, league, status, minute, source,
        COALESCE(team_home, team1) as team_home,
        COALESCE(team_away, team2) as team_away,
        COALESCE(score_home, score1, 0) as score_home,
