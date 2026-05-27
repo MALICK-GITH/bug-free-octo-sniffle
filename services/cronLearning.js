@@ -55,7 +55,7 @@ function summarizeBy(rows = [], keySelector = () => "unknown") {
     .sort((a, b) => b.total - a.total || String(a.key).localeCompare(String(b.key)));
 }
 
-async function buildLearningRows(limit = 120) {
+async function buildLearningRows(limit = 300) {
   const payload = await getPenaltyMatches();
   const matches = Array.isArray(payload?.matches) ? payload.matches : [];
   const finished = matches.filter((match) => String(match?.status || "").toLowerCase() === "finished").slice(0, limit);
@@ -113,7 +113,7 @@ function buildReport(rows = []) {
 }
 
 async function runLearningCron({ dryRun = false } = {}) {
-  const rows = await buildLearningRows(120);
+  const rows = await buildLearningRows(300);
   const report = buildReport(rows);
 
   if (!dryRun) {
@@ -126,14 +126,20 @@ async function runLearningCron({ dryRun = false } = {}) {
       mimeType: "application/json",
       source: "cron-job.org",
       relatedId: "cron_learn",
-      asset: report,
+      asset: {
+        ...report,
+        scope: "mixed-penalty-regular",
+      },
     });
   }
 
   return {
     ok: true,
     dryRun,
-    report,
+    report: {
+      ...report,
+      scope: "mixed-penalty-regular",
+    },
   };
 }
 
