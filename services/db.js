@@ -164,6 +164,23 @@ sqliteDb.exec(`
 `);
 
 sqliteDb.exec(`
+  CREATE TABLE IF NOT EXISTS finished_matches_dataset (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id TEXT NOT NULL UNIQUE,
+    team_home TEXT NOT NULL,
+    team_away TEXT NOT NULL,
+    league TEXT NOT NULL,
+    score_home INTEGER NOT NULL DEFAULT 0,
+    score_away INTEGER NOT NULL DEFAULT 0,
+    finished_at TEXT,
+    source TEXT,
+    raw_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+sqliteDb.exec(`
   CREATE TABLE IF NOT EXISTS match_tracking_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tracker_key TEXT NOT NULL,
@@ -305,6 +322,27 @@ const sqliteSelectMatchScoreHistoryStmt = sqliteDb.prepare(`
   FROM match_score_history
   WHERE match_id = ?
   ORDER BY id DESC
+  LIMIT ?
+`);
+const sqliteUpsertFinishedDatasetStmt = sqliteDb.prepare(`
+  INSERT INTO finished_matches_dataset (
+    match_id, team_home, team_away, league, score_home, score_away, finished_at, source, raw_json, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  ON CONFLICT(match_id) DO UPDATE SET
+    team_home = excluded.team_home,
+    team_away = excluded.team_away,
+    league = excluded.league,
+    score_home = excluded.score_home,
+    score_away = excluded.score_away,
+    finished_at = excluded.finished_at,
+    source = excluded.source,
+    raw_json = excluded.raw_json,
+    updated_at = datetime('now')
+`);
+const sqliteSelectFinishedDatasetStmt = sqliteDb.prepare(`
+  SELECT id, match_id, team_home, team_away, league, score_home, score_away, finished_at, source, raw_json, created_at, updated_at
+  FROM finished_matches_dataset
+  ORDER BY updated_at DESC
   LIMIT ?
 `);
 
@@ -919,6 +957,25 @@ async function initMySql() {
       `);
 
       await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS finished_matches_dataset (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          match_id VARCHAR(255) NOT NULL,
+          team_home VARCHAR(255) NOT NULL,
+          team_away VARCHAR(255) NOT NULL,
+          league VARCHAR(255) NOT NULL,
+          score_home INT NOT NULL DEFAULT 0,
+          score_away INT NOT NULL DEFAULT 0,
+          finished_at DATETIME NULL,
+          source VARCHAR(120) NULL,
+          raw_json LONGTEXT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uniq_finished_matches_dataset_match_id (match_id),
+          KEY idx_finished_matches_dataset_updated_at (updated_at)
+        )
+      `);
+
+      await mysqlPool.query(`
         CREATE TABLE IF NOT EXISTS match_tracking_runs (
           id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
           tracker_key VARCHAR(120) NOT NULL,
@@ -1159,6 +1216,23 @@ async function initPostgres() {
           snapshot_json JSONB NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
           UNIQUE(match_id, state_hash)
+        )
+      `);
+
+      await postgresPool.query(`
+        CREATE TABLE IF NOT EXISTS finished_matches_dataset (
+          id BIGSERIAL PRIMARY KEY,
+          match_id TEXT NOT NULL UNIQUE,
+          team_home TEXT NOT NULL,
+          team_away TEXT NOT NULL,
+          league TEXT NOT NULL,
+          score_home INTEGER NOT NULL DEFAULT 0,
+          score_away INTEGER NOT NULL DEFAULT 0,
+          finished_at TIMESTAMPTZ NULL,
+          source TEXT NULL,
+          raw_json JSONB NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       `);
 
@@ -2405,6 +2479,128 @@ async function getMatchScoreHistory(matchId, limit = 120) {
     snapshot: parseJsonSafe(row.snapshot_json, {}),
     createdAt: row.created_at || null,
   }));
+}
+
+function normalizeFinishedDatasetEntry(entry = {}) {
+  const matchId = String(entry.matchId || entry.id || entry.match_id || "").trim();
+  const teamHome = String(entry.teamHome || entry.team_home || entry.team1 || "").trim() || "Equipe 1";
+  const teamAway = String(entry.teamAway || entry.team_away || entry.team2 || "").trim() || "Equipe 2";
+  const league = String(entry.league || "").trim() || "unknown";
+  const scoreHome = Number(entry.scoreHome ?? entry.score_home ?? entry.score1 ?? 0) || 0;
+  const scoreAway = Number(entry.scoreAway ?? entry.score_away ?? entry.score2 ?? 0) || 0;
+  const finishedAt = entry.finishedAt ? normalizeDate(entry.finishedAt) : new Date().toISOString();
+  const source = String(entry.source || "cron-learning").trim();
+  return {
+    matchId,
+    teamHome,
+    teamAway,
+    league,
+    scoreHome,
+    scoreAway,
+    finishedAt,
+    source,
+    raw: normalizeObject(entry.raw || entry, {}),
+  };
+}
+
+async function upsertFinishedMatchDataset(entry = {}) {
+  const payload = normalizeFinishedDatasetEntry(entry);
+  if (!payload.matchId) throw new Error("match_id requis");
+
+  if (await canUsePostgres()) {
+    const result = await postgresPool.query(
+      `INSERT INTO finished_matches_dataset (
+         match_id, team_home, team_away, league, score_home, score_away, finished_at, source, raw_json
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8, $9::jsonb)
+       ON CONFLICT (match_id) DO UPDATE SET
+         team_home = EXCLUDED.team_home,
+         team_away = EXCLUDED.team_away,
+         league = EXCLUDED.league,
+         score_home = EXCLUDED.score_home,
+         score_away = EXCLUDED.score_away,
+         finished_at = EXCLUDED.finished_at,
+         source = EXCLUDED.source,
+         raw_json = EXCLUDED.raw_json,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING id`,
+      [payload.matchId, payload.teamHome, payload.teamAway, payload.league, payload.scoreHome, payload.scoreAway, payload.finishedAt, payload.source, toJson(payload.raw, {})]
+    );
+    return { id: result.rows[0]?.id || null, matchId: payload.matchId };
+  }
+  if (await canUseMySql()) {
+    await mysqlPool.execute(
+      `INSERT INTO finished_matches_dataset (
+         match_id, team_home, team_away, league, score_home, score_away, finished_at, source, raw_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         team_home = VALUES(team_home),
+         team_away = VALUES(team_away),
+         league = VALUES(league),
+         score_home = VALUES(score_home),
+         score_away = VALUES(score_away),
+         finished_at = VALUES(finished_at),
+         source = VALUES(source),
+         raw_json = VALUES(raw_json),
+         updated_at = CURRENT_TIMESTAMP`,
+      [payload.matchId, payload.teamHome, payload.teamAway, payload.league, payload.scoreHome, payload.scoreAway, payload.finishedAt, payload.source, toJson(payload.raw, {})]
+    );
+    return { matchId: payload.matchId };
+  }
+
+  sqliteUpsertFinishedDatasetStmt.run(
+    payload.matchId,
+    payload.teamHome,
+    payload.teamAway,
+    payload.league,
+    payload.scoreHome,
+    payload.scoreAway,
+    payload.finishedAt,
+    payload.source,
+    toJson(payload.raw, {})
+  );
+  return { matchId: payload.matchId };
+}
+
+async function getFinishedMatchesDataset(limit = 1000) {
+  const safeLimit = Math.max(1, Math.min(20000, Number(limit) || 1000));
+
+  const mapRow = (row = {}, parser = parseJsonSafe) => ({
+    id: row.id || null,
+    matchId: row.match_id,
+    teamHome: row.team_home,
+    teamAway: row.team_away,
+    league: row.league,
+    scoreHome: Number(row.score_home) || 0,
+    scoreAway: Number(row.score_away) || 0,
+    finishedAt: normalizeDate(row.finished_at || row.updated_at || row.created_at),
+    source: row.source || null,
+    raw: parser(row.raw_json, {}),
+    createdAt: normalizeDate(row.created_at),
+    updatedAt: normalizeDate(row.updated_at),
+  });
+
+  if (await canUsePostgres()) {
+    const result = await postgresPool.query(
+      `SELECT id, match_id, team_home, team_away, league, score_home, score_away, finished_at, source, raw_json, created_at, updated_at
+       FROM finished_matches_dataset
+       ORDER BY updated_at DESC
+       LIMIT $1`,
+      [safeLimit]
+    );
+    return result.rows.map((row) => mapRow(row, (value, fallback) => value ?? fallback));
+  }
+  if (await canUseMySql()) {
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, match_id, team_home, team_away, league, score_home, score_away, finished_at, source, raw_json, created_at, updated_at
+       FROM finished_matches_dataset
+       ORDER BY updated_at DESC
+       LIMIT ?`,
+      [safeLimit]
+    );
+    return rows.map((row) => mapRow(row));
+  }
+
+  return sqliteSelectFinishedDatasetStmt.all(safeLimit).map((row) => mapRow(row));
 }
 
 async function saveAuditReport(entry = {}) {
@@ -3697,6 +3893,8 @@ module.exports = {
   getTrackedMatches,
   saveMatchScoreHistory,
   getMatchScoreHistory,
+  upsertFinishedMatchDataset,
+  getFinishedMatchesDataset,
   saveAuditReport,
   saveGeneratedAsset,
   getGeneratedAssets,

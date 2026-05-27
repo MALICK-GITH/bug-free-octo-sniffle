@@ -1,5 +1,5 @@
 const { getPenaltyMatches, getMatchPredictionDetails, fetchLiveFeedRaw } = require("./liveFeed");
-const { saveGeneratedAsset } = require("./db");
+const { saveGeneratedAsset, upsertFinishedMatchDataset } = require("./db");
 
 function normalizeText(value = "") {
   return String(value)
@@ -96,6 +96,7 @@ async function buildLearningRows(limit = 300) {
   ]);
 
   const rows = [];
+  const finishedDatasetRows = [];
   for (const matchId of finishedIds) {
     try {
       const details = await getMatchPredictionDetails(matchId);
@@ -108,9 +109,23 @@ async function buildLearningRows(limit = 300) {
         "";
       const scoreHome = Number(resolved?.scoreHome ?? resolved?.context?.score1 ?? 0) || 0;
       const scoreAway = Number(resolved?.scoreAway ?? resolved?.context?.score2 ?? 0) || 0;
+      const teamHome = String(resolved?.teamHome || resolved?.team1 || "Equipe 1");
+      const teamAway = String(resolved?.teamAway || resolved?.team2 || "Equipe 2");
+      const league = String(resolved?.league || "unknown");
+      finishedDatasetRows.push({
+        matchId: String(resolved?.id || matchId || ""),
+        teamHome,
+        teamAway,
+        league,
+        scoreHome,
+        scoreAway,
+        finishedAt: new Date().toISOString(),
+        source: "cron-learning",
+        raw: { match: resolved, prediction },
+      });
       rows.push({
-        matchId: String(resolved?.id || match.id || ""),
-        league: String(resolved?.league || "unknown"),
+        matchId: String(resolved?.id || matchId || ""),
+        league,
         market: selected || null,
         confidence:
           Number(
@@ -126,6 +141,7 @@ async function buildLearningRows(limit = 300) {
   }
   return {
     rows,
+    finishedDatasetRows,
     diagnostics: {
       fetchedAt: payload?.fetchedAt || new Date().toISOString(),
       filterMode: payload?.filterMode || "unknown",
@@ -167,10 +183,15 @@ function buildReport(rows = []) {
 }
 
 async function runLearningCron({ dryRun = false, debug = false } = {}) {
-  const { rows, diagnostics } = await buildLearningRows(300);
+  const { rows, diagnostics, finishedDatasetRows } = await buildLearningRows(300);
   const report = buildReport(rows);
 
   if (!dryRun) {
+    for (const entry of finishedDatasetRows) {
+      try {
+        await upsertFinishedMatchDataset(entry);
+      } catch (_error) {}
+    }
     await saveGeneratedAsset({
       kind: "cron_report",
       page: "system",
@@ -183,6 +204,7 @@ async function runLearningCron({ dryRun = false, debug = false } = {}) {
       asset: {
         ...report,
         scope: "mixed-penalty-regular",
+        savedFinishedMatches: finishedDatasetRows.length,
         diagnostics,
       },
     });
@@ -194,6 +216,7 @@ async function runLearningCron({ dryRun = false, debug = false } = {}) {
     report: {
       ...report,
       scope: "mixed-penalty-regular",
+      savedFinishedMatches: dryRun ? 0 : finishedDatasetRows.length,
       diagnostics: debug ? diagnostics : undefined,
     },
   };
