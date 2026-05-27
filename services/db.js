@@ -2603,6 +2603,19 @@ async function getFinishedMatchesDataset(limit = 1000) {
   return sqliteSelectFinishedDatasetStmt.all(safeLimit).map((row) => mapRow(row));
 }
 
+async function getFinishedMatchesDatasetCount() {
+  if (await canUsePostgres()) {
+    const result = await postgresPool.query(`SELECT COUNT(*)::bigint AS total FROM finished_matches_dataset`);
+    return Number(result.rows?.[0]?.total) || 0;
+  }
+  if (await canUseMySql()) {
+    const [rows] = await mysqlPool.execute(`SELECT COUNT(*) AS total FROM finished_matches_dataset`);
+    return Number(rows?.[0]?.total) || 0;
+  }
+  const row = sqliteDb.prepare(`SELECT COUNT(*) AS total FROM finished_matches_dataset`).get();
+  return Number(row?.total) || 0;
+}
+
 async function saveAuditReport(entry = {}) {
   const auditId = entry.auditId ? String(entry.auditId) : `AUD-${Date.now()}`;
   const savedOptions = buildSavedOptions(entry);
@@ -3895,6 +3908,7 @@ module.exports = {
   getMatchScoreHistory,
   upsertFinishedMatchDataset,
   getFinishedMatchesDataset,
+  getFinishedMatchesDatasetCount,
   saveAuditReport,
   saveGeneratedAsset,
   getGeneratedAssets,

@@ -41,6 +41,7 @@ const {
   getCouponHistory,
   getTelegramHistory,
   getFinishedMatchesDataset,
+  getFinishedMatchesDatasetCount,
   saveUpdateEntry,
   getUpdateHistory,
   getAuditHistory,
@@ -3377,6 +3378,45 @@ app.get("/api/cron/finished-matches/export", async (req, res) => {
       error: {
         code: "CRON_EXPORT_ERROR",
         message: "Impossible d'exporter les matchs termines.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/cron/finished-matches/count", async (req, res) => {
+  const auth = isAuthorizedCronRequest(req);
+  if (!auth.ok) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: "CRON_FORBIDDEN",
+        message: auth.reason === "missing_server_secret"
+          ? "CRON_SECRET n'est pas configure sur le serveur."
+          : "Cle cron invalide.",
+      },
+    });
+  }
+
+  try {
+    const total = await getFinishedMatchesDatasetCount();
+    return res.json({
+      success: true,
+      source: "cron-job.org",
+      data: {
+        total,
+        table: "finished_matches_dataset",
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "CRON_COUNT_ERROR",
+        message: "Impossible de compter les matchs termines.",
         details: error.message,
       },
     });
