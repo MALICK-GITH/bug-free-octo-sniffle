@@ -124,6 +124,10 @@
           <option value="15">15 min</option>
         </select>
       </label>
+      <label class="switch-line">
+        <span>Fenetre Safe auto (5-20 min)</span>
+        <input id="safeWindowSwitch" type="checkbox" checked />
+      </label>
       <label>
         <span>Ligue</span>
         <select id="leagueSelect">
@@ -159,6 +163,7 @@
       <div class="actions coupon-main-actions">
         <button id="generateBtn" type="button">Generer Coupon</button>
         <button id="validateBtn" type="button">Valider Ticket Pro</button>
+        <button id="coachAiBtn" type="button" disabled>Coach IA 1-Clic</button>
         <button id="replaceWeakBtn" type="button" disabled>Remplacer Pick Faible</button>
         <button id="replaceTooCloseBtn" type="button" disabled>Remplacer matchs trop proches</button>
         <button id="sendTelegramBtn" type="button" disabled>Envoyer Telegram</button>

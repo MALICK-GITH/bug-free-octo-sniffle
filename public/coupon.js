@@ -115,6 +115,9 @@ const COUPON_DRIFT_KEY = "fc25_coupon_drift_v1";
 const COUPON_WATCH_DELTA_KEY = "fc25_coupon_watch_delta_v1";
 const COUPON_IMAGE_FMT_KEY = "fc25_coupon_export_format_v1";
 const COUPON_IMAGE_MODE_KEY = "fc25_coupon_export_mode_v1";
+const SAFE_WINDOW_ENABLED_KEY = "fc25_safe_window_enabled_v1";
+const SAFE_WINDOW_MIN_MINUTES = 5;
+const SAFE_WINDOW_MAX_MINUTES = 20;
 const AUTO_REFRESH_ENABLED = false;
 
 function siteLog(level, message, meta) {
@@ -604,9 +607,33 @@ function isStrictUpcomingMatch(match, nowSec) {
 }
 
 function getMinStartMinutesFilter() {
+  if (isSafeWindowEnabled()) return SAFE_WINDOW_MIN_MINUTES;
   const select = document.getElementById("minStartMinutesSelect");
   const raw = select ? Number(select.value) : Number(getStoredNumber(COUPON_MIN_START_MINUTES_KEY, 5));
   return Math.max(0, Math.min(120, Number(raw) || 0));
+}
+
+function isSafeWindowEnabled() {
+  const v = localStorage.getItem(SAFE_WINDOW_ENABLED_KEY);
+  if (v == null) return true;
+  return v === "1";
+}
+
+function setSafeWindowEnabled(value) {
+  localStorage.setItem(SAFE_WINDOW_ENABLED_KEY, value ? "1" : "0");
+}
+
+function matchWithinSafeWindow(match, nowSec) {
+  const start = toNumber(match?.startTimeUnix, 0);
+  if (start <= nowSec) return false;
+  const deltaMin = (start - nowSec) / 60;
+  return deltaMin >= SAFE_WINDOW_MIN_MINUTES && deltaMin <= SAFE_WINDOW_MAX_MINUTES;
+}
+
+function filterCouponBySafeWindow(coupon = []) {
+  if (!isSafeWindowEnabled()) return Array.isArray(coupon) ? coupon : [];
+  const nowSec = Math.floor(Date.now() / 1000);
+  return (Array.isArray(coupon) ? coupon : []).filter((x) => matchWithinSafeWindow(x, nowSec));
 }
 
 function matchRespectsMinStart(match, nowSec, minStartMinutes) {
@@ -967,7 +994,11 @@ async function generateCouponFallback(size, league, profile = "balanced") {
   const base = Array.isArray(listData.matches) ? listData.matches : [];
   const filteredByLeague =
     normLeague === "all" ? base : base.filter((m) => String(m.league || "").trim().toLowerCase() === normLeague);
-  const filtered = filteredByLeague.filter((m) => matchRespectsMinStart(m, nowSec, minStartMinutes));
+  const filtered = filteredByLeague.filter((m) => {
+    if (!matchRespectsMinStart(m, nowSec, minStartMinutes)) return false;
+    if (!isSafeWindowEnabled()) return true;
+    return matchWithinSafeWindow(m, nowSec);
+  });
 
   const sample = filtered.slice(0, 20);
   const cfg = riskConfig(normalizedProfile);
@@ -1026,6 +1057,7 @@ function setResultHtml(html) {
 
 function updateSendButtonState() {
   const btn = document.getElementById("sendTelegramBtn");
+  const coachBtn = document.getElementById("coachAiBtn");
   const btnQuickImageTelegram = document.getElementById("sendTelegramImageBtnQuick");
   const miniBtn = document.getElementById("sendTelegramMiniBtn");
   const packBtn = document.getElementById("sendPackBtn");
@@ -1066,6 +1098,7 @@ function updateSendButtonState() {
   if (stickyImageBtn) stickyImageBtn.disabled = !enabled;
   if (replaceWeakBtn) replaceWeakBtn.disabled = !enabled || frozen;
   if (replaceTooCloseBtn) replaceTooCloseBtn.disabled = !enabled || frozen;
+  if (coachBtn) coachBtn.disabled = !enabled || frozen;
   if (imageBtn) imageBtn.disabled = !enabled;
   if (premiumImageBtn) premiumImageBtn.disabled = !enabled;
   if (premiumImageBtnQuick) premiumImageBtnQuick.disabled = !enabled;
@@ -1081,6 +1114,41 @@ function updateSendButtonState() {
   if (exportBtn) exportBtn.disabled = !enabled;
   if (pdfStickyBtn) pdfStickyBtn.disabled = !enabled;
   if (simulateBtn) simulateBtn.disabled = !enabled;
+}
+
+async function runCoachAiOneClick() {
+  const panel = document.getElementById("validation");
+  if (!lastCouponData?.coupon?.length) {
+    if (panel) panel.innerHTML = "<p>Genere d'abord un coupon avant Coach IA.</p>";
+    return;
+  }
+  if (isCouponFrozen(lastCouponData.coupon)) {
+    if (panel) panel.innerHTML = `<p>Freeze actif: Coach IA bloque (<= ${getFreezeMinutes()} min avant debut).</p>`;
+    return;
+  }
+  if (panel) panel.innerHTML = "<p>Coach IA en cours: optimisation automatique du ticket...</p>";
+  try {
+    const beforeCoupon = (lastCouponData.coupon || []).map((x) => ({ ...x }));
+    const beforeIds = beforeCoupon.map((x) => String(x.matchId || ""));
+    const beforePari = beforeCoupon.map((x) => String(x.pari || ""));
+    await replaceWeakSelection();
+    await replaceTooCloseSelections();
+    const afterCoupon = (lastCouponData?.coupon || []).map((x) => ({ ...x }));
+    const afterIds = afterCoupon.map((x) => String(x.matchId || ""));
+    const afterPari = afterCoupon.map((x) => String(x.pari || ""));
+    let changed = 0;
+    for (let i = 0; i < Math.max(beforeIds.length, afterIds.length); i += 1) {
+      if (beforeIds[i] !== afterIds[i] || beforePari[i] !== afterPari[i]) changed += 1;
+    }
+    if (panel) {
+      panel.innerHTML = `
+        <p>Coach IA termine: ${changed} ajustement(s) applique(s).</p>
+        ${buildCoachHistoryHtml(beforeCoupon, afterCoupon)}
+      `;
+    }
+  } catch (error) {
+    if (panel) panel.innerHTML = `<p>Coach IA en echec: ${error.message}</p>`;
+  }
 }
 
 function getFreezeMinutes() {
@@ -3263,7 +3331,8 @@ async function generateCoupon() {
       baseCoupon = enforceUltraSafePolicy(baseCoupon);
     }
     const anti = applyAntiCorrelation(baseCoupon, requestedSize);
-    const antiChaos = await applyAntiChaosFilter(anti.coupon, {
+    const safeWindowFiltered = filterCouponBySafeWindow(anti.coupon);
+    const antiChaos = await applyAntiChaosFilter(safeWindowFiltered, {
       league,
       risk,
       targetSize: requestedSize,
@@ -3278,6 +3347,9 @@ async function generateCoupon() {
         ? `Anti-correlation actif: ${anti.removed} pick(s) retire(s), max ${anti.maxPerLeague} par ligue. ${data?.warning || ""}`
         : data?.warning,
     };
+    if (isSafeWindowEnabled()) {
+      data.warning = `Fenetre Safe active: uniquement matchs entre ${SAFE_WINDOW_MIN_MINUTES} et ${SAFE_WINDOW_MAX_MINUTES} min. ${data.warning || ""}`;
+    }
     if (antiChaos.note) {
       data.warning = `${antiChaos.note} ${data.warning || ""}`;
     }
@@ -3410,6 +3482,34 @@ function runBankrollSimulationCore({ bankrollStart, stake, odd, winProbability, 
     p10: Number(idx(0.1).toFixed(2)),
     p90: Number(idx(0.9).toFixed(2)),
   };
+}
+
+function buildCoachHistoryHtml(beforeCoupon = [], afterCoupon = [], title = "Historique Coach IA") {
+  const before = Array.isArray(beforeCoupon) ? beforeCoupon : [];
+  const after = Array.isArray(afterCoupon) ? afterCoupon : [];
+  const rows = [];
+  const len = Math.max(before.length, after.length);
+  for (let i = 0; i < len; i += 1) {
+    const b = before[i] || null;
+    const a = after[i] || null;
+    const changed =
+      String(b?.matchId || "") !== String(a?.matchId || "") ||
+      String(b?.pari || "") !== String(a?.pari || "") ||
+      Number(b?.cote || 0) !== Number(a?.cote || 0);
+    rows.push(`
+      <li>
+        <strong>#${i + 1} ${changed ? "CHANGE" : "OK"}</strong><br />
+        Avant: ${(b?.teamHome || "-")} vs ${(b?.teamAway || "-")} | ${b?.pari || "-"} @${formatOdd(Number(b?.cote || 0))}<br />
+        Apres: ${(a?.teamHome || "-")} vs ${(a?.teamAway || "-")} | ${a?.pari || "-"} @${formatOdd(Number(a?.cote || 0))}
+      </li>
+    `);
+  }
+  return `
+    <h3>${title}</h3>
+    <ul class="validation-list">
+      ${rows.join("")}
+    </ul>
+  `;
 }
 
 function simulateBankrollBeforeValidation() {
@@ -3649,6 +3749,7 @@ async function replaceWeakSelection() {
 const generateBtn = document.getElementById("generateBtn");
 const generateLadderBtn = document.getElementById("generateLadderBtn");
 const generateMultiBtn = document.getElementById("generateMultiBtn");
+const coachAiBtn = document.getElementById("coachAiBtn");
 const replaceWeakBtn = document.getElementById("replaceWeakBtn");
 const replaceTooCloseBtn = document.getElementById("replaceTooCloseBtn");
 const simulateBankrollBtn = document.getElementById("simulateBankrollBtn");
@@ -3681,6 +3782,7 @@ const compareTicketBtn = document.getElementById("compareTicketBtn");
 if (generateBtn) generateBtn.addEventListener("click", generateCoupon);
 if (generateLadderBtn) generateLadderBtn.addEventListener("click", generateLadderCoupons);
 if (generateMultiBtn) generateMultiBtn.addEventListener("click", renderMultiStrategy);
+if (coachAiBtn) coachAiBtn.addEventListener("click", runCoachAiOneClick);
 if (replaceWeakBtn) replaceWeakBtn.addEventListener("click", replaceWeakSelection);
 if (replaceTooCloseBtn) replaceTooCloseBtn.addEventListener("click", replaceTooCloseSelections);
 if (simulateBankrollBtn) simulateBankrollBtn.addEventListener("click", simulateBankrollBeforeValidation);
@@ -3815,6 +3917,8 @@ function applyStoredCouponFormValues() {
   if (sizeInput) sizeInput.value = String(getStoredNumber(COUPON_SIZE_KEY, Number(sizeInput.value || 3)));
   const minStartSelect = document.getElementById("minStartMinutesSelect");
   if (minStartSelect) minStartSelect.value = String(getStoredNumber(COUPON_MIN_START_MINUTES_KEY, Number(minStartSelect.value || 5)));
+  const safeWindowSwitch = document.getElementById("safeWindowSwitch");
+  if (safeWindowSwitch) safeWindowSwitch.checked = isSafeWindowEnabled();
   const riskSelect = document.getElementById("riskSelect");
   if (riskSelect) riskSelect.value = getStoredString(COUPON_RISK_KEY, riskSelect.value || "balanced");
   const stakeInput = document.getElementById("stakeInput");
@@ -3842,6 +3946,7 @@ function applyQueryOverrides() {
   const startAlert = params.get("startAlert");
   const drift = params.get("drift");
   const watchDelta = params.get("watchDelta");
+  const safeWindow = params.get("safeWindow");
 
   if (size != null) setStoredNumber(COUPON_SIZE_KEY, size);
   if (minStartMinutes != null) setStoredNumber(COUPON_MIN_START_MINUTES_KEY, minStartMinutes);
@@ -3855,6 +3960,7 @@ function applyQueryOverrides() {
   if (startAlert != null) setStoredNumber(COUPON_START_ALERT_KEY, startAlert);
   if (drift != null) setStoredNumber(COUPON_DRIFT_KEY, drift);
   if (watchDelta != null) setStoredNumber(COUPON_WATCH_DELTA_KEY, watchDelta);
+  if (safeWindow != null) setSafeWindowEnabled(!(safeWindow === "0" || safeWindow === "false"));
 }
 
 function applyPendingLeagueSelection() {

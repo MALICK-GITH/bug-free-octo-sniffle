@@ -23,6 +23,9 @@ let lastLoadRequestId = 0;
 const GENERATED_MEDIA_FILTER_KEY = "fc25_generated_media_filter_v1";
 const GENERATED_MEDIA_LIMIT = 12;
 let generatedMediaFilter = "all";
+const liveScoreByMatch = new Map();
+const GOAL_ALERT_COOLDOWN_MS = 30 * 1000;
+const goalAlertLastShown = new Map();
 
 function siteLog(level, message, meta) {
   if (!window.SiteLogger || typeof window.SiteLogger[level] !== "function") return;
@@ -1831,10 +1834,52 @@ function pushOddAlert(message) {
   }, 3800);
 }
 
+function toScoreNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pushGoalSwingAlert(match, prevScore, nextScore) {
+  const key = String(match?.id || "");
+  if (!key) return;
+  const now = Date.now();
+  const last = goalAlertLastShown.get(key) || 0;
+  if (now - last < GOAL_ALERT_COOLDOWN_MS) return;
+  goalAlertLastShown.set(key, now);
+  const home = String(match?.teamHome || "Equipe 1");
+  const away = String(match?.teamAway || "Equipe 2");
+  const msg = `ALERTE BUT: ${home} ${nextScore.home}-${nextScore.away} ${away} (avant ${prevScore.home}-${prevScore.away})`;
+  pushOddAlert(msg);
+  if (window.enableBackgroundPush && typeof window.enableBackgroundPush === "function") {
+    try { window.enableBackgroundPush(); } catch {}
+  }
+}
+
 function enrichWithTrend(matches) {
   const alerts = [];
   const enriched = (matches || []).map((match) => {
     const key = String(match.id);
+    const scoreRaw = extractScore(match?.score);
+    const nextScore = {
+      home: toScoreNumber(scoreRaw.home),
+      away: toScoreNumber(scoreRaw.away),
+    };
+    const prevScore = liveScoreByMatch.get(key) || { home: null, away: null };
+    liveScoreByMatch.set(key, nextScore);
+    if (
+      classifyMatch(match) === "live" &&
+      Number.isFinite(nextScore.home) &&
+      Number.isFinite(nextScore.away) &&
+      Number.isFinite(prevScore.home) &&
+      Number.isFinite(prevScore.away)
+    ) {
+      const prevTotal = prevScore.home + prevScore.away;
+      const nextTotal = nextScore.home + nextScore.away;
+      if (nextTotal > prevTotal) {
+        pushGoalSwingAlert(match, prevScore, nextScore);
+      }
+    }
+
     const prev = previousOddsByMatch.get(key) || {};
     const next = {
       home: normalizeOdd(match?.odds1x2?.home),
