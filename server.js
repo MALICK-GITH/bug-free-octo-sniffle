@@ -241,7 +241,15 @@ async function sendBackgroundPushToAll(payload = {}, options = {}) {
   let failed = 0;
   let removed = 0;
   const keep = [];
-  const body = JSON.stringify(payload || {});
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  const pushMessage = {
+    title: String(safePayload.title || "ONE-DELUX"),
+    body: String(safePayload.body || "Nouvelle mise a jour"),
+    url: String(safePayload.url || "/"),
+    type: String(safePayload.type || topic || "general"),
+    at: String(safePayload.at || new Date().toISOString()),
+  };
+  const body = JSON.stringify(pushMessage);
   for (const entry of entries) {
     if (!force) {
       if (!shouldSendByTopic(entry.preferences, topic)) {
@@ -287,8 +295,8 @@ async function sendBackgroundPushToAll(payload = {}, options = {}) {
   writePushSubscriptions(keep);
   appendPushLog({
     topic,
-    title: payload?.title || "ONE-DELUX",
-    body: payload?.body || "",
+    title: pushMessage.title || "ONE-DELUX",
+    body: pushMessage.body || "",
     sent,
     failed,
     removed,

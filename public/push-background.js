@@ -147,21 +147,18 @@
 
     toggleBtn.addEventListener("click", async () => {
       const status = getStatus();
-      if (status.permission === "granted" && status.optedIn) {
-        await disablePush();
-      } else {
-        await enablePush().catch(() => {});
-      }
+      if (status.permission === "granted" && status.optedIn) return;
+      await enablePush().catch(() => {});
       refresh();
     });
 
     prefsBtn.addEventListener("click", async () => {
       const current = getPrefs();
-      const choice = prompt("Topics (all,finished,coupon,system) séparés par virgule:", current.topics.join(","));
+      const choice = prompt("Topics (all,finished,coupon,system) separes par virgule:", current.topics.join(","));
       if (!choice) return;
       const topics = choice.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
       await updatePreferences({ topics: topics.length ? topics : ["all"] });
-      alert("Préférences notifications mises à jour.");
+      alert("Preferences notifications mises a jour.");
     });
 
     refresh();
@@ -174,8 +171,13 @@
   window.getBackgroundPushStatus = getStatus;
 
   window.addEventListener("load", () => {
+    localStorage.setItem(OPT_IN_KEY, "1");
+    if ("Notification" in window && Notification.permission === "default") {
+      setTimeout(() => {
+        enablePush().catch(() => {});
+      }, 800);
+    }
     syncSubscription().catch(() => {});
     injectMiniPushPanel();
   });
 })();
-
