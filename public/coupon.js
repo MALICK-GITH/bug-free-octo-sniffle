@@ -4015,7 +4015,11 @@ async function initCouponPage() {
 
   if ("Notification" in window && Notification.permission === "default") {
     try {
-      Notification.requestPermission();
+      Notification.requestPermission().then((status) => {
+        if (status === "granted" && typeof window.enableBackgroundPush === "function") {
+          window.enableBackgroundPush().catch(() => {});
+        }
+      });
     } catch { }
   }
 

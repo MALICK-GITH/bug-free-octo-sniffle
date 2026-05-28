@@ -3,6 +3,13 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 const crypto = require("crypto");
 const express = require("express");
 const sharp = require("sharp");
+let webPush = null;
+try {
+  // Optional runtime dependency for real background push notifications.
+  webPush = require("web-push");
+} catch (_err) {
+  webPush = null;
+}
 const config = require("./server/config");
 const { createHelmetMiddleware, csrfProtection, requestTimingLogger } = require("./server/middleware/security");
 const { defaultRateLimiter, strictRateLimiter, couponRateLimiter, chatRateLimiter } = require("./server/middleware/rateLimiter");
@@ -86,6 +93,75 @@ let matchTrackingRunning = false;
 let matchTrackingRunCount = 0;
 let activeServerPort = DEFAULT_PORT;
 const CRON_SECRET = String(process.env.CRON_SECRET || "").trim();
+const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY || "").trim();
+const VAPID_PRIVATE_KEY = String(process.env.VAPID_PRIVATE_KEY || "").trim();
+const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT || "mailto:admin@one-delux.local").trim();
+const PUSH_SUBSCRIPTIONS_FILE = path.join(__dirname, "data", "push-subscriptions.json");
+
+function ensurePushDataDir() {
+  try {
+    const dir = path.dirname(PUSH_SUBSCRIPTIONS_FILE);
+    if (!require("fs").existsSync(dir)) require("fs").mkdirSync(dir, { recursive: true });
+  } catch (_error) {}
+}
+
+function readPushSubscriptions() {
+  try {
+    ensurePushDataDir();
+    if (!require("fs").existsSync(PUSH_SUBSCRIPTIONS_FILE)) return [];
+    const raw = require("fs").readFileSync(PUSH_SUBSCRIPTIONS_FILE, "utf8");
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function writePushSubscriptions(list) {
+  try {
+    ensurePushDataDir();
+    require("fs").writeFileSync(PUSH_SUBSCRIPTIONS_FILE, JSON.stringify(Array.isArray(list) ? list : [], null, 2), "utf8");
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function pushSubKey(sub) {
+  return String(sub?.endpoint || "").trim();
+}
+
+async function sendBackgroundPushToAll(payload = {}) {
+  if (!webPush || !VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    return { sent: 0, failed: 0, removed: 0, reason: "PUSH_NOT_CONFIGURED" };
+  }
+  webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  const subs = readPushSubscriptions();
+  if (!subs.length) return { sent: 0, failed: 0, removed: 0 };
+
+  let sent = 0;
+  let failed = 0;
+  let removed = 0;
+  const keep = [];
+  const body = JSON.stringify(payload || {});
+  for (const sub of subs) {
+    try {
+      await webPush.sendNotification(sub, body);
+      sent += 1;
+      keep.push(sub);
+    } catch (error) {
+      failed += 1;
+      const code = Number(error?.statusCode || 0);
+      if (code === 404 || code === 410) {
+        removed += 1;
+      } else {
+        keep.push(sub);
+      }
+    }
+  }
+  writePushSubscriptions(keep);
+  return { sent, failed, removed };
+}
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -3143,12 +3219,26 @@ app.get("/api/cron/learn", async (req, res) => {
     const dryRun = String(req.query?.dryRun || "").trim() === "1";
     const debug = String(req.query?.debug || "").trim() === "1";
     const result = await runLearningCron({ dryRun, debug });
+    let push = null;
+    if (!dryRun) {
+      const analysedMatches = Number(result?.report?.totals?.analysedMatches || 0);
+      if (analysedMatches > 0) {
+        push = await sendBackgroundPushToAll({
+          title: "ONE-DELUX",
+          body: `Nouveaux matchs termines analyses: ${analysedMatches}`,
+          url: "/suivre.html",
+          type: "cron_learn",
+          at: new Date().toISOString(),
+        });
+      }
+    }
     return res.json({
       success: true,
       source: "cron-job.org",
       dryRun,
       debug,
       data: result.report,
+      push,
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -3226,6 +3316,61 @@ app.get("/api/cron/finished-matches/export", async (req, res) => {
         details: error.message,
       },
     });
+  }
+});
+
+app.get("/api/push/public-key", (req, res) => {
+  if (!VAPID_PUBLIC_KEY) {
+    return res.status(503).json({
+      success: false,
+      message: "VAPID_PUBLIC_KEY manquant sur le serveur.",
+    });
+  }
+  return res.json({ success: true, publicKey: VAPID_PUBLIC_KEY });
+});
+
+app.post("/api/push/subscribe", async (req, res) => {
+  try {
+    const sub = req.body?.subscription || req.body || {};
+    const key = pushSubKey(sub);
+    if (!key || !sub?.keys?.p256dh || !sub?.keys?.auth) {
+      return res.status(400).json({ success: false, message: "Subscription invalide." });
+    }
+    const current = readPushSubscriptions();
+    const dedup = new Map();
+    for (const item of current) dedup.set(pushSubKey(item), item);
+    dedup.set(key, sub);
+    writePushSubscriptions(Array.from(dedup.values()));
+    return res.json({ success: true, total: dedup.size });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Impossible d'enregistrer l'abonnement push.", error: error.message });
+  }
+});
+
+app.post("/api/push/test", async (req, res) => {
+  try {
+    const auth = isAuthorizedCronRequest(req);
+    if (!auth.ok) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "CRON_FORBIDDEN",
+          message: auth.reason === "missing_server_secret"
+            ? "CRON_SECRET n'est pas configure sur le serveur."
+            : "Cle cron invalide.",
+        },
+      });
+    }
+    const result = await sendBackgroundPushToAll({
+      title: "ONE-DELUX",
+      body: String(req.body?.message || "Notification test en arriere-plan"),
+      url: String(req.body?.url || "/"),
+      type: "manual_test",
+      at: new Date().toISOString(),
+    });
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Echec test push.", error: error.message });
   }
 });
 
