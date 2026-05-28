@@ -1036,6 +1036,7 @@ function updateSendButtonState() {
   const stickyBtn = document.getElementById("sendTelegramBtnSticky");
   const stickyImageBtn = document.getElementById("sendTelegramImageBtnSticky");
   const replaceWeakBtn = document.getElementById("replaceWeakBtn");
+  const replaceTooCloseBtn = document.getElementById("replaceTooCloseBtn");
   const imageBtn = document.getElementById("downloadImageBtn");
   const premiumImageBtn = document.getElementById("downloadPremiumImageBtn");
   const premiumImageBtnQuick = document.getElementById("downloadPremiumImageBtnQuick");
@@ -1064,6 +1065,7 @@ function updateSendButtonState() {
   if (stickyBtn) stickyBtn.disabled = !enabled;
   if (stickyImageBtn) stickyImageBtn.disabled = !enabled;
   if (replaceWeakBtn) replaceWeakBtn.disabled = !enabled || frozen;
+  if (replaceTooCloseBtn) replaceTooCloseBtn.disabled = !enabled || frozen;
   if (imageBtn) imageBtn.disabled = !enabled;
   if (premiumImageBtn) premiumImageBtn.disabled = !enabled;
   if (premiumImageBtnQuick) premiumImageBtnQuick.disabled = !enabled;
@@ -2207,6 +2209,27 @@ async function replaceStartedSelectionsBeforeTelegram() {
   renderCoupon(lastCouponData);
 }
 
+async function replaceTooCloseSelections() {
+  const panel = document.getElementById("validation");
+  if (!lastCouponData?.coupon?.length) {
+    if (panel) panel.innerHTML = "<p>Genere d'abord un coupon avant remplacement.</p>";
+    return;
+  }
+  if (isCouponFrozen(lastCouponData.coupon)) {
+    if (panel) panel.innerHTML = `<p>Freeze actif: remplacement bloque (<= ${getFreezeMinutes()} min avant debut).</p>`;
+    return;
+  }
+  if (panel) panel.innerHTML = "<p>Remplacement des matchs trop proches en cours...</p>";
+  const before = Array.isArray(lastCouponData.coupon) ? lastCouponData.coupon.slice() : [];
+  await replaceStartedSelectionsBeforeTelegram();
+  const changed = before.filter((p, idx) => String(p?.matchId || "") !== String(lastCouponData?.coupon?.[idx]?.matchId || "")).length;
+  if (panel) {
+    panel.innerHTML = changed > 0
+      ? `<p>${changed} match(s) trop proches remplaces selon ton filtre (${getMinStartMinutesFilter()} min).</p>`
+      : `<p>Aucun match trop proche a remplacer (filtre ${getMinStartMinutesFilter()} min).</p>`;
+  }
+}
+
 function getStartedSelectionsLocal(coupon = []) {
   const nowSec = Math.floor(Date.now() / 1000);
   const minStartMinutes = getMinStartMinutesFilter();
@@ -2324,6 +2347,11 @@ function renderCoupon(data) {
 
   const items = picks
     .map((p, i) => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const minStartMinutes = getMinStartMinutesFilter();
+      const startMin = Math.max(0, Math.floor((Number(p?.startTimeUnix || 0) - nowSec) / 60));
+      const tooClose = startMin < minStartMinutes;
+      const timeBadgeClass = tooClose ? "time-badge time-badge-danger" : startMin <= minStartMinutes + 2 ? "time-badge time-badge-warn" : "time-badge time-badge-ok";
       const q = computeDataQualityScore(p);
       const replay = buildReplayLines(p, data.riskProfile || "balanced")
         .map((x) => `<li>${x}</li>`)
@@ -2335,6 +2363,7 @@ function renderCoupon(data) {
         <span>Heure locale: ${formatMatchLocalDateTime(p.startTimeUnix)} | <strong data-countdown-start="${Number(
         p.startTimeUnix || 0
       )}">T- ${formatCountdownLabel(p.startTimeUnix)}</strong></span>
+        <span class="${timeBadgeClass}">T-${startMin} min ${tooClose ? "(trop proche)" : ""}</span>
         <span>${p.pari}</span>
         <span>Cote ${formatOdd(p.cote)} | Confiance ${p.confiance}%</span>
         ${(() => {
@@ -2890,6 +2919,12 @@ async function sendCouponToTelegram(sendImage = false, mini = false) {
     await replaceStartedSelectionsBeforeTelegram();
     await preflightTelegramSafety();
     await maybeStartAlertAndReplace();
+    const nowSec = Math.floor(Date.now() / 1000);
+    const minStartMinutes = getMinStartMinutesFilter();
+    const stillTooClose = (lastCouponData.coupon || []).filter((x) => !matchRespectsMinStart(x, nowSec, minStartMinutes));
+    if (stillTooClose.length) {
+      throw new Error(`Envoi bloque: ${stillTooClose.length} match(s) sont encore sous le seuil ${minStartMinutes} min.`);
+    }
     const adapted = await enforceTicketShield("envoi Telegram");
     const insights = computeCouponInsights(lastCouponData.coupon, lastCouponData.riskProfile || "balanced");
     const telegramConfidenceScore = computeTelegramConfidenceScore(
@@ -3615,6 +3650,7 @@ const generateBtn = document.getElementById("generateBtn");
 const generateLadderBtn = document.getElementById("generateLadderBtn");
 const generateMultiBtn = document.getElementById("generateMultiBtn");
 const replaceWeakBtn = document.getElementById("replaceWeakBtn");
+const replaceTooCloseBtn = document.getElementById("replaceTooCloseBtn");
 const simulateBankrollBtn = document.getElementById("simulateBankrollBtn");
 const validateBtn = document.getElementById("validateBtn");
 const sendTelegramBtn = document.getElementById("sendTelegramBtn");
@@ -3646,6 +3682,7 @@ if (generateBtn) generateBtn.addEventListener("click", generateCoupon);
 if (generateLadderBtn) generateLadderBtn.addEventListener("click", generateLadderCoupons);
 if (generateMultiBtn) generateMultiBtn.addEventListener("click", renderMultiStrategy);
 if (replaceWeakBtn) replaceWeakBtn.addEventListener("click", replaceWeakSelection);
+if (replaceTooCloseBtn) replaceTooCloseBtn.addEventListener("click", replaceTooCloseSelections);
 if (simulateBankrollBtn) simulateBankrollBtn.addEventListener("click", simulateBankrollBeforeValidation);
 if (validateBtn) {
   validateBtn.addEventListener("click", validateTicket);

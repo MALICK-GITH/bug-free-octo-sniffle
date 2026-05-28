@@ -788,6 +788,35 @@ h1 {
   font-family: "Chakra Petch", sans-serif;
 }
 
+.time-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.time-badge-ok {
+  color: #9dffd0;
+  background: rgba(24, 94, 62, 0.28);
+  border-color: rgba(98, 255, 184, 0.35);
+}
+
+.time-badge-warn {
+  color: #ffe29f;
+  background: rgba(110, 72, 10, 0.3);
+  border-color: rgba(255, 214, 130, 0.35);
+}
+
+.time-badge-danger {
+  color: #ffc0c0;
+  background: rgba(113, 24, 24, 0.34);
+  border-color: rgba(255, 130, 130, 0.45);
+}
+
 ol,
 .validation-list,
 .history-list {
