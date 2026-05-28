@@ -42,6 +42,7 @@ const {
   getTelegramHistory,
   getFinishedMatchesDataset,
   getFinishedMatchesDatasetCount,
+  dedupeFinishedMatchesDataset,
   saveUpdateEntry,
   getUpdateHistory,
   getAuditHistory,
@@ -3417,6 +3418,45 @@ app.get("/api/cron/finished-matches/count", async (req, res) => {
       error: {
         code: "CRON_COUNT_ERROR",
         message: "Impossible de compter les matchs termines.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.post("/api/cron/finished-matches/dedupe", async (req, res) => {
+  const auth = isAuthorizedCronRequest(req);
+  if (!auth.ok) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: "CRON_FORBIDDEN",
+        message: auth.reason === "missing_server_secret"
+          ? "CRON_SECRET n'est pas configure sur le serveur."
+          : "Cle cron invalide.",
+      },
+    });
+  }
+
+  try {
+    const result = await dedupeFinishedMatchesDataset();
+    return res.json({
+      success: true,
+      source: "cron-job.org",
+      data: {
+        table: "finished_matches_dataset",
+        ...result,
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "CRON_DEDUPE_ERROR",
+        message: "Impossible de dedupliquer la table des matchs termines.",
         details: error.message,
       },
     });

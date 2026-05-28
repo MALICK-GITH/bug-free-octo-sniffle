@@ -2616,6 +2616,51 @@ async function getFinishedMatchesDatasetCount() {
   return Number(row?.total) || 0;
 }
 
+async function dedupeFinishedMatchesDataset() {
+  if (await canUsePostgres()) {
+    const beforeRes = await postgresPool.query(`SELECT COUNT(*)::bigint AS total FROM finished_matches_dataset`);
+    await postgresPool.query(`
+      DELETE FROM finished_matches_dataset a
+      USING finished_matches_dataset b
+      WHERE a.match_id = b.match_id
+        AND a.id < b.id
+    `);
+    const afterRes = await postgresPool.query(`SELECT COUNT(*)::bigint AS total FROM finished_matches_dataset`);
+    const before = Number(beforeRes.rows?.[0]?.total) || 0;
+    const after = Number(afterRes.rows?.[0]?.total) || 0;
+    return { before, after, removed: Math.max(0, before - after) };
+  }
+
+  if (await canUseMySql()) {
+    const [beforeRows] = await mysqlPool.execute(`SELECT COUNT(*) AS total FROM finished_matches_dataset`);
+    await mysqlPool.execute(`
+      DELETE t1
+      FROM finished_matches_dataset t1
+      INNER JOIN finished_matches_dataset t2
+        ON t1.match_id = t2.match_id
+       AND t1.id < t2.id
+    `);
+    const [afterRows] = await mysqlPool.execute(`SELECT COUNT(*) AS total FROM finished_matches_dataset`);
+    const before = Number(beforeRows?.[0]?.total) || 0;
+    const after = Number(afterRows?.[0]?.total) || 0;
+    return { before, after, removed: Math.max(0, before - after) };
+  }
+
+  const beforeRow = sqliteDb.prepare(`SELECT COUNT(*) AS total FROM finished_matches_dataset`).get();
+  sqliteDb.exec(`
+    DELETE FROM finished_matches_dataset
+    WHERE id NOT IN (
+      SELECT MAX(id)
+      FROM finished_matches_dataset
+      GROUP BY match_id
+    )
+  `);
+  const afterRow = sqliteDb.prepare(`SELECT COUNT(*) AS total FROM finished_matches_dataset`).get();
+  const before = Number(beforeRow?.total) || 0;
+  const after = Number(afterRow?.total) || 0;
+  return { before, after, removed: Math.max(0, before - after) };
+}
+
 async function saveAuditReport(entry = {}) {
   const auditId = entry.auditId ? String(entry.auditId) : `AUD-${Date.now()}`;
   const savedOptions = buildSavedOptions(entry);
@@ -3909,6 +3954,7 @@ module.exports = {
   upsertFinishedMatchDataset,
   getFinishedMatchesDataset,
   getFinishedMatchesDatasetCount,
+  dedupeFinishedMatchesDataset,
   saveAuditReport,
   saveGeneratedAsset,
   getGeneratedAssets,
