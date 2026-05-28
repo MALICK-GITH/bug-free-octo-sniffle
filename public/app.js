@@ -451,6 +451,18 @@ function getCachedTeamLogo(name) {
   return value;
 }
 
+function setCachedTeamLogo(name, logoUrl) {
+  const key = normalizeTeamLookupKey(name);
+  const safeUrl = String(logoUrl || "").trim();
+  if (!key || !safeUrl) return;
+  teamLogoMemoryCache.set(key, safeUrl);
+  const disk = readTeamLogoCache();
+  disk[key] = safeUrl;
+  try {
+    localStorage.setItem(TEAM_LOGO_CACHE_KEY, JSON.stringify(disk));
+  } catch (_error) {}
+}
+
 function buildKnownTeamLogoMap(matches = []) {
   const map = new Map();
   (matches || []).forEach((match) => {
@@ -479,6 +491,8 @@ function sanitizeMatchLogos(match, knownLogos = new Map()) {
     teamAwayLogo: awayLogo,
     teamHomeLogoFallback: String(match?.teamHomeLogoFallback || "").trim() || null,
     teamAwayLogoFallback: String(match?.teamAwayLogoFallback || "").trim() || null,
+    teamHomeLogoCdn: String(match?.teamHomeLogoCdn || "").trim() || null,
+    teamAwayLogoCdn: String(match?.teamAwayLogoCdn || "").trim() || null,
     teamHomeLogoFile: String(match?.teamHomeLogoFile || "").trim() || null,
     teamAwayLogoFile: String(match?.teamAwayLogoFile || "").trim() || null,
   };
@@ -528,19 +542,27 @@ async function hydrateDirectTeamLogos(matches = []) {
   );
 }
 
-function createTeamLogo(name, logoUrl, fallbackUrl, isAway = false) {
+function createTeamLogo(name, logoUrl, fallbackUrl, isAway = false, logoCandidates = []) {
   const fallback = teamBadge(name);
   const safeName = escapeHtml(name);
   const awayClass = isAway ? " away" : "";
   const computedFallbackUrl =
     String(fallbackUrl || "").trim() || `/api/team-badge?name=${encodeURIComponent(String(name || "Equipe"))}`;
+  const cleanCandidates = Array.from(
+    new Set(
+      (Array.isArray(logoCandidates) ? logoCandidates : [])
+        .map((x) => String(x || "").trim())
+        .filter((x) => x && x !== String(logoUrl || "").trim() && x !== computedFallbackUrl)
+    )
+  );
   if (!logoUrl) {
     return `<div class="team-logo logo-fallback${awayClass}"><span class="team-logo-fallback">${fallback}</span></div>`;
   }
   const safeFallbackUrl = ` data-fallback-src="${escapeHtml(computedFallbackUrl)}"`;
+  const safeCandidates = cleanCandidates.length ? ` data-logo-candidates="${escapeHtml(cleanCandidates.join("|"))}"` : "";
   return `
     <div class="team-logo${awayClass}">
-      <img class="team-logo-img" src="${logoUrl}" alt="Logo ${safeName}" loading="lazy" decoding="async" referrerpolicy="no-referrer"${safeFallbackUrl} />
+      <img class="team-logo-img" src="${logoUrl}" alt="Logo ${safeName}" data-team-name="${safeName}" loading="lazy" decoding="async" referrerpolicy="no-referrer"${safeFallbackUrl}${safeCandidates} />
       <span class="team-logo-fallback">${fallback}</span>
     </div>
   `;
@@ -1707,12 +1729,12 @@ function createMatchCard(match, index) {
     </div>
     <div class="scoreboard">
       <div class="team-col">
-        ${createTeamLogo(match.teamHome, match.teamHomeLogo, match.teamHomeLogoFallback)}
+        ${createTeamLogo(match.teamHome, match.teamHomeLogo, match.teamHomeLogoFallback, false, [match.teamHomeLogoCdn])}
         <p class="team-name">${match.teamHome}</p>
       </div>
       <div class="score-center">${score.home} - ${score.away}</div>
       <div class="team-col">
-        ${createTeamLogo(match.teamAway, match.teamAwayLogo, match.teamAwayLogoFallback, true)}
+        ${createTeamLogo(match.teamAway, match.teamAwayLogo, match.teamAwayLogoFallback, true, [match.teamAwayLogoCdn])}
         <p class="team-name">${match.teamAway}</p>
       </div>
     </div>
@@ -1727,8 +1749,24 @@ function createMatchCard(match, index) {
 
   card.appendChild(detailLink);
   card.querySelectorAll(".team-logo-img").forEach((img) => {
+    img.addEventListener("load", () => {
+      const teamName = img.getAttribute("data-team-name");
+      if (teamName && img.currentSrc) {
+        setCachedTeamLogo(teamName, img.currentSrc);
+      }
+    });
     img.addEventListener("error", () => {
       const wrapper = img.closest(".team-logo");
+      const candidatesRaw = String(img.getAttribute("data-logo-candidates") || "").trim();
+      if (candidatesRaw) {
+        const candidates = candidatesRaw.split("|").map((x) => x.trim()).filter(Boolean);
+        const next = candidates.shift();
+        if (next && img.src !== next) {
+          img.setAttribute("data-logo-candidates", candidates.join("|"));
+          img.src = next;
+          return;
+        }
+      }
       const fallbackSrc = img.getAttribute("data-fallback-src");
       if (fallbackSrc && img.src !== fallbackSrc) {
         img.src = fallbackSrc;
