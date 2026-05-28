@@ -532,13 +532,15 @@ function createTeamLogo(name, logoUrl, fallbackUrl, isAway = false) {
   const fallback = teamBadge(name);
   const safeName = escapeHtml(name);
   const awayClass = isAway ? " away" : "";
+  const computedFallbackUrl =
+    String(fallbackUrl || "").trim() || `/api/team-badge?name=${encodeURIComponent(String(name || "Equipe"))}`;
   if (!logoUrl) {
     return `<div class="team-logo logo-fallback${awayClass}"><span class="team-logo-fallback">${fallback}</span></div>`;
   }
-  const safeFallbackUrl = fallbackUrl ? ` data-fallback-src="${escapeHtml(fallbackUrl)}"` : "";
+  const safeFallbackUrl = ` data-fallback-src="${escapeHtml(computedFallbackUrl)}"`;
   return `
     <div class="team-logo${awayClass}">
-      <img class="team-logo-img" src="${logoUrl}" alt="Logo ${safeName}" loading="lazy"${safeFallbackUrl} />
+      <img class="team-logo-img" src="${logoUrl}" alt="Logo ${safeName}" loading="lazy" decoding="async" referrerpolicy="no-referrer"${safeFallbackUrl} />
       <span class="team-logo-fallback">${fallback}</span>
     </div>
   `;
@@ -1734,6 +1736,7 @@ function createMatchCard(match, index) {
         return;
       }
       if (wrapper) wrapper.classList.add("logo-fallback");
+      img.remove();
     });
   });
   const watchBtn = card.querySelector("[data-watch-id]");

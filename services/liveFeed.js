@@ -77,6 +77,11 @@ function toTeamBadgeUrl(teamName) {
   return `/api/team-badge?name=${encodeURIComponent(clean || "Equipe")}`;
 }
 
+function toTeamCdnLogoUrl(teamId) {
+  const id = Number(teamId);
+  return Number.isFinite(id) && id > 1 ? `https://1xbet.com/sfiles/logo_teams/${id}.png` : null;
+}
+
 function parseScoreContext(event) {
   const fs = event?.SC?.FS || {};
   const score1 = Number(fs.S1 ?? fs.H ?? fs.Home ?? fs.SA ?? 0) || 0;
@@ -554,6 +559,8 @@ function simplifyEvent(event) {
   const context = parseScoreContext(event);
   const homeLogoFile = Array.isArray(event?.O1IMG) ? event.O1IMG[0] : null;
   const awayLogoFile = Array.isArray(event?.O2IMG) ? event.O2IMG[0] : null;
+  const homeCdnLogo = toTeamCdnLogoUrl(event?.O1I);
+  const awayCdnLogo = toTeamCdnLogoUrl(event?.O2I);
   const homeBadge = toTeamBadgeUrl(event.O1 || "Equipe 1");
   const awayBadge = toTeamBadgeUrl(event.O2 || "Equipe 2");
   const homeProxy = toLogoProxyUrl(homeLogoFile);
@@ -562,10 +569,12 @@ function simplifyEvent(event) {
     id: event.I,
     teamHome: event.O1 || "Equipe 1",
     teamAway: event.O2 || "Equipe 2",
-    teamHomeLogo: homeProxy || homeBadge,
-    teamAwayLogo: awayProxy || awayBadge,
+    teamHomeLogo: homeCdnLogo || homeProxy || homeBadge,
+    teamAwayLogo: awayCdnLogo || awayProxy || awayBadge,
     teamHomeLogoFallback: homeBadge,
     teamAwayLogoFallback: awayBadge,
+    teamHomeLogoCdn: homeCdnLogo,
+    teamAwayLogoCdn: awayCdnLogo,
     teamHomeLogoFile: homeLogoFile || null,
     teamAwayLogoFile: awayLogoFile || null,
     league: event.L || event.LE || "Competition virtuelle",
