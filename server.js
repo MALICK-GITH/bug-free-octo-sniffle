@@ -97,6 +97,8 @@ const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY || "").trim();
 const VAPID_PRIVATE_KEY = String(process.env.VAPID_PRIVATE_KEY || "").trim();
 const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT || "mailto:admin@one-delux.local").trim();
 const PUSH_SUBSCRIPTIONS_FILE = path.join(__dirname, "data", "push-subscriptions.json");
+const PUSH_LOG_FILE = path.join(__dirname, "data", "push-notification-log.json");
+const PUSH_DEFAULT_COOLDOWN_MINUTES = Math.max(1, Number(process.env.PUSH_DEFAULT_COOLDOWN_MINUTES) || 10);
 
 function ensurePushDataDir() {
   try {
@@ -128,38 +130,169 @@ function writePushSubscriptions(list) {
 }
 
 function pushSubKey(sub) {
-  return String(sub?.endpoint || "").trim();
+  return String(sub?.endpoint || sub?.subscription?.endpoint || "").trim();
 }
 
-async function sendBackgroundPushToAll(payload = {}) {
+function normalizePushPreferences(raw = {}) {
+  const topics = Array.isArray(raw?.topics) && raw.topics.length
+    ? raw.topics.map((t) => String(t || "").trim().toLowerCase()).filter(Boolean)
+    : ["all"];
+  const quietHours = raw?.quietHours && typeof raw.quietHours === "object"
+    ? {
+        enabled: Boolean(raw.quietHours.enabled),
+        start: Number.isFinite(Number(raw.quietHours.start)) ? Math.max(0, Math.min(23, Number(raw.quietHours.start))) : 23,
+        end: Number.isFinite(Number(raw.quietHours.end)) ? Math.max(0, Math.min(23, Number(raw.quietHours.end))) : 7,
+      }
+    : { enabled: false, start: 23, end: 7 };
+  const tzOffsetMinutes = Number.isFinite(Number(raw?.tzOffsetMinutes)) ? Number(raw.tzOffsetMinutes) : null;
+  return { topics, quietHours, tzOffsetMinutes };
+}
+
+function normalizePushEntry(raw = {}) {
+  const subscription = raw?.subscription || raw;
+  const endpoint = pushSubKey(subscription);
+  if (!endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) return null;
+  return {
+    endpoint,
+    subscription: {
+      endpoint: subscription.endpoint,
+      expirationTime: subscription.expirationTime ?? null,
+      keys: {
+        p256dh: subscription.keys.p256dh,
+        auth: subscription.keys.auth,
+      },
+    },
+    preferences: normalizePushPreferences(raw?.preferences || raw?.prefs || {}),
+    createdAt: raw?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastSentAt: raw?.lastSentAt || null,
+    lastTopic: raw?.lastTopic || null,
+    failCount: Number(raw?.failCount || 0),
+  };
+}
+
+function readPushLog() {
+  try {
+    ensurePushDataDir();
+    if (!require("fs").existsSync(PUSH_LOG_FILE)) return [];
+    const raw = require("fs").readFileSync(PUSH_LOG_FILE, "utf8");
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function writePushLog(items) {
+  try {
+    ensurePushDataDir();
+    const safe = Array.isArray(items) ? items.slice(-500) : [];
+    require("fs").writeFileSync(PUSH_LOG_FILE, JSON.stringify(safe, null, 2), "utf8");
+  } catch (_error) {}
+}
+
+function appendPushLog(entry = {}) {
+  const current = readPushLog();
+  current.push({
+    at: new Date().toISOString(),
+    topic: String(entry.topic || "general"),
+    title: String(entry.title || "ONE-DELUX"),
+    body: String(entry.body || ""),
+    sent: Number(entry.sent || 0),
+    failed: Number(entry.failed || 0),
+    removed: Number(entry.removed || 0),
+  });
+  writePushLog(current);
+}
+
+function isInQuietHours(preferences = {}, now = new Date()) {
+  const quiet = preferences?.quietHours || {};
+  if (!quiet.enabled) return false;
+  const tzOffsetMinutes = Number.isFinite(Number(preferences?.tzOffsetMinutes)) ? Number(preferences.tzOffsetMinutes) : 0;
+  const localMs = now.getTime() - tzOffsetMinutes * 60000;
+  const h = new Date(localMs).getUTCHours();
+  const start = Number(quiet.start);
+  const end = Number(quiet.end);
+  if (start === end) return true;
+  if (start < end) return h >= start && h < end;
+  return h >= start || h < end;
+}
+
+function shouldSendByTopic(preferences = {}, topic = "general") {
+  const topics = Array.isArray(preferences?.topics) ? preferences.topics : ["all"];
+  if (topics.includes("all")) return true;
+  return topics.includes(String(topic || "general").toLowerCase());
+}
+
+async function sendBackgroundPushToAll(payload = {}, options = {}) {
   if (!webPush || !VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
     return { sent: 0, failed: 0, removed: 0, reason: "PUSH_NOT_CONFIGURED" };
   }
   webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-  const subs = readPushSubscriptions();
-  if (!subs.length) return { sent: 0, failed: 0, removed: 0 };
+  const entries = readPushSubscriptions().map((item) => normalizePushEntry(item)).filter(Boolean);
+  if (!entries.length) return { sent: 0, failed: 0, removed: 0 };
 
+  const topic = String(options.topic || payload?.type || "general").toLowerCase();
+  const force = Boolean(options.force);
+  const cooldownMin = Math.max(1, Number(options.cooldownMin || PUSH_DEFAULT_COOLDOWN_MINUTES));
+  const now = new Date();
+  const nowMs = now.getTime();
   let sent = 0;
   let failed = 0;
   let removed = 0;
   const keep = [];
   const body = JSON.stringify(payload || {});
-  for (const sub of subs) {
+  for (const entry of entries) {
+    if (!force) {
+      if (!shouldSendByTopic(entry.preferences, topic)) {
+        keep.push(entry);
+        continue;
+      }
+      if (isInQuietHours(entry.preferences, now)) {
+        keep.push(entry);
+        continue;
+      }
+      if (entry.lastSentAt) {
+        const lastMs = new Date(entry.lastSentAt).getTime();
+        if (Number.isFinite(lastMs) && nowMs - lastMs < cooldownMin * 60000) {
+          keep.push(entry);
+          continue;
+        }
+      }
+    }
     try {
-      await webPush.sendNotification(sub, body);
+      await webPush.sendNotification(entry.subscription, body);
       sent += 1;
-      keep.push(sub);
+      keep.push({
+        ...entry,
+        lastSentAt: now.toISOString(),
+        lastTopic: topic,
+        failCount: 0,
+        updatedAt: now.toISOString(),
+      });
     } catch (error) {
       failed += 1;
       const code = Number(error?.statusCode || 0);
       if (code === 404 || code === 410) {
         removed += 1;
       } else {
-        keep.push(sub);
+        keep.push({
+          ...entry,
+          failCount: Number(entry.failCount || 0) + 1,
+          updatedAt: now.toISOString(),
+        });
       }
     }
   }
   writePushSubscriptions(keep);
+  appendPushLog({
+    topic,
+    title: payload?.title || "ONE-DELUX",
+    body: payload?.body || "",
+    sent,
+    failed,
+    removed,
+  });
   return { sent, failed, removed };
 }
 
@@ -3331,19 +3464,69 @@ app.get("/api/push/public-key", (req, res) => {
 
 app.post("/api/push/subscribe", async (req, res) => {
   try {
-    const sub = req.body?.subscription || req.body || {};
-    const key = pushSubKey(sub);
-    if (!key || !sub?.keys?.p256dh || !sub?.keys?.auth) {
+    const incoming = req.body?.subscription || req.body || {};
+    const normalized = normalizePushEntry({
+      subscription: incoming,
+      preferences: req.body?.preferences || req.body?.prefs || {},
+    });
+    if (!normalized) {
       return res.status(400).json({ success: false, message: "Subscription invalide." });
     }
     const current = readPushSubscriptions();
     const dedup = new Map();
-    for (const item of current) dedup.set(pushSubKey(item), item);
-    dedup.set(key, sub);
+    for (const item of current) {
+      const n = normalizePushEntry(item);
+      if (n) dedup.set(n.endpoint, n);
+    }
+    const previous = dedup.get(normalized.endpoint);
+    dedup.set(normalized.endpoint, {
+      ...normalized,
+      createdAt: previous?.createdAt || normalized.createdAt,
+      lastSentAt: previous?.lastSentAt || null,
+      lastTopic: previous?.lastTopic || null,
+      failCount: Number(previous?.failCount || 0),
+    });
     writePushSubscriptions(Array.from(dedup.values()));
-    return res.json({ success: true, total: dedup.size });
+    return res.json({ success: true, total: dedup.size, endpoint: normalized.endpoint });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Impossible d'enregistrer l'abonnement push.", error: error.message });
+  }
+});
+
+app.get("/api/push/status", (req, res) => {
+  const entries = readPushSubscriptions().map((item) => normalizePushEntry(item)).filter(Boolean);
+  const log = readPushLog();
+  return res.json({
+    success: true,
+    data: {
+      subscriptions: entries.length,
+      lastRuns: log.slice(-10),
+    },
+    meta: { timestamp: new Date().toISOString() },
+  });
+});
+
+app.post("/api/push/preferences", async (req, res) => {
+  try {
+    const endpoint = String(req.body?.endpoint || "").trim();
+    if (!endpoint) {
+      return res.status(400).json({ success: false, message: "endpoint requis." });
+    }
+    const prefs = normalizePushPreferences(req.body?.preferences || req.body?.prefs || {});
+    const current = readPushSubscriptions().map((item) => normalizePushEntry(item)).filter(Boolean);
+    let found = false;
+    const next = current.map((entry) => {
+      if (entry.endpoint !== endpoint) return entry;
+      found = true;
+      return { ...entry, preferences: prefs, updatedAt: new Date().toISOString() };
+    });
+    if (!found) {
+      return res.status(404).json({ success: false, message: "Abonnement introuvable." });
+    }
+    writePushSubscriptions(next);
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Impossible de mettre a jour les preferences push.", error: error.message });
   }
 });
 
@@ -3367,10 +3550,44 @@ app.post("/api/push/test", async (req, res) => {
       url: String(req.body?.url || "/"),
       type: "manual_test",
       at: new Date().toISOString(),
+    }, {
+      topic: String(req.body?.topic || "system"),
+      force: Boolean(req.body?.force),
+      cooldownMin: Number(req.body?.cooldownMin || PUSH_DEFAULT_COOLDOWN_MINUTES),
     });
     return res.json({ success: true, ...result });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Echec test push.", error: error.message });
+  }
+});
+
+app.post("/api/push/broadcast", async (req, res) => {
+  try {
+    const auth = isAuthorizedCronRequest(req);
+    if (!auth.ok) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "CRON_FORBIDDEN",
+          message: auth.reason === "missing_server_secret" ? "CRON_SECRET n'est pas configure sur le serveur." : "Cle cron invalide.",
+        },
+      });
+    }
+    const payload = {
+      title: String(req.body?.title || "ONE-DELUX"),
+      body: String(req.body?.body || "Nouvelle information"),
+      url: String(req.body?.url || "/"),
+      type: String(req.body?.type || "general"),
+      at: new Date().toISOString(),
+    };
+    const result = await sendBackgroundPushToAll(payload, {
+      topic: String(req.body?.topic || payload.type || "general"),
+      force: Boolean(req.body?.force),
+      cooldownMin: Number(req.body?.cooldownMin || PUSH_DEFAULT_COOLDOWN_MINUTES),
+    });
+    return res.json({ success: true, payload, ...result });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Echec diffusion push.", error: error.message });
   }
 });
 
