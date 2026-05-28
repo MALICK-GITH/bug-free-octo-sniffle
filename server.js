@@ -753,16 +753,19 @@ function getClientKey(req) {
 }
 
 function canUseChat(req) {
+  // Keep chat usable even when env values are set too low.
+  const effectiveWindowMs = Math.max(10_000, Number(CHAT_RATE_LIMIT_WINDOW_MS) || 60_000);
+  const effectiveMax = Math.max(30, Number(CHAT_RATE_LIMIT_MAX) || 10);
   const key = getClientKey(req);
   const now = Date.now();
-  const state = chatRateState.get(key) || { count: 0, resetAt: now + CHAT_RATE_LIMIT_WINDOW_MS };
+  const state = chatRateState.get(key) || { count: 0, resetAt: now + effectiveWindowMs };
   if (now > state.resetAt) {
     state.count = 0;
-    state.resetAt = now + CHAT_RATE_LIMIT_WINDOW_MS;
+    state.resetAt = now + effectiveWindowMs;
   }
   state.count += 1;
   chatRateState.set(key, state);
-  return state.count <= CHAT_RATE_LIMIT_MAX;
+  return state.count <= effectiveMax;
 }
 
 function isHeavyPostPath(path = "") {

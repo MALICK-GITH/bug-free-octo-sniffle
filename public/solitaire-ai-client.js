@@ -187,42 +187,56 @@
       history: Array.isArray(history) ? history : [],
       context: buildContext(context),
     };
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 18000);
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      const raw = await response.text();
-      let data = null;
+    const trySend = async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 18000);
       try {
-        data = raw ? JSON.parse(raw) : null;
-      } catch {
-        const snippet = compactText(raw || "", 240);
-        throw new Error(
-          snippet
-            ? `Reponse chat invalide: ${snippet}`
-            : "Le serveur chat a renvoye une reponse vide ou incomplete."
-        );
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        const raw = await response.text();
+        let data = null;
+        try {
+          data = raw ? JSON.parse(raw) : null;
+        } catch {
+          const snippet = compactText(raw || "", 240);
+          throw new Error(
+            snippet
+              ? `Reponse chat invalide: ${snippet}`
+              : "Le serveur chat a renvoye une reponse vide ou incomplete."
+          );
+        }
+        if (!data) {
+          throw new Error("Le serveur chat a renvoye une reponse vide ou incomplete.");
+        }
+        if (!response.ok || !data?.success) {
+          const err = new Error(data?.message || data?.error || "Erreur chat");
+          err.status = response.status;
+          throw err;
+        }
+        return data;
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          throw new Error("Le serveur chat a mis trop de temps a repondre.");
+        }
+        throw error;
+      } finally {
+        clearTimeout(timer);
       }
-      if (!data) {
-        throw new Error("Le serveur chat a renvoye une reponse vide ou incomplete.");
-      }
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.message || data?.error || "Erreur chat");
-      }
-      return data;
+    };
+
+    try {
+      return await trySend();
     } catch (error) {
-      if (error?.name === "AbortError") {
-        throw new Error("Le serveur chat a mis trop de temps a repondre.");
+      const status = Number(error?.status || 0);
+      if (status === 429 || status >= 500) {
+        await new Promise((r) => setTimeout(r, 700));
+        return trySend();
       }
       throw error;
-    } finally {
-      clearTimeout(timer);
     }
   }
 
