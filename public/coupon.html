@@ -43,6 +43,7 @@
   <link rel="stylesheet" href="/mobile-layout-fix.css" />
   <link rel="stylesheet" href="/site-embellishment.css" />
   <link rel="stylesheet" href="/coupon-compact-layout.css" />
+  <link rel="stylesheet" href="/coupon-competitive-ui.css" />
 </head>
 
 <body class="coupon-portal">
@@ -133,6 +134,12 @@
     </section>
 
     <section class="panel coupon-main-actions-panel">
+      <div class="competitive-topbar" aria-label="Barre competitive">
+        <button id="competitiveFocusBtn" type="button">Mode Focus</button>
+        <button id="competitiveDensityBtn" type="button">Ultra Compact</button>
+        <button id="competitivePulseBtn" type="button">Live Pulse</button>
+        <span id="competitiveClock" class="competitive-clock">--:--:--</span>
+      </div>
       <div class="coupon-simple-toggle-row">
         <button id="toggleCouponSimpleBtn" type="button">Afficher les options avancees</button>
         <span id="couponSimpleModeLabel">Vue simple active</span>
@@ -283,6 +290,15 @@
       <section class="panel panel-main" id="result">
         <p>En attente de generation.</p>
       </section>
+      <section class="panel competitive-stats-panel" id="competitiveStatsPanel">
+        <h3>Vue Competitive</h3>
+        <div class="competitive-stats-grid">
+          <article><span>Selections</span><strong id="compTotalSel">0</strong></article>
+          <article><span>Cote totale</span><strong id="compTotalOdd">-</strong></article>
+          <article><span>Confiance moy.</span><strong id="compAvgConf">0%</strong></article>
+          <article><span>Ligues</span><strong id="compLeagueCount">0</strong></article>
+        </div>
+      </section>
       <section class="panel panel-main" id="validation">
         <p>Validation ticket en attente.</p>
       </section>
@@ -374,6 +390,7 @@
   <script src="/site-reliability.js" defer></script>
   <script src="/browser-sync.js" defer></script>
   <script src="/pwa-register.js" defer></script>
+  <script src="/coupon-competitive-ui.js" defer></script>
 </body>
 
 </html>
