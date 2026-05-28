@@ -6,6 +6,7 @@ const STRONG_ODD_CHANGE_PERCENT = 9;
 const ODD_ALERT_COOLDOWN_MS = 90 * 1000;
 const oddAlertLastShown = new Map();
 const LOW_DATA_MODE_KEY = "fc25_low_data_mode_v1";
+const ULTRA_FAST_MODE_KEY = "fc25_ultra_fast_mode_v1";
 const WATCHLIST_KEY = "fc25_watchlist_v1";
 const WATCHLIST_SNAPSHOT_KEY = "fc25_watchlist_snapshot_v1";
 const WATCHLIST_USER_KEY = "fc25_watchlist_user_v1";
@@ -586,6 +587,15 @@ function isLowDataModeEnabled() {
 function setLowDataMode(value) {
   localStorage.setItem(LOW_DATA_MODE_KEY, value ? "1" : "0");
   document.body.classList.toggle("low-data", Boolean(value));
+}
+
+function isUltraFastModeEnabled() {
+  return localStorage.getItem(ULTRA_FAST_MODE_KEY) === "1";
+}
+
+function setUltraFastMode(value) {
+  localStorage.setItem(ULTRA_FAST_MODE_KEY, value ? "1" : "0");
+  document.body.classList.toggle("ultra-fast-mode", Boolean(value));
 }
 
 function getWatchlistUserId() {
@@ -1894,7 +1904,15 @@ function renderLeagueHeatmap(matches) {
     .map((x) => {
       const avgReliability = x.count ? x.reliabilitySum / x.count : 0;
       const volAvg = x.count ? x.volatility / x.count : 0;
-      const stability = clamp(Math.round(avgReliability - volAvg * 8 + Math.log2(x.count + 1) * 7), 5, 99);
+      const baseReliability = clamp(avgReliability, 35, 94);
+      const volatilityPenalty = volAvg * 14;
+      const samplePenalty = x.count < 3 ? (3 - x.count) * 6 : 0;
+      const sampleBonus = Math.min(6, Math.log2(x.count + 1) * 2.2);
+      const stability = clamp(
+        Math.round(baseReliability - volatilityPenalty - samplePenalty + sampleBonus),
+        35,
+        96
+      );
       return {
         ...x,
         avgReliability: Math.round(avgReliability),
@@ -2266,6 +2284,18 @@ if (lowDataToggle) {
   });
 } else {
   setLowDataMode(isLowDataModeEnabled());
+}
+const ultraFastToggle = document.getElementById("ultraFastToggle");
+if (ultraFastToggle) {
+  const enabled = isUltraFastModeEnabled();
+  ultraFastToggle.checked = enabled;
+  setUltraFastMode(enabled);
+  ultraFastToggle.addEventListener("change", () => {
+    const value = Boolean(ultraFastToggle.checked);
+    setUltraFastMode(value);
+  });
+} else {
+  setUltraFastMode(isUltraFastModeEnabled());
 }
 document.querySelectorAll(".match-mode").forEach((btn) => {
   btn.addEventListener("click", () => {

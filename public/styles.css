@@ -2917,3 +2917,26 @@ footer {
     padding-bottom: max(0.75rem, var(--safe-bottom));
   }
 }
+
+/* Ultra fast mobile mode */
+body.ultra-fast-mode *,
+body.ultra-fast-mode *::before,
+body.ultra-fast-mode *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+}
+
+body.ultra-fast-mode .bg-grid,
+body.ultra-fast-mode .hero-metric-strip,
+body.ultra-fast-mode .mode-spotlight,
+body.ultra-fast-mode .action-lane {
+  display: none !important;
+}
+
+body.ultra-fast-mode .match-card,
+body.ultra-fast-mode .heat-row,
+body.ultra-fast-mode .finder-row {
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
