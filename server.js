@@ -1508,289 +1508,133 @@ function buildCouponShareHeroSvg(payload = {}, options = {}) {
     </g>`;
 }
 
-function buildCouponImageSvg(payload = {}) {
+function buildUnifiedCouponSvg(payload = {}, options = {}) {
   const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
   const summary = payload.summary || {};
-  const riskRaw = truncateCouponLabel(String(payload.riskProfile || "balanced"), 20);
   const theme = getCouponVisualTheme(payload);
-  const picks = coupon.slice(0, 6);
-  const count = Math.max(1, picks.length || 1);
-  const cardH = 224;
-  const gap = 16;
-  const headH = 360;
-  const footH = 52;
-  const width = 1200;
-  const height = headH + footH + count * cardH + (count - 1) * gap;
   const generatedAt = formatDateTime(new Date());
-  const innerW = width - 72;
-  const hero = buildCouponShareHeroSvg(payload, { width, kicker: "ONE-DELUX FORMAT", heroY: 144 });
+  const riskRaw = truncateCouponLabel(String(payload.riskProfile || "balanced"), 18);
+  const variant = String(options.variant || "default");
+  const isStory = variant === "story";
+  const isPremium = variant === "premium";
+  const width = isStory ? 1080 : isPremium ? 1400 : 1200;
+  const maxRows = isStory ? 12 : isPremium ? 20 : 16;
+  const picks = coupon.slice(0, maxRows);
+  const count = Math.max(1, picks.length || 1);
+  const margin = isStory ? 42 : 28;
+  const rowGap = isStory ? 16 : 12;
+  const headerH = isStory ? 190 : 170;
+  const footerH = 46;
+  const rowH = isStory ? 130 : isPremium ? 110 : 120;
+  const innerW = width - margin * 2;
+  const height = headerH + footerH + count * rowH + (count - 1) * rowGap;
 
-  const cards = picks.map((pick, i) => {
-    const y = headH + i * (cardH + gap);
-    const league = escapeXml(truncateCouponLabel(pick.league || "Ligue virtuelle", 52));
-    const home = escapeXml(truncateCouponLabel(pick.teamHome || "Equipe 1", 22));
-    const away = escapeXml(truncateCouponLabel(pick.teamAway || "Equipe 2", 22));
-    const pari = escapeXml(truncateCouponLabel(pick.pari || "-", 64));
+  const rows = picks.map((pick, i) => {
+    const y = headerH + i * (rowH + rowGap);
+    const league = escapeXml(truncateCouponLabel(pick.league || "Ligue virtuelle", isStory ? 34 : 42));
+    const home = escapeXml(truncateCouponLabel(pick.teamHome || "Equipe 1", isStory ? 16 : 20));
+    const away = escapeXml(truncateCouponLabel(pick.teamAway || "Equipe 2", isStory ? 16 : 20));
+    const pari = escapeXml(truncateCouponLabel(pick.pari || "-", isStory ? 34 : 48));
     const odd = formatOddForTelegram(pick.cote);
-    const matchStart = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
-    const cx = innerW / 2;
+    const conf = Number(pick?.confiance || 0);
+    const startAt = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
+    const rowTop = isStory ? "rgba(16,24,42,0.92)" : "rgba(12,18,34,0.92)";
+    const rowBody = "rgba(5,10,22,0.96)";
     return `
-      <g transform="translate(36, ${y})">
-        <rect x="0" y="0" width="${innerW}" height="${cardH}" rx="16" fill="${theme.cardFill}" stroke="${theme.stroke}" stroke-width="1.5"/>
-        <rect x="0" y="0" width="7" height="${cardH}" rx="4" fill="${theme.accent}"/>
-        <rect x="0" y="0" width="${innerW}" height="46" rx="16" fill="rgba(18,28,48,0.88)"/>
-        <line x1="14" y1="46" x2="${innerW - 14}" y2="46" stroke="${theme.edgeGlow}"/>
-        <text x="20" y="30" fill="${theme.panelTitle}" font-size="14" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.06em">${i + 1}. ${league}</text>
-        <text x="${innerW - 18}" y="30" text-anchor="end" fill="${theme.textSoft}" font-size="12" font-family="Segoe UI, Arial, sans-serif">${matchStart}</text>
-        <text x="24" y="96" fill="${theme.textStrong}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
-        <g transform="translate(${cx - 34}, 58)">
-          <polygon points="34,0 68,20 34,40 0,20" fill="rgba(255,255,255,0.05)" stroke="${theme.accent}" stroke-width="2"/>
-          <text x="34" y="26" text-anchor="middle" fill="${theme.accent}" font-size="17" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
-        </g>
-        <text x="${innerW - 24}" y="96" text-anchor="end" fill="${theme.textStrong}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
-        <rect x="16" y="118" width="${innerW - 32}" height="92" rx="12" fill="rgba(4,8,18,0.92)" stroke="${theme.stroke}"/>
-        <text x="32" y="148" fill="${theme.textSoft}" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.12em">PARI ESPORTS</text>
-        <text x="32" y="176" fill="${theme.textStrong}" font-size="18" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
-        <text x="${innerW - 32}" y="148" text-anchor="end" fill="${theme.textSoft}" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">COTE</text>
-        <text x="${innerW - 32}" y="182" text-anchor="end" fill="${theme.odd}" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
+      <g transform="translate(${margin}, ${y})">
+        <rect x="0" y="0" width="${innerW}" height="${rowH}" rx="14" fill="${rowBody}" stroke="${theme.stroke}" stroke-width="1.1"/>
+        <rect x="0" y="0" width="${innerW}" height="36" rx="14" fill="${rowTop}"/>
+        <rect x="0" y="0" width="6" height="${rowH}" rx="3" fill="${theme.accent}"/>
+        <text x="14" y="24" fill="${theme.panelTitle}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${i + 1}. ${league}</text>
+        <text x="${innerW - 12}" y="24" text-anchor="end" fill="${theme.textSoft}" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${startAt}</text>
+        <text x="16" y="62" fill="${theme.textStrong}" font-size="${isStory ? 20 : 22}" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
+        <text x="${innerW / 2}" y="62" text-anchor="middle" fill="${theme.accent}" font-size="14" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
+        <text x="${innerW - 16}" y="62" text-anchor="end" fill="${theme.textStrong}" font-size="${isStory ? 20 : 22}" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
+        <rect x="12" y="${rowH - 38}" width="${innerW - 24}" height="26" rx="8" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)"/>
+        <text x="20" y="${rowH - 20}" fill="${theme.textStrong}" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
+        <text x="${innerW - 110}" y="${rowH - 20}" text-anchor="end" fill="${theme.odd}" font-size="14" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
+        <text x="${innerW - 12}" y="${rowH - 20}" text-anchor="end" fill="${theme.textSoft}" font-size="11" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${conf.toFixed(0)}%</text>
       </g>`;
   });
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <defs>
-    <linearGradient id="imgBg" x1="0" y1="0" x2="1.1" y2="1">
-      <stop offset="0%" stop-color="#050810"/>
-      <stop offset="45%" stop-color="#0c1528"/>
-      <stop offset="100%" stop-color="#120a20"/>
+    <linearGradient id="uBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#050913"/>
+      <stop offset="50%" stop-color="#0d1a30"/>
+      <stop offset="100%" stop-color="#130b1f"/>
     </linearGradient>
-    <radialGradient id="imgGlow" cx="18%" cy="12%" r="55%">
-      <stop offset="0%" stop-color="rgba(0,240,255,0.22)"/>
-      <stop offset="55%" stop-color="rgba(123,44,255,0.08)"/>
+    <radialGradient id="uGlowA" cx="10%" cy="0%" r="60%">
+      <stop offset="0%" stop-color="rgba(0,240,255,0.26)"/>
       <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
     </radialGradient>
-    <radialGradient id="imgFloor" cx="50%" cy="100%" r="70%">
-      <stop offset="0%" stop-color="rgba(255,0,170,0.12)"/>
+    <radialGradient id="uGlowB" cx="100%" cy="100%" r="60%">
+      <stop offset="0%" stop-color="rgba(255,0,170,0.20)"/>
       <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
     </radialGradient>
-    <linearGradient id="imgHead" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="50%" stop-color="#ff00aa"/>
-      <stop offset="100%" stop-color="#7b2cff"/>
-    </linearGradient>
-    <linearGradient id="imgAccent" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="100%" stop-color="#ff00aa"/>
-    </linearGradient>
-    <linearGradient id="imgStroke" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="rgba(0,240,255,0.5)"/>
-      <stop offset="100%" stop-color="rgba(123,44,255,0.35)"/>
-    </linearGradient>
-    <linearGradient id="imgOdd" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#5dffa2"/>
-      <stop offset="100%" stop-color="#00f0ff"/>
-    </linearGradient>
-    <pattern id="imgMesh" width="48" height="48" patternUnits="userSpaceOnUse">
-      <path d="M0 48 L48 0 M-12 12 L12 -12 M36 60 L60 36" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
-    </pattern>
   </defs>
-  <rect width="${width}" height="${height}" fill="${theme.bg}"/>
-  <rect width="${width}" height="${height}" fill="${theme.glow}"/>
-  <rect width="${width}" height="${height}" fill="${theme.floor}"/>
-  <rect width="${width}" height="${height}" fill="${theme.mesh}" opacity="0.9"/>
-  <rect x="24" y="18" width="${width - 48}" height="${headH - 36}" rx="20" fill="rgba(6,10,22,0.75)" stroke="${theme.stroke}" stroke-width="1.2"/>
-  <rect x="36" y="30" width="168" height="30" rx="8" fill="${theme.chipFill}" stroke="${theme.chipStroke}"/>
-  <text x="48" y="51" fill="${theme.panelTitle}" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.28em">${theme.label}</text>
-  <rect x="${width - 250}" y="30" width="176" height="30" rx="8" fill="${theme.chipFill}" stroke="${theme.chipStroke}"/>
-  <text x="${width - 162}" y="51" text-anchor="middle" fill="${theme.badgeText}" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">${theme.subtitle}</text>
-  <text x="48" y="96" fill="${theme.accent}" font-size="34" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${theme.title}</text>
-  <text x="48" y="124" fill="${theme.textStrong}" font-size="17" font-family="Segoe UI, Arial, sans-serif">Profil ${escapeXml(riskRaw)} · Sel. ${Number(summary.totalSelections) || coupon.length} · Combinee ${formatOddForTelegram(summary.combinedOdd)}</text>
-  <text x="48" y="148" fill="${theme.textSoft}" font-size="13" font-family="Segoe UI, Arial, sans-serif">Genere ${escapeXml(generatedAt)}</text>
-  ${hero}
-  ${cards.join("\n")}
-  <text x="48" y="${height - 26}" fill="${theme.textSoft}" font-size="14" font-family="Segoe UI, Arial, sans-serif">Signe SOLITAIRE HACK · Esports Virtual</text>
+  <rect width="${width}" height="${height}" fill="url(#uBg)"/>
+  <rect width="${width}" height="${height}" fill="url(#uGlowA)"/>
+  <rect width="${width}" height="${height}" fill="url(#uGlowB)"/>
+  <rect x="${margin}" y="22" width="${innerW}" height="${headerH - 34}" rx="16" fill="rgba(7,12,26,0.86)" stroke="${theme.stroke}" stroke-width="1.2"/>
+  <text x="${margin + 18}" y="58" fill="${theme.accent}" font-size="${isStory ? 34 : 32}" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${theme.title}</text>
+  <text x="${margin + 18}" y="86" fill="${theme.textStrong}" font-size="14" font-family="Segoe UI, Arial, sans-serif">Profil ${escapeXml(riskRaw)} · Sel. ${Number(summary.totalSelections) || coupon.length} · Cote ${formatOddForTelegram(summary.combinedOdd)}</text>
+  <text x="${margin + 18}" y="108" fill="${theme.textSoft}" font-size="12" font-family="Segoe UI, Arial, sans-serif">Genere ${escapeXml(generatedAt)}</text>
+  <rect x="${width - margin - 220}" y="38" width="200" height="30" rx="8" fill="${theme.chipFill}" stroke="${theme.chipStroke}"/>
+  <text x="${width - margin - 120}" y="58" text-anchor="middle" fill="${theme.badgeText}" font-size="12" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${theme.subtitle}</text>
+  ${rows.join("\n")}
+  <text x="${margin}" y="${height - 16}" fill="${theme.textSoft}" font-size="12" font-family="Segoe UI, Arial, sans-serif">ONE-DELUX · rendu compact propre · ${count} match${count > 1 ? "s" : ""}</text>
 </svg>`;
+}
+
+function buildCouponImageSvg(payload = {}) {
+  return buildUnifiedCouponSvg(payload, { variant: "default" });
 }
 
 function buildCouponStorySvg(payload = {}) {
-  const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
-  const summary = payload.summary || {};
-  const riskRaw = truncateCouponLabel(String(payload.riskProfile || "balanced"), 18);
-  const theme = getCouponVisualTheme(payload);
-  const picks = coupon.slice(0, 5);
-  const width = 1080;
-  const height = 1920;
-  const generatedAt = new Date().toLocaleString("fr-FR");
-  const cardW = width - 96;
-  const cardH = 268;
-  const startY = 300;
-  const gap = 22;
-
-  const cards = picks.map((pick, i) => {
-    const y = startY + i * (cardH + gap);
-    const home = escapeXml(truncateCouponLabel(pick.teamHome || "Equipe 1", 18));
-    const away = escapeXml(truncateCouponLabel(pick.teamAway || "Equipe 2", 18));
-    const league = escapeXml(truncateCouponLabel(pick.league || "Ligue", 28));
-    const pari = escapeXml(truncateCouponLabel(pick.pari || "-", 40));
-    const odd = formatOddForTelegram(pick.cote);
-    const conf = Number(pick.confiance) || 0;
-    const risk = conf >= 75 ? "SAFE" : conf >= 60 ? "MODERE" : "RISQUE";
-    const mid = cardW / 2;
-    return `
-      <g transform="translate(48, ${y})">
-        <rect x="0" y="0" width="${cardW}" height="${cardH}" rx="26" fill="${theme.cardFill}" stroke="${theme.stroke}" stroke-width="2"/>
-        <rect x="0" y="0" width="8" height="${cardH}" rx="4" fill="${theme.accent}"/>
-        <text x="24" y="44" fill="${theme.panelTitle}" font-size="22" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.04em">${i + 1}. ${league}</text>
-        <text x="${mid}" y="118" text-anchor="middle" fill="${theme.textStrong}" font-size="36" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
-        <g transform="translate(${mid - 40}, 128)">
-          <polygon points="40,0 80,24 40,48 0,24" fill="rgba(255,255,255,0.05)" stroke="${theme.accent}" stroke-width="2.5"/>
-          <text x="40" y="32" text-anchor="middle" fill="${theme.accent}" font-size="20" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
-        </g>
-        <text x="${mid}" y="210" text-anchor="middle" fill="${theme.textStrong}" font-size="36" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
-        <rect x="20" y="224" width="${cardW - 40}" height="36" rx="10" fill="rgba(0,240,255,0.08)" stroke="${theme.stroke}"/>
-        <text x="32" y="247" fill="${theme.textStrong}" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
-        <text x="${cardW - 32}" y="247" text-anchor="end" fill="${theme.odd}" font-size="22" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
-        <text x="${cardW - 24}" y="44" text-anchor="end" fill="${theme.badgeText}" font-size="20" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${conf}% ${risk}</text>
-      </g>`;
-  });
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <defs>
-    <linearGradient id="stBg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#030508"/>
-      <stop offset="40%" stop-color="#0a1428"/>
-      <stop offset="100%" stop-color="#180820"/>
-    </linearGradient>
-    <radialGradient id="stSpot" cx="50%" cy="0%" r="75%">
-      <stop offset="0%" stop-color="rgba(0,240,255,0.35)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </radialGradient>
-    <linearGradient id="stTitle" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="50%" stop-color="#ff00aa"/>
-      <stop offset="100%" stop-color="#c9ff3d"/>
-    </linearGradient>
-    <linearGradient id="stAccent" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ff00aa"/>
-      <stop offset="100%" stop-color="#7b2cff"/>
-    </linearGradient>
-    <linearGradient id="stStroke" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="rgba(0,240,255,0.55)"/>
-      <stop offset="100%" stop-color="rgba(255,0,170,0.4)"/>
-    </linearGradient>
-    <linearGradient id="stOdd" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#7dffb0"/>
-      <stop offset="100%" stop-color="#00f0ff"/>
-    </linearGradient>
-  </defs>
-  <rect width="${width}" height="${height}" fill="url(#stBg)"/>
-  <rect width="${width}" height="${height}" fill="url(#stSpot)"/>
-  <rect x="40" y="72" width="${width - 80}" height="200" rx="28" fill="rgba(8,12,24,0.82)" stroke="${theme.stroke}" stroke-width="1.5"/>
-  <text x="72" y="128" fill="${theme.accent}" font-size="52" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${theme.title}</text>
-  <rect x="${width - 296}" y="92" width="214" height="34" rx="10" fill="${theme.chipFill}" stroke="${theme.chipStroke}"/>
-  <text x="${width - 189}" y="115" text-anchor="middle" fill="${theme.badgeText}" font-size="14" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">${theme.subtitle}</text>
-  <text x="72" y="168" fill="${theme.panelTitle}" font-size="22" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.35em">${theme.label}</text>
-  <text x="72" y="210" fill="${theme.textStrong}" font-size="26" font-family="Segoe UI, Arial, sans-serif">Profil ${escapeXml(riskRaw)} · ${Number(summary.totalSelections) || coupon.length} selections</text>
-  <text x="72" y="246" fill="${theme.textSoft}" font-size="22" font-family="Segoe UI, Arial, sans-serif">Cote ${formatOddForTelegram(summary.combinedOdd)} · ${escapeXml(generatedAt)}</text>
-  ${buildCouponShareHeroSvg(payload, { width, kicker: "ONE-DELUX FORMAT" })}
-  ${cards.join("\n")}
-  <text x="72" y="${height - 88}" fill="${theme.textStrong}" font-size="24" font-family="Segoe UI, Arial, sans-serif">Signe SOLITAIRE HACK</text>
-  <text x="72" y="${height - 52}" fill="${theme.textSoft}" font-size="18" font-family="Segoe UI, Arial, sans-serif">Aucune combinaison n'est garantie gagnante.</text>
-</svg>`;
+  return buildUnifiedCouponSvg(payload, { variant: "story" });
 }
 
 function buildCouponPremiumSvg(payload = {}) {
-  const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
-  const summary = payload.summary || {};
-  const riskRaw = truncateCouponLabel(String(payload.riskProfile || "balanced"), 22);
-  const theme = getCouponVisualTheme(payload);
-  const picks = coupon.slice(0, 8);
-  const count = Math.max(1, picks.length || 1);
-  const width = 1400;
-  const headH = 286;
-  const cardH = 156;
-  const gap = 14;
-  const footH = 54;
-  const height = headH + footH + count * cardH + (count - 1) * gap;
-  const generatedAt = formatDateTime(new Date());
-  const rowW = width - 64;
-  const hero = buildCouponShareHeroSvg(payload, { width, kicker: "ONE-DELUX FORMAT" });
+  return buildUnifiedCouponSvg(payload, { variant: "premium" });
+}
 
-  const rows = picks
-    .map((pick, idx) => {
-      const y = headH + idx * (cardH + gap);
-      const home = escapeXml(truncateCouponLabel(pick.teamHome || "Equipe 1", 20));
-      const away = escapeXml(truncateCouponLabel(pick.teamAway || "Equipe 2", 20));
-      const league = escapeXml(truncateCouponLabel(pick.league || "Ligue virtuelle", 40));
-      const bet = escapeXml(truncateCouponLabel(pick.pari || "-", 48));
-      const odd = formatOddForTelegram(pick.cote);
-      const conf = Number(pick?.confiance || 0).toFixed(1);
-      const startAt = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
-      const q = Number(pick?.qualityScore || pick?.dataQuality || pick?.confiance || 0).toFixed(0);
-      const hx = rowW / 2;
-      return `
-      <g transform="translate(32, ${y})">
-        <rect x="0" y="0" width="${rowW}" height="${cardH}" rx="14" fill="${theme.cardFill}" stroke="${theme.stroke}"/>
-        <rect x="0" y="0" width="6" height="${cardH}" rx="3" fill="${theme.accent}"/>
-        <text x="16" y="28" fill="${theme.panelTitle}" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.08em">${idx + 1}. ${league}</text>
-        <text x="${rowW - 16}" y="28" text-anchor="end" fill="${theme.textSoft}" font-size="12" font-family="Segoe UI, Arial, sans-serif">${startAt}</text>
-        <text x="18" y="76" fill="${theme.textStrong}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
-        <g transform="translate(${hx - 28}, 44)">
-          <rect x="0" y="0" width="56" height="28" rx="8" fill="rgba(255,255,255,0.05)" stroke="${theme.accent}" stroke-width="1.5"/>
-          <text x="28" y="20" text-anchor="middle" fill="${theme.accent}" font-size="15" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
-        </g>
-        <text x="${rowW - 18}" y="76" text-anchor="end" fill="${theme.textStrong}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
-        <rect x="14" y="92" width="${rowW - 28}" height="48" rx="10" fill="rgba(12,18,32,0.95)" stroke="${theme.stroke}"/>
-        <text x="26" y="118" fill="${theme.textStrong}" font-size="16" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${bet}</text>
-        <text x="${rowW - 120}" y="122" text-anchor="end" fill="${theme.odd}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd}</text>
-        <text x="${rowW - 22}" y="112" text-anchor="end" fill="${theme.textSoft}" font-size="10" font-family="Segoe UI, Arial, sans-serif">CONF</text>
-        <text x="${rowW - 22}" y="128" text-anchor="end" fill="${theme.textSoft}" font-size="10" font-family="Segoe UI, Arial, sans-serif">${conf}% · Q${q}</text>
-      </g>`;
-    })
-    .join("\n");
+function buildMatchImageSvg(payload = {}) {
+  const coupon = Array.isArray(payload.coupon) ? payload.coupon : [];
+  const pick = coupon[0] || {};
+  const theme = getCouponVisualTheme(payload);
+  const width = 1200;
+  const height = 720;
+  const home = escapeXml(truncateCouponLabel(pick.teamHome || "Equipe 1", 26));
+  const away = escapeXml(truncateCouponLabel(pick.teamAway || "Equipe 2", 26));
+  const league = escapeXml(truncateCouponLabel(pick.league || "Ligue virtuelle", 44));
+  const pari = escapeXml(truncateCouponLabel(pick.pari || "-", 56));
+  const odd = formatOddForTelegram(pick.cote);
+  const startAt = escapeXml(formatMatchStartTimeUnix(pick.startTimeUnix));
+  const conf = Number(pick?.confiance || 0).toFixed(0);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <defs>
-    <linearGradient id="pmBg" x1="0" y1="0" x2="1.1" y2="1">
-      <stop offset="0%" stop-color="#020408"/>
-      <stop offset="50%" stop-color="#0c1830"/>
-      <stop offset="100%" stop-color="#14081a"/>
-    </linearGradient>
-    <radialGradient id="pmLite" cx="80%" cy="15%" r="50%">
-      <stop offset="0%" stop-color="rgba(255,0,170,0.2)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </radialGradient>
-    <linearGradient id="pmHead" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="33%" stop-color="#ff00aa"/>
-      <stop offset="100%" stop-color="#7b2cff"/>
-    </linearGradient>
-    <linearGradient id="pmBar" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="100%" stop-color="#7b2cff"/>
-    </linearGradient>
-    <linearGradient id="pmStroke" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(0,240,255,0.45)"/>
-      <stop offset="100%" stop-color="rgba(123,44,255,0.35)"/>
-    </linearGradient>
-    <linearGradient id="pmOdd" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#9fff6e"/>
-      <stop offset="100%" stop-color="#00f0ff"/>
+    <linearGradient id="mBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#060a15"/>
+      <stop offset="100%" stop-color="#131025"/>
     </linearGradient>
   </defs>
-  <rect width="${width}" height="${height}" fill="url(#pmBg)"/>
-  <rect width="${width}" height="${height}" fill="url(#pmLite)"/>
-  <rect x="18" y="16" width="${width - 36}" height="${headH - 34}" rx="20" fill="rgba(6,10,22,0.78)" stroke="${theme.stroke}" stroke-width="1.2"/>
-  <text x="40" y="58" fill="${theme.accent}" font-size="38" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${theme.title}</text>
-  <rect x="${width - 298}" y="34" width="208" height="32" rx="10" fill="${theme.chipFill}" stroke="${theme.chipStroke}"/>
-  <text x="${width - 194}" y="56" text-anchor="middle" fill="${theme.badgeText}" font-size="13" font-weight="800" font-family="Segoe UI, Arial, sans-serif" letter-spacing="0.2em">${theme.subtitle}</text>
-  <text x="40" y="92" fill="${theme.textStrong}" font-size="18" font-family="Segoe UI, Arial, sans-serif">${theme.label} · Profil ${escapeXml(riskRaw)} · ${Number(summary.totalSelections) || coupon.length} sel. · ${formatOddForTelegram(summary.combinedOdd)}</text>
-  <text x="40" y="120" fill="${theme.textSoft}" font-size="14" font-family="Segoe UI, Arial, sans-serif">Genere ${escapeXml(generatedAt)} — rendu HD mobile &amp; desktop</text>
-  ${hero}
-  ${rows}
-   <text x="40" y="${height - 22}" fill="${theme.textSoft}" font-size="14" font-family="Segoe UI, Arial, sans-serif">ONE-DELUX Signature — jeu responsable — combinaison non garantie</text>
+  <rect width="${width}" height="${height}" fill="url(#mBg)"/>
+  <rect x="34" y="26" width="${width - 68}" height="${height - 52}" rx="20" fill="rgba(7,12,26,0.88)" stroke="${theme.stroke}" stroke-width="1.4"/>
+  <text x="66" y="74" fill="${theme.accent}" font-size="34" font-weight="900" font-family="Segoe UI, Arial, sans-serif">MATCH INDIVIDUEL</text>
+  <text x="66" y="104" fill="${theme.textStrong}" font-size="16" font-family="Segoe UI, Arial, sans-serif">${league}</text>
+  <text x="${width - 66}" y="104" text-anchor="end" fill="${theme.textSoft}" font-size="14" font-family="Segoe UI, Arial, sans-serif">${startAt}</text>
+  <text x="${width / 2}" y="250" text-anchor="middle" fill="${theme.textStrong}" font-size="64" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${home}</text>
+  <text x="${width / 2}" y="328" text-anchor="middle" fill="${theme.accent}" font-size="34" font-weight="900" font-family="Segoe UI, Arial, sans-serif">VS</text>
+  <text x="${width / 2}" y="420" text-anchor="middle" fill="${theme.textStrong}" font-size="64" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${away}</text>
+  <rect x="66" y="486" width="${width - 132}" height="140" rx="14" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)"/>
+  <text x="88" y="532" fill="${theme.textSoft}" font-size="14" font-weight="700" font-family="Segoe UI, Arial, sans-serif">PARI</text>
+  <text x="88" y="566" fill="${theme.textStrong}" font-size="26" font-weight="800" font-family="Segoe UI, Arial, sans-serif">${pari}</text>
+  <text x="${width - 88}" y="532" text-anchor="end" fill="${theme.textSoft}" font-size="14" font-weight="700" font-family="Segoe UI, Arial, sans-serif">COTE / CONFIANCE</text>
+  <text x="${width - 88}" y="566" text-anchor="end" fill="${theme.odd}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${odd} · ${conf}%</text>
 </svg>`;
 }
 
@@ -4897,8 +4741,14 @@ async function generateCouponImageHandler(req, res) {
       });
     }
     const requested = req.body?.format || req.query?.format || "png";
+    const mode = String(req.body?.mode || req.query?.mode || "default").toLowerCase();
     const format = normalizeImageFormat(requested, "png");
-    const svg = buildCouponImageSvg(req.body || {});
+    const svg =
+      mode === "story"
+        ? buildCouponStorySvg(req.body || {})
+        : mode === "premium"
+          ? buildCouponPremiumSvg(req.body || {})
+          : buildCouponImageSvg(req.body || {});
     if (format === "svg") {
       const filename = `one-delux-${Date.now()}.svg`;
       res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
@@ -5613,9 +5463,14 @@ async function ensureTelegramCoupon(session, params = {}, force = false) {
 
 async function sendTelegramCouponMedia(botToken, chatId, couponData, { mode = "default", format = "png" } = {}) {
   if (!couponData?.coupon?.length) return null;
-  void mode;
+  const useMode = String(mode || "default").toLowerCase();
   const useFormat = String(format || "png").toLowerCase() === "jpg" ? "jpg" : "png";
-  const svg = buildCouponImageSvg(couponData);
+  const svg =
+    useMode === "story"
+      ? buildCouponStorySvg(couponData)
+      : useMode === "premium"
+        ? buildCouponPremiumSvg(couponData)
+        : buildCouponImageSvg(couponData);
   const buffer = await rasterizeSvg(svg, useFormat);
   return sendTelegramPhoto(
     botToken,
@@ -5654,6 +5509,37 @@ app.post("/api/coupon/image/premium", (req, res) =>
     res
   )
 );
+app.post("/api/match/image", async (req, res) => {
+  try {
+    const match = req.body?.match || req.body || {};
+    const couponPayload = couponPayloadFromSelection({
+      matchId: match?.matchId || match?.id || match?.eventId || null,
+      homeTeam: match?.teamHome || match?.homeTeam || match?.home || "Equipe 1",
+      awayTeam: match?.teamAway || match?.awayTeam || match?.away || "Equipe 2",
+      league: match?.league || "Ligue virtuelle",
+      pari: match?.pari || match?.prediction?.recommendation || "1",
+      cote: Number(match?.odds || match?.cote || match?.odd || 1.5) || 1.5,
+      confiance: Number(match?.prediction?.confidence || match?.confiance || 75) || 75,
+      exactScore: match?.exactScore || null,
+      startTime: match?.startTimeUnix || match?.startTime || null,
+    });
+    const format = normalizeImageFormat(req.body?.format || req.query?.format || "png", "png");
+    const svg = buildMatchImageSvg(couponPayload);
+    if (format === "svg") {
+      res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+      return res.send(svg);
+    }
+    const buffer = await rasterizeSvg(svg, format);
+    res.setHeader("Content-Type", format === "jpg" ? "image/jpeg" : "image/png");
+    return res.send(buffer);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Impossible de generer l'image match.",
+      error: error.message,
+    });
+  }
+});
 
 async function sendTelegramCouponHandler(req, res) {
   try {
@@ -5691,7 +5577,12 @@ async function sendTelegramCouponHandler(req, res) {
     const sendImage = Boolean(req.body?.sendImage);
     if (sendImage) {
       const fmt = normalizeImageFormat(req.body?.imageFormat || req.body?.format || "png", "png");
-      const svg = buildCouponImageSvg(req.body || {});
+      const svg =
+        String(req.body?.mode || "").toLowerCase() === "story"
+          ? buildCouponStorySvg(req.body || {})
+          : String(req.body?.mode || "").toLowerCase() === "premium"
+            ? buildCouponPremiumSvg(req.body || {})
+            : buildCouponImageSvg(req.body || {});
       const img = await rasterizeSvg(svg, fmt === "svg" ? "png" : fmt);
       const mime = fmt === "jpg" ? "image/jpeg" : "image/png";
       const ext = fmt === "jpg" ? "jpg" : "png";
@@ -6306,7 +6197,7 @@ async function executeTelegramSiteAction(action, state = {}) {
       exactScore: details?.exactScore || null,
       startTime: details?.match?.startTimeUnix,
     });
-    const svg = buildCouponImageSvg(selection);
+    const svg = buildMatchImageSvg(selection);
     const buffer = await rasterizeSvg(svg, "png");
     await sendTelegramPhoto(
       botToken,
