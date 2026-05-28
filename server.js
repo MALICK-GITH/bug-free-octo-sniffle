@@ -3424,7 +3424,7 @@ app.get("/api/cron/finished-matches/count", async (req, res) => {
   }
 });
 
-app.post("/api/cron/finished-matches/dedupe", async (req, res) => {
+async function handleFinishedMatchesDedupe(req, res) {
   const auth = isAuthorizedCronRequest(req);
   if (!auth.ok) {
     return res.status(403).json({
@@ -3461,7 +3461,10 @@ app.post("/api/cron/finished-matches/dedupe", async (req, res) => {
       },
     });
   }
-});
+}
+
+app.post("/api/cron/finished-matches/dedupe", handleFinishedMatchesDedupe);
+app.get("/api/cron/finished-matches/dedupe", handleFinishedMatchesDedupe);
 
 app.get("/api/coupon/favorites", validateQuery(watchlistQuerySchema), async (req, res) => {
   const userId = normalizeUserIdentifier(req.query.userId, "anonymous");
