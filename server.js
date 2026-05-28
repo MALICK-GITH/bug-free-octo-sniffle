@@ -3269,7 +3269,8 @@ app.get("/api/coupon", async (req, res) => {
     const size = Number(req.query.size) || 3;
     const league = req.query.league ? String(req.query.league) : "all";
     const risk = req.query.risk ? String(req.query.risk) : "balanced";
-    const coupon = await getCouponSelection(size, league, risk);
+    const minStartMinutes = Math.max(0, Math.min(Number(req.query.minStartMinutes) || 0, 120));
+    const coupon = await getCouponSelection(size, league, risk, minStartMinutes);
     try {
       await saveCouponGeneration({
         size,

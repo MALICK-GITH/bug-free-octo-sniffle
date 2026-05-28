@@ -941,7 +941,7 @@ function normalizeLeague(value) {
   return normalizeText(String(value || "").trim());
 }
 
-async function getCouponSelection(size = 3, league = "all", profile = "balanced") {
+async function getCouponSelection(size = 3, league = "all", profile = "balanced", minStartMinutes = 0) {
   const payload = await fetchLiveFeedRaw();
   const nowSec = Math.floor(Date.now() / 1000);
   const events = Array.isArray(payload?.Value) ? payload.Value : [];
@@ -953,7 +953,12 @@ async function getCouponSelection(size = 3, league = "all", profile = "balanced"
     selectedLeague && selectedLeague !== "all"
       ? sourceEvents.filter((e) => normalizeLeague(e?.L || e?.LE || "") === selectedLeague)
       : sourceEvents;
-  const upcomingEvents = eventsFiltered.filter((e) => isStrictUpcomingEvent(e, nowSec));
+  const minStartSec = Math.max(0, Number(minStartMinutes) || 0) * 60;
+  const upcomingEvents = eventsFiltered.filter((e) => {
+    if (!isStrictUpcomingEvent(e, nowSec)) return false;
+    const start = Number(e?.S || 0);
+    return start > nowSec + minStartSec;
+  });
 
   const allDetails = upcomingEvents.map((event) => buildMatchPredictionDetails(event));
   const cfg = riskConfig(profile);
@@ -1012,6 +1017,7 @@ async function getCouponSelection(size = 3, league = "all", profile = "balanced"
     totalUpcomingMatches: upcomingEvents.length,
     leagueFilter: league || "all",
     riskProfile: profile,
+    minStartMinutes: Math.max(0, Number(minStartMinutes) || 0),
     extraFilter: {
       active: filterActive,
       totalMatches: filterMeta.totalMatches,

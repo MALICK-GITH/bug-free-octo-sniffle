@@ -110,6 +110,7 @@ const COUPON_RISK_KEY = "fc25_coupon_risk_v1";
 const COUPON_STAKE_KEY = "fc25_coupon_stake_v1";
 const COUPON_BANKROLL_KEY = "fc25_coupon_bankroll_v1";
 const COUPON_START_ALERT_KEY = "fc25_coupon_start_alert_v1";
+const COUPON_MIN_START_MINUTES_KEY = "fc25_coupon_min_start_minutes_v1";
 const COUPON_DRIFT_KEY = "fc25_coupon_drift_v1";
 const COUPON_WATCH_DELTA_KEY = "fc25_coupon_watch_delta_v1";
 const COUPON_IMAGE_FMT_KEY = "fc25_coupon_export_format_v1";
@@ -602,6 +603,18 @@ function isStrictUpcomingMatch(match, nowSec) {
   return preByCode || preByInfo || preBySls;
 }
 
+function getMinStartMinutesFilter() {
+  const select = document.getElementById("minStartMinutesSelect");
+  const raw = select ? Number(select.value) : Number(getStoredNumber(COUPON_MIN_START_MINUTES_KEY, 5));
+  return Math.max(0, Math.min(120, Number(raw) || 0));
+}
+
+function matchRespectsMinStart(match, nowSec, minStartMinutes) {
+  if (!isStrictUpcomingMatch(match, nowSec)) return false;
+  const start = toNumber(match?.startTimeUnix, 0);
+  return start > nowSec + Math.max(0, Number(minStartMinutes) || 0) * 60;
+}
+
 async function readJsonSafe(response) {
   const text = await response.text();
   try {
@@ -950,10 +963,11 @@ async function generateCouponFallback(size, league, profile = "balanced") {
 
   const normLeague = String(league || "all").trim().toLowerCase();
   const nowSec = Math.floor(Date.now() / 1000);
+  const minStartMinutes = getMinStartMinutesFilter();
   const base = Array.isArray(listData.matches) ? listData.matches : [];
   const filteredByLeague =
     normLeague === "all" ? base : base.filter((m) => String(m.league || "").trim().toLowerCase() === normLeague);
-  const filtered = filteredByLeague.filter((m) => isStrictUpcomingMatch(m, nowSec));
+  const filtered = filteredByLeague.filter((m) => matchRespectsMinStart(m, nowSec, minStartMinutes));
 
   const sample = filtered.slice(0, 20);
   const cfg = riskConfig(normalizedProfile);
@@ -997,6 +1011,7 @@ async function generateCouponFallback(size, league, profile = "balanced") {
   return {
     success: true,
     riskProfile: normalizedProfile,
+    minStartMinutes,
     coupon: picks,
     summary: { totalSelections: picks.length, combinedOdd, averageConfidence },
     warning:
@@ -2152,7 +2167,8 @@ async function hydrateCouponStability(picks = []) {
 async function replaceStartedSelectionsBeforeTelegram() {
   if (!lastCouponData?.coupon?.length) return;
   const nowSec = Math.floor(Date.now() / 1000);
-  const started = lastCouponData.coupon.filter((x) => !isStrictUpcomingMatch(x, nowSec));
+  const minStartMinutes = getMinStartMinutesFilter();
+  const started = lastCouponData.coupon.filter((x) => !matchRespectsMinStart(x, nowSec, minStartMinutes));
   if (!started.length) return;
 
   const needed = started.length;
@@ -2168,7 +2184,7 @@ async function replaceStartedSelectionsBeforeTelegram() {
   } catch {
     data = await generateCouponFallback(needed + 2, league, risk);
   }
-  const fresh = (Array.isArray(data?.coupon) ? data.coupon : []).filter((x) => isStrictUpcomingMatch(x, nowSec));
+  const fresh = (Array.isArray(data?.coupon) ? data.coupon : []).filter((x) => matchRespectsMinStart(x, nowSec, minStartMinutes));
   const existingIds = new Set(lastCouponData.coupon.map((x) => String(x.matchId)));
   const replacements = fresh.filter((x) => !existingIds.has(String(x.matchId))).slice(0, needed);
   if (replacements.length < needed) {
@@ -2177,7 +2193,7 @@ async function replaceStartedSelectionsBeforeTelegram() {
 
   let idx = 0;
   const updated = lastCouponData.coupon.map((x) => {
-    if (isStrictUpcomingMatch(x, nowSec)) return x;
+    if (matchRespectsMinStart(x, nowSec, minStartMinutes)) return x;
     const next = replacements[idx];
     idx += 1;
     return next;
@@ -2193,7 +2209,8 @@ async function replaceStartedSelectionsBeforeTelegram() {
 
 function getStartedSelectionsLocal(coupon = []) {
   const nowSec = Math.floor(Date.now() / 1000);
-  return (Array.isArray(coupon) ? coupon : []).filter((x) => !isStrictUpcomingMatch(x, nowSec));
+  const minStartMinutes = getMinStartMinutesFilter();
+  return (Array.isArray(coupon) ? coupon : []).filter((x) => !matchRespectsMinStart(x, nowSec, minStartMinutes));
 }
 
 async function preflightTelegramSafety() {
@@ -2264,7 +2281,8 @@ async function refreshLadderBeforeTelegram() {
   const items = [];
   for (const item of lastLadderData.items) {
     const coupon = Array.isArray(item?.coupon) ? item.coupon : [];
-    const hasStarted = coupon.some((x) => !isStrictUpcomingMatch(x, nowSec));
+    const minStartMinutes = getMinStartMinutesFilter();
+    const hasStarted = coupon.some((x) => !matchRespectsMinStart(x, nowSec, minStartMinutes));
     if (!hasStarted) {
       items.push(item);
       continue;
@@ -2632,7 +2650,7 @@ function createCouponSummary(coupon = []) {
 function enforceUltraSafePolicy(coupon = []) {
   const nowSec = Math.floor(Date.now() / 1000);
   const filtered = (Array.isArray(coupon) ? coupon : [])
-    .filter((x) => isStrictUpcomingMatch(x, nowSec))
+    .filter((x) => matchRespectsMinStart(x, nowSec, getMinStartMinutesFilter()))
     .filter((x) => Number(x?.cote) >= 1.3 && Number(x?.cote) <= 1.95)
     .filter((x) => Number(x?.confiance) >= 72)
     .slice(0, 3)
@@ -3180,6 +3198,7 @@ async function generateCoupon() {
   const sizeInput = document.getElementById("sizeInput");
   const leagueSelect = document.getElementById("leagueSelect");
   const size = Math.max(1, Math.min(Number(sizeInput.value) || 3, 12));
+  const minStartMinutes = getMinStartMinutesFilter();
   sizeInput.value = String(size);
   setResultHtml("<p>Generation du coupon en cours...</p>");
 
@@ -3195,7 +3214,7 @@ async function generateCoupon() {
     let data;
     try {
       const res = await fetch(
-        `/api/coupon?size=${requestedSize}&league=${encodeURIComponent(league)}&risk=${encodeURIComponent(apiRisk)}`,
+        `/api/coupon?size=${requestedSize}&league=${encodeURIComponent(league)}&risk=${encodeURIComponent(apiRisk)}&minStartMinutes=${encodeURIComponent(minStartMinutes)}`,
         { cache: "no-store" }
       );
       data = await readJsonSafe(res);
@@ -3757,6 +3776,8 @@ if (downloadPdfBtnSticky) {
 function applyStoredCouponFormValues() {
   const sizeInput = document.getElementById("sizeInput");
   if (sizeInput) sizeInput.value = String(getStoredNumber(COUPON_SIZE_KEY, Number(sizeInput.value || 3)));
+  const minStartSelect = document.getElementById("minStartMinutesSelect");
+  if (minStartSelect) minStartSelect.value = String(getStoredNumber(COUPON_MIN_START_MINUTES_KEY, Number(minStartSelect.value || 5)));
   const riskSelect = document.getElementById("riskSelect");
   if (riskSelect) riskSelect.value = getStoredString(COUPON_RISK_KEY, riskSelect.value || "balanced");
   const stakeInput = document.getElementById("stakeInput");
@@ -3776,6 +3797,7 @@ function applyStoredCouponFormValues() {
 function applyQueryOverrides() {
   const params = new URLSearchParams(window.location.search);
   const size = params.get("size");
+  const minStartMinutes = params.get("minStartMinutes");
   const league = params.get("league");
   const risk = params.get("risk");
   const stake = params.get("stake");
@@ -3785,6 +3807,7 @@ function applyQueryOverrides() {
   const watchDelta = params.get("watchDelta");
 
   if (size != null) setStoredNumber(COUPON_SIZE_KEY, size);
+  if (minStartMinutes != null) setStoredNumber(COUPON_MIN_START_MINUTES_KEY, minStartMinutes);
   if (league) {
     setStoredString(COUPON_LEAGUE_KEY, league);
     pendingLeagueValue = league;
@@ -3987,6 +4010,10 @@ async function initCouponPage() {
   const sizeInput = document.getElementById("sizeInput");
   if (sizeInput) {
     sizeInput.addEventListener("change", () => setStoredNumber(COUPON_SIZE_KEY, sizeInput.value));
+  }
+  const minStartSelect = document.getElementById("minStartMinutesSelect");
+  if (minStartSelect) {
+    minStartSelect.addEventListener("change", () => setStoredNumber(COUPON_MIN_START_MINUTES_KEY, minStartSelect.value));
   }
   const leagueSelect = document.getElementById("leagueSelect");
   if (leagueSelect) {
