@@ -634,6 +634,21 @@ body.low-data .panel#markets {
   margin-bottom: 0.34rem;
 }
 
+.training-signature-box {
+  grid-column: 1 / -1;
+  border: 1px solid rgba(66, 245, 108, 0.38);
+  background: linear-gradient(135deg, rgba(66, 245, 108, 0.14), rgba(36, 215, 255, 0.1));
+}
+
+.training-signature-box strong {
+  color: #9effbe;
+}
+
+.training-signature-off {
+  border-color: rgba(255, 171, 87, 0.4);
+  background: linear-gradient(135deg, rgba(255, 171, 87, 0.12), rgba(255, 87, 87, 0.08));
+}
+
 .drift-title {
   margin: 0 0 0.35rem;
   color: var(--warn);

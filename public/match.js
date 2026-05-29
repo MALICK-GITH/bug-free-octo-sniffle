@@ -236,8 +236,23 @@ function renderDriftAlert(drifts) {
   `;
 }
 
-function renderMaster(master, analyse) {
+function renderMaster(master, analyse, trainedModelPrediction = null) {
   const el = document.getElementById("master");
+  const signatureHtml = trainedModelPrediction?.available
+    ? `
+      <div class="box training-signature-box">
+        <strong>Signature entrainement IA</strong>
+        <div>Modele: ${escapeHtml(trainedModelPrediction.modelFile || "n/a")} (v${escapeHtml(trainedModelPrediction.modelVersion || "1.0.0")})</div>
+        <div>Entraine le: ${escapeHtml(trainedModelPrediction.trainedAt || "n/a")}</div>
+        <div>Signal IA: ${escapeHtml(trainedModelPrediction.recommendation || "n/a")} | confiance ${toNumber(trainedModelPrediction.confidence, 0)}% | score ${escapeHtml(trainedModelPrediction.exactScore || "n/a")}</div>
+      </div>
+    `
+    : `
+      <div class="box training-signature-box training-signature-off">
+        <strong>Signature entrainement IA</strong>
+        <div>Modele non charge pour ce match.</div>
+      </div>
+    `;
   el.innerHTML = `
     <h2>Decision Finale (Maitre)</h2>
     <div class="grid2">
@@ -245,6 +260,7 @@ function renderMaster(master, analyse) {
       <div class="box"><strong>Action</strong><div>${master.action || "AUCUNE"}</div></div>
       <div class="box"><strong>Confiance</strong><div>${master.confiance_numerique ?? 0}%</div></div>
       <div class="box"><strong>Consensus bots</strong><div>${analyse.consensus || "N/A"}</div></div>
+      ${signatureHtml}
     </div>
   `;
 }
@@ -1428,7 +1444,11 @@ async function loadData(trigger = "manual") {
     document.getElementById("title").textContent = `${match.teamHome} vs ${match.teamAway}`;
     document.getElementById("sub").textContent = `${match.league} | marche(s): ${data.bettingMarkets?.length || 0}${trigger === "auto" ? " | mise a jour auto" : ""}`;
 
-    renderMaster(data.prediction?.maitre?.decision_finale || {}, data.prediction?.maitre?.analyse_bots || {});
+    renderMaster(
+      data.prediction?.maitre?.decision_finale || {},
+      data.prediction?.maitre?.analyse_bots || {},
+      data.trainedModelPrediction || null
+    );
     renderCoachPanel(data);
     renderNeuralCharts(data);
     renderInsightDeck(data);
