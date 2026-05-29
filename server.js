@@ -3137,6 +3137,17 @@ app.get("/api/predictions", async (_req, res) => {
                 0,
               odds: details.prediction.maitre.decision_finale?.cote || 0,
             },
+            trainingSignature: details?.trainedModelPrediction?.available
+              ? {
+                  source: details.trainedModelPrediction.source,
+                  modelVersion: details.trainedModelPrediction.modelVersion,
+                  modelFile: details.trainedModelPrediction.modelFile,
+                  trainedAt: details.trainedModelPrediction.trainedAt,
+                  recommendation: details.trainedModelPrediction.recommendation,
+                  confidence: details.trainedModelPrediction.confidence,
+                  exactScore: details.trainedModelPrediction.exactScore,
+                }
+              : null,
             extraPowerFilter: details.extraPowerFilter,
           });
         }
@@ -3197,6 +3208,17 @@ app.get("/api/predictions/top", async (_req, res) => {
               confidence,
               odds: details.prediction.maitre.decision_finale?.cote || 0,
             },
+            trainingSignature: details?.trainedModelPrediction?.available
+              ? {
+                  source: details.trainedModelPrediction.source,
+                  modelVersion: details.trainedModelPrediction.modelVersion,
+                  modelFile: details.trainedModelPrediction.modelFile,
+                  trainedAt: details.trainedModelPrediction.trainedAt,
+                  recommendation: details.trainedModelPrediction.recommendation,
+                  confidence: details.trainedModelPrediction.confidence,
+                  exactScore: details.trainedModelPrediction.exactScore,
+                }
+              : null,
             extraPowerFilter: details.extraPowerFilter,
             combinedScore,
           });
