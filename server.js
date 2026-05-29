@@ -3530,8 +3530,48 @@ app.get("/api/cron/snapshots/export", async (req, res) => {
   }
 
   try {
+    const format = String(req.query?.format || "json").trim().toLowerCase();
     const limit = Math.max(1, Math.min(500, Number(req.query?.limit) || 100));
     const rows = await authDb.getMatchTrackingRuns(matchTrackingConfig.trackerKey, limit);
+
+    if (format === "csv") {
+      const header = [
+        "id",
+        "tracker_key",
+        "source",
+        "status",
+        "live_count",
+        "upcoming_count",
+        "finished_count",
+        "total_count",
+        "created_at",
+        "error_text",
+        "snapshot_json",
+      ];
+      const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const lines = [header.join(",")];
+      for (const row of rows) {
+        lines.push([
+          esc(row.id),
+          esc(row.trackerKey),
+          esc(row.source),
+          esc(row.status),
+          esc(row.counts?.live),
+          esc(row.counts?.upcoming),
+          esc(row.counts?.finished),
+          esc(row.counts?.total),
+          esc(row.createdAt),
+          esc(row.error),
+          esc(JSON.stringify(row.snapshot || {})),
+        ].join(","));
+      }
+
+      const csv = lines.join("\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="match_tracking_snapshots_${Date.now()}.csv"`);
+      return res.send(csv);
+    }
+
     return res.json({
       success: true,
       source: "cron-job.org",
