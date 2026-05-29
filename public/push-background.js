@@ -194,98 +194,8 @@
   }
 
   function ensureNotificationGate() {
-    if (!("Notification" in window)) return;
-    const status = getStatus();
-    const active = status.permission === "granted" && status.optedIn;
-    if (active) {
-      removeForceGate();
-      return;
-    }
-
-    ensureGateStyles();
-    document.body.classList.add("push-gate-active");
-    let gate = document.getElementById(FORCE_GATE_ID);
-    if (!gate) {
-      gate = document.createElement("div");
-      gate.id = FORCE_GATE_ID;
-      gate.innerHTML = `
-        <div class="gate-card" role="dialog" aria-modal="true" aria-labelledby="pushForceTitle">
-          <h2 id="pushForceTitle">Notifications obligatoires</h2>
-          <p>Pour utiliser ONE-DELUX en mode complet, les notifications en arriere-plan doivent etre actives.</p>
-          <p>Tu recevras les alertes instantanees (but, match live, match termine) en continu.</p>
-          <div class="gate-actions">
-            <button type="button" class="primary" id="pushForceEnableBtn">Activer maintenant</button>
-            <button type="button" id="pushForceRetryBtn">Verifier</button>
-          </div>
-          <div class="gate-status" id="pushForceStatus">Etat: en attente d'autorisation navigateur</div>
-        </div>
-      `;
-      document.body.appendChild(gate);
-    }
-
-    const statusEl = gate.querySelector("#pushForceStatus");
-    const enableBtn = gate.querySelector("#pushForceEnableBtn");
-    const retryBtn = gate.querySelector("#pushForceRetryBtn");
-    const setGateStatus = (text) => {
-      if (statusEl) statusEl.textContent = text;
-    };
-
-    const refreshGateStatus = () => {
-      const s = getStatus();
-      const on = s.permission === "granted" && s.optedIn;
-      if (statusEl) {
-        statusEl.textContent = on
-          ? "Etat: notifications actives"
-          : `Etat: permission=${s.permission}, abonnement=${s.optedIn ? "ok" : "non"}`;
-      }
-      if (on) removeForceGate();
-    };
-
-    if (enableBtn && !enableBtn.dataset.bound) {
-      enableBtn.dataset.bound = "1";
-      enableBtn.addEventListener("click", async () => {
-        enableBtn.disabled = true;
-        setGateStatus("Etat: activation en cours...");
-        try {
-          const result = await enablePush();
-          if (!result?.ok) {
-            setGateStatus(`Etat: autorisation ${result?.reason || "refusee"}`);
-          }
-        } catch (error) {
-          setGateStatus(`Erreur activation: ${error.message}`);
-        } finally {
-          enableBtn.disabled = false;
-        }
-        refreshGateStatus();
-      });
-    }
-
-    if (retryBtn && !retryBtn.dataset.bound) {
-      retryBtn.dataset.bound = "1";
-      retryBtn.addEventListener("click", async () => {
-        retryBtn.disabled = true;
-        setGateStatus("Etat: verification en cours...");
-        try {
-          if ("Notification" in window && Notification.permission === "default") {
-            await Notification.requestPermission();
-          }
-          await syncSubscription();
-          const statusRes = await fetch("/api/push/status", { cache: "no-store" }).catch(() => null);
-          if (statusRes && statusRes.ok) {
-            const payload = await statusRes.json().catch(() => ({}));
-            const n = Number(payload?.data?.subscriptions || 0);
-            setGateStatus(`Etat: ${n} abonnement(s) actif(s).`);
-          }
-        } catch (error) {
-          setGateStatus(`Erreur verification: ${error.message}`);
-        } finally {
-          retryBtn.disabled = false;
-        }
-        refreshGateStatus();
-      });
-    }
-
-    refreshGateStatus();
+    // Mode invisible: no blocking UI gate.
+    removeForceGate();
   }
 
   function unlockNotificationGate() {
@@ -352,8 +262,5 @@
     syncSubscription().catch(() => {});
     injectMiniPushPanel();
     ensureNotificationGate();
-    setInterval(() => {
-      ensureNotificationGate();
-    }, 10000);
   });
 })();
