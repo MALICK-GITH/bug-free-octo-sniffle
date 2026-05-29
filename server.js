@@ -3343,6 +3343,8 @@ app.get("/api/predictions", async (_req, res) => {
         const resolvedMatch = details?.match || match;
         const teams = getMatchTeams(resolvedMatch);
         if (details.prediction && details.prediction.maitre) {
+          const trainedFusion = details?.prediction?.trainedFusion || {};
+          const isTrainedDominant = Boolean(trainedFusion?.enabled);
           predictions.push({
             matchId: getMatchId(resolvedMatch),
             homeTeam: teams.home,
@@ -3357,6 +3359,8 @@ app.get("/api/predictions", async (_req, res) => {
                 details.prediction.maitre.decision_finale?.confiance_numerique ||
                 0,
               odds: details.prediction.maitre.decision_finale?.cote || 0,
+              source: isTrainedDominant ? "TRAINED-FUSION-1.0" : "MAITRE-LEGACY",
+              trainedOutcome: trainedFusion?.outcome || null,
             },
             trainingSignature: details?.trainedModelPrediction?.available
               ? {
@@ -3410,12 +3414,15 @@ app.get("/api/predictions/top", async (_req, res) => {
         const resolvedMatch = details?.match || match;
         const teams = getMatchTeams(resolvedMatch);
         if (details.prediction && details.prediction.maitre) {
+          const trainedFusion = details?.prediction?.trainedFusion || {};
+          const isTrainedDominant = Boolean(trainedFusion?.enabled);
           const confidence =
             details.prediction.maitre.decision_finale?.confidence ||
             details.prediction.maitre.decision_finale?.confiance_numerique ||
             0;
           const extraScore = details.extraPowerFilter?.score || 0;
-          const combinedScore = confidence * 0.6 + extraScore * 0.4;
+          const trainedBoost = isTrainedDominant ? 8 : 0;
+          const combinedScore = confidence * 0.6 + extraScore * 0.4 + trainedBoost;
 
           predictions.push({
             matchId: getMatchId(resolvedMatch),
@@ -3428,6 +3435,8 @@ app.get("/api/predictions/top", async (_req, res) => {
               recommendation: details.prediction.maitre.decision_finale?.pari_choisi || "N/A",
               confidence,
               odds: details.prediction.maitre.decision_finale?.cote || 0,
+              source: isTrainedDominant ? "TRAINED-FUSION-1.0" : "MAITRE-LEGACY",
+              trainedOutcome: trainedFusion?.outcome || null,
             },
             trainingSignature: details?.trainedModelPrediction?.available
               ? {
