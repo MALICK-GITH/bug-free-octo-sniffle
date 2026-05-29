@@ -98,6 +98,7 @@ const VAPID_PRIVATE_KEY = String(process.env.VAPID_PRIVATE_KEY || "").trim();
 const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT || "mailto:admin@one-delux.local").trim();
 const PUSH_SUBSCRIPTIONS_FILE = path.join(__dirname, "data", "push-subscriptions.json");
 const PUSH_LOG_FILE = path.join(__dirname, "data", "push-notification-log.json");
+const PUSH_STATE_FILE = path.join(__dirname, "data", "push-live-state.json");
 const PUSH_DEFAULT_COOLDOWN_MINUTES = Math.max(1, Number(process.env.PUSH_DEFAULT_COOLDOWN_MINUTES) || 10);
 
 function ensurePushDataDir() {
@@ -181,6 +182,29 @@ function readPushLog() {
   } catch (_error) {
     return [];
   }
+}
+
+function readPushState() {
+  try {
+    ensurePushDataDir();
+    if (!require("fs").existsSync(PUSH_STATE_FILE)) return { byMatchId: {}, updatedAt: null };
+    const raw = require("fs").readFileSync(PUSH_STATE_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : { byMatchId: {}, updatedAt: null };
+  } catch (_error) {
+    return { byMatchId: {}, updatedAt: null };
+  }
+}
+
+function writePushState(state = {}) {
+  try {
+    ensurePushDataDir();
+    const safe = {
+      byMatchId: state?.byMatchId && typeof state.byMatchId === "object" ? state.byMatchId : {},
+      updatedAt: new Date().toISOString(),
+    };
+    require("fs").writeFileSync(PUSH_STATE_FILE, JSON.stringify(safe, null, 2), "utf8");
+  } catch (_error) {}
 }
 
 function writePushLog(items) {
@@ -302,6 +326,107 @@ async function sendBackgroundPushToAll(payload = {}, options = {}) {
     removed,
   });
   return { sent, failed, removed };
+}
+
+function normalizeTrackedPushMatch(match = {}) {
+  const id = getMatchId(match);
+  if (!id) return null;
+  const teams = getMatchTeams(match);
+  const score = getMatchScore(match);
+  return {
+    id,
+    teamHome: teams.home || "Equipe 1",
+    teamAway: teams.away || "Equipe 2",
+    league: getMatchLeague(match),
+    status: classifyMatchStatus(match),
+    scoreHome: Number(score.home || 0),
+    scoreAway: Number(score.away || 0),
+  };
+}
+
+async function runInstantPushCycle(source = "cron-job.org") {
+  const payload = await withTimeout(getPenaltyMatches(), 25_000, null);
+  const rawMatches = Array.isArray(payload?.matches) ? payload.matches : [];
+  const current = {};
+  const events = [];
+  const previousState = readPushState();
+  const previous = previousState?.byMatchId && typeof previousState.byMatchId === "object"
+    ? previousState.byMatchId
+    : {};
+
+  for (const match of rawMatches) {
+    const m = normalizeTrackedPushMatch(match);
+    if (!m) continue;
+    current[m.id] = m;
+    const before = previous[m.id];
+    if (!before) continue;
+
+    const wasLive = before.status === "live";
+    const isLive = m.status === "live";
+    const wasFinished = before.status === "finished";
+    const isFinished = m.status === "finished";
+    const prevTotal = Number(before.scoreHome || 0) + Number(before.scoreAway || 0);
+    const nextTotal = Number(m.scoreHome || 0) + Number(m.scoreAway || 0);
+
+    if (!wasFinished && isFinished) {
+      events.push({
+        topic: "finished",
+        title: "ONE-DELUX | Match termine",
+        body: `${m.teamHome} ${m.scoreHome}-${m.scoreAway} ${m.teamAway} (${m.league})`,
+        url: `/match.html?id=${encodeURIComponent(m.id)}`,
+      });
+      continue;
+    }
+
+    if (!wasLive && isLive) {
+      events.push({
+        topic: "live",
+        title: "ONE-DELUX | Match en direct",
+        body: `${m.teamHome} vs ${m.teamAway} vient de passer en live`,
+        url: `/match.html?id=${encodeURIComponent(m.id)}`,
+      });
+      continue;
+    }
+
+    if (isLive && nextTotal > prevTotal) {
+      events.push({
+        topic: "goal",
+        title: "ONE-DELUX | Alerte but",
+        body: `${m.teamHome} ${m.scoreHome}-${m.scoreAway} ${m.teamAway}`,
+        url: `/match.html?id=${encodeURIComponent(m.id)}`,
+      });
+    }
+  }
+
+  writePushState({ byMatchId: current });
+
+  let sent = 0;
+  let failed = 0;
+  let removed = 0;
+  for (const event of events.slice(0, 20)) {
+    const result = await sendBackgroundPushToAll(
+      {
+        title: event.title,
+        body: event.body,
+        url: event.url,
+        type: event.topic,
+        at: new Date().toISOString(),
+      },
+      { topic: event.topic, cooldownMin: 1 }
+    );
+    sent += Number(result?.sent || 0);
+    failed += Number(result?.failed || 0);
+    removed += Number(result?.removed || 0);
+  }
+
+  return {
+    source,
+    scannedMatches: Object.keys(current).length,
+    detectedEvents: events.length,
+    sent,
+    failed,
+    removed,
+  };
 }
 
 app.disable("x-powered-by");
@@ -3827,6 +3952,40 @@ app.post("/api/push/broadcast", async (req, res) => {
     return res.json({ success: true, payload, ...result });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Echec diffusion push.", error: error.message });
+  }
+});
+
+app.get("/api/cron/push/instant", async (req, res) => {
+  const auth = isAuthorizedCronRequest(req);
+  if (!auth.ok) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: "CRON_FORBIDDEN",
+        message: auth.reason === "missing_server_secret"
+          ? "CRON_SECRET n'est pas configure sur le serveur."
+          : "Cle cron invalide.",
+      },
+    });
+  }
+
+  try {
+    const report = await runInstantPushCycle("cron-job.org");
+    return res.json({
+      success: true,
+      source: "cron-job.org",
+      data: report,
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "CRON_PUSH_INSTANT_ERROR",
+        message: "Impossible d'executer le push instantane.",
+        details: error.message,
+      },
+    });
   }
 });
 
