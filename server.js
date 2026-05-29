@@ -3489,14 +3489,18 @@ app.get("/api/cron/snapshots/count", async (req, res) => {
 
   try {
     const state = await authDb.getMatchTrackingState(matchTrackingConfig.trackerKey);
+    const totalRuns = Number(state?.totalRuns ?? state?.total_runs ?? 0);
+    const lastSuccessAt = state?.lastSuccessAt ?? state?.last_success_at ?? null;
+    const lastSnapshot = state?.lastSnapshot ?? state?.last_snapshot ?? {};
+    const counts = lastSnapshot?.counts || { live: 0, upcoming: 0, finished: 0, total: 0 };
     return res.json({
       success: true,
       source: "cron-job.org",
       data: {
         trackerKey: matchTrackingConfig.trackerKey,
-        totalRuns: Number(state?.totalRuns || 0),
-        lastSuccessAt: state?.lastSuccessAt || null,
-        counts: state?.lastSnapshot?.counts || { live: 0, upcoming: 0, finished: 0, total: 0 },
+        totalRuns,
+        lastSuccessAt,
+        counts,
         table: "match_tracking_runs",
       },
       meta: {
