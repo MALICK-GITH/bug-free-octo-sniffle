@@ -3417,11 +3417,16 @@ app.get("/api/cron/snapshots/capture", async (req, res) => {
   try {
     const result = await runMatchTrackingCycle("cron-job.org");
     if (!result) {
-      return res.status(503).json({
-        success: false,
-        error: {
-          code: "SNAPSHOT_CAPTURE_DISABLED",
-          message: "Le snapshot tracking est desactive ou deja en cours d'execution.",
+      return res.json({
+        success: true,
+        source: "cron-job.org",
+        data: {
+          status: "skipped",
+          reason: "tracker_disabled_or_already_running",
+          message: "Capture ignoree: tracking desactive ou cycle deja en cours.",
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
         },
       });
     }
