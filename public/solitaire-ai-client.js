@@ -181,7 +181,7 @@
     }
   }
 
-  async function sendMessage({ message, history = [], context = {} }) {
+  async function sendMessage({ message, history = [], context = {}, onRetry = null }) {
     const payload = {
       message: String(message || "").trim(),
       history: Array.isArray(history) ? history : [],
@@ -228,15 +228,26 @@
       }
     };
 
-    try {
-      return await trySend();
-    } catch (error) {
-      const status = Number(error?.status || 0);
-      if (status === 429 || status >= 500) {
-        await new Promise((r) => setTimeout(r, 700));
-        return trySend();
+    let attempt = 0;
+    while (true) {
+      attempt += 1;
+      try {
+        return await trySend();
+      } catch (error) {
+        const retryDelayMs = Math.min(6000, 700 + (attempt - 1) * 450);
+        if (typeof onRetry === "function") {
+          try {
+            onRetry({
+              attempt,
+              delayMs: retryDelayMs,
+              message: String(error?.message || "Erreur chat"),
+            });
+          } catch {
+            // Ignore callback failures.
+          }
+        }
+        await new Promise((r) => setTimeout(r, retryDelayMs));
       }
-      throw error;
     }
   }
 

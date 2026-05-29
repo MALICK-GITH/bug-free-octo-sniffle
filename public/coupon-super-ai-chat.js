@@ -205,6 +205,12 @@ class SuperAICouponGenerator {
           expertise: this.expertise,
           couponParams: window.SolitaireAIClient.collectCouponParams(),
         },
+        onRetry: ({ attempt }) => {
+          const typing = document.getElementById("superAITypingStatus");
+          if (typing) {
+            typing.textContent = `Reponse API vide/indisponible, nouvelle tentative ${attempt}...`;
+          }
+        },
         history: this.conversations.slice(-8).map((item) => ({
           role: item.sender === "user" ? "user" : "assistant",
           text: typeof item.content === "string" ? item.content : "",
