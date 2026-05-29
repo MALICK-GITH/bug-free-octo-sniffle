@@ -3857,12 +3857,14 @@ async function handleFinishedMatchesDedupe(req, res) {
   }
 
   try {
-    const result = await dedupeFinishedMatchesDataset();
+    const execute = String(req.query?.execute || "").trim() === "1";
+    const result = await dedupeFinishedMatchesDataset({ execute });
     return res.json({
       success: true,
       source: "cron-job.org",
       data: {
         table: "finished_matches_dataset",
+        mode: execute ? "execute" : "dry-run",
         ...result,
       },
       meta: {

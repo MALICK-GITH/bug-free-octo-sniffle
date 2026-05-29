@@ -2616,49 +2616,86 @@ async function getFinishedMatchesDatasetCount() {
   return Number(row?.total) || 0;
 }
 
-async function dedupeFinishedMatchesDataset() {
+async function dedupeFinishedMatchesDataset(options = {}) {
+  const execute = options?.execute === true;
   if (await canUsePostgres()) {
     const beforeRes = await postgresPool.query(`SELECT COUNT(*)::bigint AS total FROM finished_matches_dataset`);
-    await postgresPool.query(`
-      DELETE FROM finished_matches_dataset a
-      USING finished_matches_dataset b
-      WHERE a.match_id = b.match_id
-        AND a.id < b.id
+    const duplicateRes = await postgresPool.query(`
+      SELECT COALESCE(SUM(x.cnt - 1), 0)::bigint AS removable
+      FROM (
+        SELECT COUNT(*)::bigint AS cnt
+        FROM finished_matches_dataset
+        GROUP BY match_id
+        HAVING COUNT(*) > 1
+      ) x
     `);
+    if (execute) {
+      await postgresPool.query(`
+        DELETE FROM finished_matches_dataset a
+        USING finished_matches_dataset b
+        WHERE a.match_id = b.match_id
+          AND a.id < b.id
+      `);
+    }
     const afterRes = await postgresPool.query(`SELECT COUNT(*)::bigint AS total FROM finished_matches_dataset`);
     const before = Number(beforeRes.rows?.[0]?.total) || 0;
     const after = Number(afterRes.rows?.[0]?.total) || 0;
-    return { before, after, removed: Math.max(0, before - after) };
+    const wouldRemove = Number(duplicateRes.rows?.[0]?.removable) || 0;
+    return { before, after, removed: execute ? Math.max(0, before - after) : 0, wouldRemove, dryRun: !execute };
   }
 
   if (await canUseMySql()) {
     const [beforeRows] = await mysqlPool.execute(`SELECT COUNT(*) AS total FROM finished_matches_dataset`);
-    await mysqlPool.execute(`
-      DELETE t1
-      FROM finished_matches_dataset t1
-      INNER JOIN finished_matches_dataset t2
-        ON t1.match_id = t2.match_id
-       AND t1.id < t2.id
+    const [duplicateRows] = await mysqlPool.execute(`
+      SELECT COALESCE(SUM(t.cnt - 1), 0) AS removable
+      FROM (
+        SELECT COUNT(*) AS cnt
+        FROM finished_matches_dataset
+        GROUP BY match_id
+        HAVING COUNT(*) > 1
+      ) t
     `);
+    if (execute) {
+      await mysqlPool.execute(`
+        DELETE t1
+        FROM finished_matches_dataset t1
+        INNER JOIN finished_matches_dataset t2
+          ON t1.match_id = t2.match_id
+         AND t1.id < t2.id
+      `);
+    }
     const [afterRows] = await mysqlPool.execute(`SELECT COUNT(*) AS total FROM finished_matches_dataset`);
     const before = Number(beforeRows?.[0]?.total) || 0;
     const after = Number(afterRows?.[0]?.total) || 0;
-    return { before, after, removed: Math.max(0, before - after) };
+    const wouldRemove = Number(duplicateRows?.[0]?.removable) || 0;
+    return { before, after, removed: execute ? Math.max(0, before - after) : 0, wouldRemove, dryRun: !execute };
   }
 
   const beforeRow = sqliteDb.prepare(`SELECT COUNT(*) AS total FROM finished_matches_dataset`).get();
-  sqliteDb.exec(`
-    DELETE FROM finished_matches_dataset
-    WHERE id NOT IN (
-      SELECT MAX(id)
+  const duplicateRow = sqliteDb.prepare(`
+    SELECT COALESCE(SUM(cnt - 1), 0) AS removable
+    FROM (
+      SELECT COUNT(*) AS cnt
       FROM finished_matches_dataset
       GROUP BY match_id
+      HAVING COUNT(*) > 1
     )
-  `);
+  `).get();
+  if (execute) {
+    sqliteDb.exec(`
+      DELETE FROM finished_matches_dataset
+      WHERE id NOT IN (
+        SELECT MAX(id)
+        FROM finished_matches_dataset
+        GROUP BY match_id
+      )
+    `);
+  }
   const afterRow = sqliteDb.prepare(`SELECT COUNT(*) AS total FROM finished_matches_dataset`).get();
   const before = Number(beforeRow?.total) || 0;
   const after = Number(afterRow?.total) || 0;
-  return { before, after, removed: Math.max(0, before - after) };
+  const wouldRemove = Number(duplicateRow?.removable) || 0;
+  return { before, after, removed: execute ? Math.max(0, before - after) : 0, wouldRemove, dryRun: !execute };
 }
 
 async function saveAuditReport(entry = {}) {
