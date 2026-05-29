@@ -649,6 +649,45 @@ body.low-data .panel#markets {
   background: linear-gradient(135deg, rgba(255, 171, 87, 0.12), rgba(255, 87, 87, 0.08));
 }
 
+.pulse-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.pulse-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(18, 30, 55, 0.75);
+}
+
+.pulse-badge.up { border-color: rgba(66, 245, 108, 0.5); color: #a6ffc0; }
+.pulse-badge.down { border-color: rgba(255, 110, 110, 0.5); color: #ffb1b1; }
+.pulse-badge.flat { border-color: rgba(255, 215, 121, 0.5); color: #ffe5a1; }
+
+.stability-pill {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.stability-stable { background: rgba(66, 245, 108, 0.18); color: #9effbe; border: 1px solid rgba(66, 245, 108, 0.4); }
+.stability-volatile { background: rgba(255, 193, 92, 0.18); color: #ffdca2; border: 1px solid rgba(255, 193, 92, 0.45); }
+.stability-chaotic { background: rgba(255, 97, 97, 0.18); color: #ffb1b1; border: 1px solid rgba(255, 97, 97, 0.45); }
+
+.replay-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
 .drift-title {
   margin: 0 0 0.35rem;
   color: var(--warn);

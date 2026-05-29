@@ -19,6 +19,7 @@ const IS_MOBILE = window.matchMedia("(max-width: 760px)").matches;
 let lastDetailsData = null;
 let coachModeEnabled = true;
 let lowDataEnabled = false;
+let previousMasterConfidence = null;
 
 function qs(name) {
   return new URLSearchParams(window.location.search).get(name);
@@ -108,7 +109,7 @@ function setMatchTelegramButtonEnabled(enabled) {
 }
 
 function setPredictionPanelsContent(html) {
-  const ids = ["master", "coachPanel", "insightGrid", "exactScorePanel", "bots", "top3", "markets"];
+  const ids = ["master", "coachPanel", "insightGrid", "exactScorePanel", "dynamicConfidenceContent", "stabilityContent", "replayContent", "bots", "top3", "markets"];
   for (const id of ids) {
     const el = document.getElementById(id);
     if (!el) continue;
@@ -262,6 +263,111 @@ function renderMaster(master, analyse, trainedModelPrediction = null) {
       <div class="box"><strong>Consensus bots</strong><div>${analyse.consensus || "N/A"}</div></div>
       ${signatureHtml}
     </div>
+  `;
+}
+
+function renderDynamicConfidencePanel(data, drifts = []) {
+  const host = document.getElementById("dynamicConfidenceContent");
+  if (!host) return;
+  const confidence = Number(data?.prediction?.maitre?.decision_finale?.confiance_numerique || 0);
+  const delta = previousMasterConfidence == null ? 0 : confidence - previousMasterConfidence;
+  previousMasterConfidence = confidence;
+  const driftWeight = drifts.length * 2.2;
+  const pulseScore = clamp(confidence - driftWeight, 0, 100);
+  const direction = delta > 0.7 ? "up" : delta < -0.7 ? "down" : "flat";
+  const label = direction === "up" ? "Montee" : direction === "down" ? "Baisse" : "Stable";
+  const marker = direction === "up" ? "▲" : direction === "down" ? "▼" : "■";
+  host.innerHTML = `
+    <div class="grid2">
+      <div class="box">
+        <strong>Confiance instantanee</strong>
+        <div>${confidence.toFixed(1)}%</div>
+      </div>
+      <div class="box">
+        <strong>Pulse de fiabilite</strong>
+        <div>${pulseScore.toFixed(1)}%</div>
+      </div>
+    </div>
+    <div class="pulse-row">
+      <span class="pulse-badge ${direction}">${marker} ${label} (${delta >= 0 ? "+" : ""}${delta.toFixed(1)} pt)</span>
+      <span>${drifts.length} drift(s) cotes detecte(s)</span>
+    </div>
+  `;
+}
+
+function computeStabilityReport(data, drifts = []) {
+  const reasons = [];
+  const breakdown = data?.extraPowerFilter?.breakdown || {};
+  const confidence = Number(data?.prediction?.maitre?.decision_finale?.confiance_numerique || 0);
+  const fluxShare = Number(breakdown?.fluxShare || 0);
+  const zoneNullAvg = Number(breakdown?.zoneNullAvg || 0);
+  let score = confidence;
+  score -= drifts.length * 8;
+  if (fluxShare >= 0.9) score += 6;
+  if (zoneNullAvg > 24) score -= 10;
+  if (zoneNullAvg > 34) score -= 12;
+
+  if (drifts.length >= 2) reasons.push("Drift de cotes multiple");
+  if (fluxShare < 0.7) reasons.push("Flux dominant faible");
+  if (zoneNullAvg > 24) reasons.push("Zone nul elevee (match brouille)");
+  if (confidence < 60) reasons.push("Confiance maitre basse");
+  if (!reasons.length) reasons.push("Flux propre et signal exploitable");
+
+  let label = "Stable";
+  let css = "stability-stable";
+  if (score < 72) {
+    label = "Volatile";
+    css = "stability-volatile";
+  }
+  if (score < 55 || drifts.length >= 3) {
+    label = "Chaotique";
+    css = "stability-chaotic";
+  }
+
+  return { label, css, score: clamp(score, 0, 100), reasons };
+}
+
+function renderStabilityPanel(data, drifts = []) {
+  const host = document.getElementById("stabilityContent");
+  if (!host) return;
+  const report = computeStabilityReport(data, drifts);
+  host.innerHTML = `
+    <div class="pulse-row">
+      <span class="stability-pill ${report.css}">${report.label}</span>
+      <strong>Indice ${report.score.toFixed(1)}/100</strong>
+    </div>
+    <ul class="replay-list">
+      ${report.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function renderReplayPanel(data, historyRows = []) {
+  const host = document.getElementById("replayContent");
+  if (!host) return;
+  const isFinished = String(data?.match?.statusText || "").toLowerCase().includes("termine");
+  if (!isFinished) {
+    host.innerHTML = "<p>Replay actif quand le match est termine.</p>";
+    return;
+  }
+  if (!Array.isArray(historyRows) || !historyRows.length) {
+    host.innerHTML = "<p>Aucun historique disponible pour ce match termine.</p>";
+    return;
+  }
+  const rows = historyRows.slice(0, 12).reverse();
+  host.innerHTML = `
+    <p>Evolution score/cotes avant la cloture:</p>
+    <ol class="replay-list">
+      ${rows
+        .map((row) => {
+          const t = row?.createdAt || row?.created_at || row?.timestamp || "";
+          const sh = Number(row?.scoreHome ?? row?.score_home ?? 0);
+          const sa = Number(row?.scoreAway ?? row?.score_away ?? 0);
+          const st = row?.status || "-";
+          return `<li>${escapeHtml(t)} | score ${sh}-${sa} | statut ${escapeHtml(st)}</li>`;
+        })
+        .join("")}
+    </ol>
   `;
 }
 
@@ -1431,7 +1537,10 @@ async function loadData(trigger = "manual") {
   loading = true;
   try {
     setDetailPanelsVisibility(true);
-    const res = await fetch(`/api/matches/${encodeURIComponent(currentMatchId)}/details`, { cache: "no-store" });
+    const [res, histRes] = await Promise.all([
+      fetch(`/api/matches/${encodeURIComponent(currentMatchId)}/details`, { cache: "no-store" }),
+      fetch(`/api/match/${encodeURIComponent(currentMatchId)}/history?limit=120`, { cache: "no-store" }).catch(() => null),
+    ]);
     const data = await res.json();
     if (!res.ok || !data.success) {
       const message = data?.error?.message || data?.message || "Erreur API";
@@ -1460,6 +1569,14 @@ async function loadData(trigger = "manual") {
     const currentOdds = extractOdds(match);
     const drifts = computeDrift(previousOdds, currentOdds);
     renderDriftAlert(drifts);
+    renderDynamicConfidencePanel(data, drifts);
+    renderStabilityPanel(data, drifts);
+    let historyRows = [];
+    if (histRes && histRes.ok) {
+      const histJson = await histRes.json().catch(() => ({}));
+      historyRows = Array.isArray(histJson?.data?.history) ? histJson.data.history : [];
+    }
+    renderReplayPanel(data, historyRows);
     previousOdds = currentOdds;
     if (window.aiCoach && typeof window.aiCoach.updateMatchContext === "function") {
       window.aiCoach.updateMatchContext(match);
