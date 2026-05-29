@@ -26,6 +26,8 @@ let generatedMediaFilter = "all";
 const liveScoreByMatch = new Map();
 const GOAL_ALERT_COOLDOWN_MS = 30 * 1000;
 const goalAlertLastShown = new Map();
+const MATCHES_CACHE_KEY = "fc25_matches_cache_v2";
+const MATCHES_CACHE_MAX_AGE_MS = 90 * 1000;
 
 function siteLog(level, message, meta) {
   if (!window.SiteLogger || typeof window.SiteLogger[level] !== "function") return;
@@ -74,6 +76,38 @@ function getMediaSourceLabel(item = {}) {
   if (page.includes("suivre")) return "Suivi";
   if (page) return "Site";
   return String(item?.source || "Archive").trim() || "Archive";
+}
+
+function saveMatchesCache(payload = {}) {
+  try {
+    const rows = Array.isArray(payload?.matches) ? payload.matches : [];
+    const safeRows = rows.slice(0, 120);
+    localStorage.setItem(
+      MATCHES_CACHE_KEY,
+      JSON.stringify({
+        savedAt: Date.now(),
+        fetchedAt: payload?.fetchedAt || null,
+        rows: safeRows,
+      })
+    );
+  } catch {}
+}
+
+function loadMatchesCache() {
+  try {
+    const raw = localStorage.getItem(MATCHES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const ageMs = Date.now() - Number(parsed?.savedAt || 0);
+    if (!Array.isArray(parsed?.rows) || ageMs > MATCHES_CACHE_MAX_AGE_MS) return null;
+    return {
+      matches: parsed.rows,
+      fetchedAt: parsed?.fetchedAt || null,
+      ageMs,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function buildMediaThumbnailDataUri(item = {}) {
@@ -1761,6 +1795,23 @@ function createMatchCard(match, index) {
   `;
 
   card.appendChild(detailLink);
+  const openDetail = () => {
+    window.location.href = `/match.html?id=${encodeURIComponent(match.id)}`;
+  };
+  card.addEventListener("click", (event) => {
+    const interactive = event.target?.closest?.("a, button, select, input, textarea, label");
+    if (interactive) return;
+    openDetail();
+  });
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDetail();
+    }
+  });
+  card.tabIndex = 0;
+  card.setAttribute("role", "link");
+  card.setAttribute("aria-label", `Ouvrir ${match.teamHome} vs ${match.teamAway}`);
   card.querySelectorAll(".team-logo-img").forEach((img) => {
     img.addEventListener("load", () => {
       const teamName = img.getAttribute("data-team-name");
@@ -2280,6 +2331,10 @@ async function loadMatches() {
         : [];
     lastFetchedAt = meta.fetchedAt || data.fetchedAt || null;
     allMatches = enrichWithTrend(rawMatches);
+    saveMatchesCache({
+      matches: rawMatches,
+      fetchedAt: lastFetchedAt,
+    });
     const filterMode = payload.filterMode || data.filterMode || "unknown";
     const mode = filterMode === "keyword-penalty" ? "filtre mot-cle" : "fallback groupe gr=285";
     currentModeLabel = `mode: ${mode}`;
@@ -2349,6 +2404,25 @@ document.querySelectorAll(".match-mode").forEach((btn) => {
     renderMatches();
   });
 });
+const cachedMatches = loadMatchesCache();
+if (cachedMatches?.matches?.length) {
+  const knownLogos = buildKnownTeamLogoMap(allMatches);
+  const restored = cachedMatches.matches.map((m) => sanitizeMatchLogos(m, knownLogos));
+  allMatches = enrichWithTrend(restored);
+  currentModeLabel = `mode: cache rapide (${Math.round(cachedMatches.ageMs / 1000)}s)`;
+  populateLeagueFilter(allMatches);
+  renderSiteCommandCenter(allMatches);
+  renderWatchlistPanel(allMatches);
+  renderLeagueHeatmap(allMatches);
+  renderMatchFinder(allMatches);
+  renderMatches();
+  const updatedAt = document.getElementById("updatedAt");
+  if (updatedAt) {
+    updatedAt.textContent = cachedMatches.fetchedAt
+      ? `Derniere mise a jour (cache): ${new Date(cachedMatches.fetchedAt).toLocaleString("fr-FR")}`
+      : "Derniere mise a jour (cache rapide)";
+  }
+}
 loadMatches();
 const ambientPulseIntervalId = setInterval(() => {
   const wrap = document.getElementById("matches");
