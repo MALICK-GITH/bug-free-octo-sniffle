@@ -297,7 +297,7 @@ self.addEventListener('push', (event) => {
       actions: [
         { action: 'explore', title: 'Ouvrir maintenant', icon: '/icon-96.png' },
         { action: 'snooze', title: 'Rappeler +2 min', icon: '/icon-96.png' },
-        { action: 'close', title: 'Fermer', icon: '/icon-96.png' }
+        { action: 'close', title: 'Annuler', icon: '/icon-96.png' }
       ]
     })
   );
@@ -330,7 +330,7 @@ self.addEventListener('notificationclick', (event) => {
             },
             actions: [
               { action: 'explore', title: 'Ouvrir maintenant', icon: '/icon-96.png' },
-              { action: 'close', title: 'Fermer', icon: '/icon-96.png' }
+              { action: 'close', title: 'Annuler', icon: '/icon-96.png' }
             ]
           }).finally(resolve);
         }, 120000);

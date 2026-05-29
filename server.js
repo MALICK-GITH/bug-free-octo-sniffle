@@ -341,6 +341,14 @@ function normalizeTrackedPushMatch(match = {}) {
   if (!id) return null;
   const teams = getMatchTeams(match);
   const score = getMatchScore(match);
+  const odds = getMatchOdds(match);
+  const startTimeUnix = Number(match?.startTimeUnix || 0) || 0;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const minutesToKickoff = startTimeUnix > 0 ? Math.max(0, Math.floor((startTimeUnix - nowSec) / 60)) : null;
+  const hasStrongFavorite =
+    Number.isFinite(odds.home) && Number.isFinite(odds.away) && Number.isFinite(odds.draw)
+      ? Math.min(odds.home, odds.away) <= 1.45 && Math.max(odds.home, odds.away) >= 2.4
+      : false;
   return {
     id,
     teamHome: teams.home || "Equipe 1",
@@ -349,6 +357,10 @@ function normalizeTrackedPushMatch(match = {}) {
     status: classifyMatchStatus(match),
     scoreHome: Number(score.home || 0),
     scoreAway: Number(score.away || 0),
+    startTimeUnix,
+    minutesToKickoff,
+    odds,
+    opportunityFlag: hasStrongFavorite,
   };
 }
 
@@ -375,11 +387,30 @@ async function runInstantPushCycle(source = "cron-job.org") {
     const isFinished = m.status === "finished";
     const prevTotal = Number(before.scoreHome || 0) + Number(before.scoreAway || 0);
     const nextTotal = Number(m.scoreHome || 0) + Number(m.scoreAway || 0);
+    const prevKick = Number(before.minutesToKickoff);
+    const nextKick = Number(m.minutesToKickoff);
+    const crossedKickoffWindow = (windowMin) =>
+      Number.isFinite(prevKick) && Number.isFinite(nextKick) && prevKick > windowMin && nextKick <= windowMin && isLive === false && isFinished === false;
+    const prevOpp = Boolean(before.opportunityFlag);
+    const nextOpp = Boolean(m.opportunityFlag);
+    const oldHome = Number(before?.odds?.home || 0);
+    const oldDraw = Number(before?.odds?.draw || 0);
+    const oldAway = Number(before?.odds?.away || 0);
+    const newHome = Number(m?.odds?.home || 0);
+    const newDraw = Number(m?.odds?.draw || 0);
+    const newAway = Number(m?.odds?.away || 0);
+    const oddDriftPct = (oldV, newV) =>
+      oldV > 1 && newV > 1 ? Math.abs(((newV - oldV) / oldV) * 100) : 0;
+    const maxDrift = Math.max(
+      oddDriftPct(oldHome, newHome),
+      oddDriftPct(oldDraw, newDraw),
+      oddDriftPct(oldAway, newAway)
+    );
 
     if (!wasFinished && isFinished) {
       events.push({
         topic: "finished",
-        title: "ONE-DELUX | Match termine",
+        title: "ONE-DELUX • Match termine",
         body: `${m.teamHome} ${m.scoreHome}-${m.scoreAway} ${m.teamAway} (${m.league})`,
         url: `/match.html?id=${encodeURIComponent(m.id)}`,
         requireInteraction: true,
@@ -394,7 +425,7 @@ async function runInstantPushCycle(source = "cron-job.org") {
     if (!wasLive && isLive) {
       events.push({
         topic: "live",
-        title: "ONE-DELUX | Match en direct",
+        title: "ONE-DELUX • Match en direct",
         body: `${m.teamHome} vs ${m.teamAway} vient de passer en live`,
         url: `/match.html?id=${encodeURIComponent(m.id)}`,
         requireInteraction: true,
@@ -409,12 +440,54 @@ async function runInstantPushCycle(source = "cron-job.org") {
     if (isLive && nextTotal > prevTotal) {
       events.push({
         topic: "goal",
-        title: "ONE-DELUX | Alerte but",
+        title: "ONE-DELUX • Alerte but",
         body: `${m.teamHome} ${m.scoreHome}-${m.scoreAway} ${m.teamAway}`,
         url: `/match.html?id=${encodeURIComponent(m.id)}`,
         requireInteraction: true,
         renotify: true,
         tag: `goal-${m.id}`,
+        urgency: "high",
+        ttlSeconds: 2400,
+      });
+    }
+
+    if (crossedKickoffWindow(10) || crossedKickoffWindow(5) || crossedKickoffWindow(2)) {
+      events.push({
+        topic: "kickoff",
+        title: "ONE-DELUX • Coup d'envoi proche",
+        body: `${m.teamHome} vs ${m.teamAway} commence dans ${m.minutesToKickoff} min`,
+        url: `/match.html?id=${encodeURIComponent(m.id)}`,
+        requireInteraction: true,
+        renotify: true,
+        tag: `kickoff-${m.id}-${m.minutesToKickoff}`,
+        urgency: "high",
+        ttlSeconds: 1800,
+      });
+    }
+
+    if (maxDrift >= 10) {
+      events.push({
+        topic: "odds",
+        title: "ONE-DELUX • Changement de cotes",
+        body: `${m.teamHome} vs ${m.teamAway}: drift ${maxDrift.toFixed(1)}%`,
+        url: `/match.html?id=${encodeURIComponent(m.id)}`,
+        requireInteraction: true,
+        renotify: true,
+        tag: `odds-${m.id}`,
+        urgency: "high",
+        ttlSeconds: 1800,
+      });
+    }
+
+    if (!prevOpp && nextOpp && m.status === "upcoming") {
+      events.push({
+        topic: "opportunity",
+        title: "ONE-DELUX • Bonne opportunite detectee",
+        body: `${m.teamHome} vs ${m.teamAway} (${m.league})`,
+        url: `/match.html?id=${encodeURIComponent(m.id)}`,
+        requireInteraction: true,
+        renotify: true,
+        tag: `opportunity-${m.id}`,
         urgency: "high",
         ttlSeconds: 2400,
       });
