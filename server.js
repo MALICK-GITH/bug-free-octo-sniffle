@@ -272,6 +272,11 @@ async function sendBackgroundPushToAll(payload = {}, options = {}) {
     url: String(safePayload.url || "/"),
     type: String(safePayload.type || topic || "general"),
     at: String(safePayload.at || new Date().toISOString()),
+    requireInteraction: Boolean(safePayload.requireInteraction),
+    renotify: Boolean(safePayload.renotify),
+    tag: String(safePayload.tag || `${topic}-${Date.now()}`),
+    urgency: String(safePayload.urgency || "normal"),
+    ttlSeconds: Math.max(60, Number(safePayload.ttlSeconds || 3600)),
   };
   const body = JSON.stringify(pushMessage);
   for (const entry of entries) {
@@ -293,7 +298,10 @@ async function sendBackgroundPushToAll(payload = {}, options = {}) {
       }
     }
     try {
-      await webPush.sendNotification(entry.subscription, body);
+      await webPush.sendNotification(entry.subscription, body, {
+        TTL: Number(pushMessage.ttlSeconds || 3600),
+        urgency: ["very-low", "low", "normal", "high"].includes(pushMessage.urgency) ? pushMessage.urgency : "normal",
+      });
       sent += 1;
       keep.push({
         ...entry,
@@ -374,6 +382,11 @@ async function runInstantPushCycle(source = "cron-job.org") {
         title: "ONE-DELUX | Match termine",
         body: `${m.teamHome} ${m.scoreHome}-${m.scoreAway} ${m.teamAway} (${m.league})`,
         url: `/match.html?id=${encodeURIComponent(m.id)}`,
+        requireInteraction: true,
+        renotify: true,
+        tag: `finished-${m.id}`,
+        urgency: "high",
+        ttlSeconds: 7200,
       });
       continue;
     }
@@ -384,6 +397,11 @@ async function runInstantPushCycle(source = "cron-job.org") {
         title: "ONE-DELUX | Match en direct",
         body: `${m.teamHome} vs ${m.teamAway} vient de passer en live`,
         url: `/match.html?id=${encodeURIComponent(m.id)}`,
+        requireInteraction: true,
+        renotify: true,
+        tag: `live-${m.id}`,
+        urgency: "high",
+        ttlSeconds: 1800,
       });
       continue;
     }
@@ -394,6 +412,11 @@ async function runInstantPushCycle(source = "cron-job.org") {
         title: "ONE-DELUX | Alerte but",
         body: `${m.teamHome} ${m.scoreHome}-${m.scoreAway} ${m.teamAway}`,
         url: `/match.html?id=${encodeURIComponent(m.id)}`,
+        requireInteraction: true,
+        renotify: true,
+        tag: `goal-${m.id}`,
+        urgency: "high",
+        ttlSeconds: 2400,
       });
     }
   }
@@ -3943,6 +3966,11 @@ app.post("/api/push/broadcast", async (req, res) => {
       url: String(req.body?.url || "/"),
       type: String(req.body?.type || "general"),
       at: new Date().toISOString(),
+      requireInteraction: Boolean(req.body?.requireInteraction ?? true),
+      renotify: Boolean(req.body?.renotify ?? true),
+      tag: String(req.body?.tag || `broadcast-${Date.now()}`),
+      urgency: String(req.body?.urgency || "high"),
+      ttlSeconds: Math.max(60, Number(req.body?.ttlSeconds || 3600)),
     };
     const result = await sendBackgroundPushToAll(payload, {
       topic: String(req.body?.topic || payload.type || "general"),

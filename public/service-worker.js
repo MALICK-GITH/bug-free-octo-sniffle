@@ -272,6 +272,10 @@ self.addEventListener('push', (event) => {
   const title = String(parsed?.title || 'ONE-DELUX');
   const body = String(parsed?.body || fallbackText || 'Nouvelle mise a jour ONE-DELUX');
   const url = String(parsed?.url || '/');
+  const tag = String(parsed?.tag || `one-delux-${Date.now()}`);
+  const requireInteraction = Boolean(parsed?.requireInteraction);
+  const renotify = Boolean(parsed?.renotify);
+  const urgency = String(parsed?.urgency || 'normal');
 
   event.waitUntil(
     self.registration.showNotification(title, {
@@ -279,14 +283,20 @@ self.addEventListener('push', (event) => {
       icon: '/icon-192.png',
       badge: '/icon-96.png',
       vibrate: [200, 100, 200],
+      tag,
+      requireInteraction,
+      renotify,
+      silent: false,
       data: {
         dateOfArrival: Date.now(),
         primaryKey: 1,
         url,
-        payload: parsed || null
+        payload: parsed || null,
+        urgency
       },
       actions: [
-        { action: 'explore', title: 'Explorer', icon: '/icon-96.png' },
+        { action: 'explore', title: 'Ouvrir maintenant', icon: '/icon-96.png' },
+        { action: 'snooze', title: 'Rappeler +2 min', icon: '/icon-96.png' },
         { action: 'close', title: 'Fermer', icon: '/icon-96.png' }
       ]
     })
@@ -294,9 +304,44 @@ self.addEventListener('push', (event) => {
 });
 
 self.addEventListener('notificationclick', (event) => {
+  const targetUrl = event.notification?.data?.url || '/';
+  if (event.action === 'snooze') {
+    const payload = event.notification?.data?.payload || {};
+    const title = String(payload?.title || event.notification.title || 'ONE-DELUX');
+    const body = String(payload?.body || event.notification.body || 'Rappel notification');
+    const tag = String(payload?.tag || `snooze-${Date.now()}`);
+    event.waitUntil(
+      new Promise((resolve) => {
+        setTimeout(() => {
+          self.registration.showNotification(title, {
+            body,
+            icon: '/icon-192.png',
+            badge: '/icon-96.png',
+            vibrate: [260, 120, 260],
+            tag,
+            requireInteraction: true,
+            renotify: true,
+            data: {
+              dateOfArrival: Date.now(),
+              primaryKey: 1,
+              url: targetUrl,
+              payload,
+              urgency: payload?.urgency || 'high'
+            },
+            actions: [
+              { action: 'explore', title: 'Ouvrir maintenant', icon: '/icon-96.png' },
+              { action: 'close', title: 'Fermer', icon: '/icon-96.png' }
+            ]
+          }).finally(resolve);
+        }, 120000);
+      })
+    );
+    event.notification.close();
+    return;
+  }
+
   event.notification.close();
-  if (event.action === 'explore') {
-    const targetUrl = event.notification?.data?.url || '/';
+  if (event.action === 'explore' || !event.action) {
     event.waitUntil(clients.openWindow(targetUrl));
   }
 });
