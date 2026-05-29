@@ -9,6 +9,7 @@ const { predictionEngine } = require("./prediction");
 const { analyserMatchMultiBots } = require("./bots");
 const { getHistoricalRecommendation } = require("./historical");
 const { getPenaltyTournaments } = require("./tournaments");
+const { predictFromTrainedModel } = require("./trainedModelPredictor");
 
 const PENALTY_KEYWORDS = [
   "penalty",
@@ -812,11 +813,17 @@ function buildMatchPredictionDetails(event) {
     bias: buildExactScoreBias(prediction || {}),
     hasConvergence: Boolean(exactScoreProjection?.method && exactScoreProjection.method !== "poisson-odds-market-v1"),
   });
+  const trainedModelPrediction = predictFromTrainedModel({
+    teamHome: match.teamHome,
+    teamAway: match.teamAway,
+    league: match.league,
+  });
 
   return {
     match,
     bettingMarkets: bets,
     prediction,
+    trainedModelPrediction,
     exactScore,
     exactScoreAvailable: Boolean(exactScore),
     leagueProfile: getLeagueProfileSummary(leagueProfile),

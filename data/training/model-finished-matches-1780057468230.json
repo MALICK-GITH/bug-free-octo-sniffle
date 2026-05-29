@@ -1,0 +1,848 @@
+{
+  "version": "1.0.0",
+  "trainedAt": "2026-05-29T12:24:28.209Z",
+  "trainSize": 860,
+  "validSize": 215,
+  "priors": {
+    "result": {
+      "home": 0.38488372093023254,
+      "draw": 0.10232558139534884,
+      "away": 0.5127906976744186
+    },
+    "score": {
+      "home": 3.3825581395348836,
+      "away": 3.513953488372093
+    }
+  },
+  "leagues": {
+    "fc 26. 5x5 rush. superligue": {
+      "n": 58,
+      "result": {
+        "home": 0.3448275862068966,
+        "draw": 0.15517241379310345,
+        "away": 0.5
+      },
+      "score": {
+        "home": 3.586206896551724,
+        "away": 3.896551724137931
+      }
+    },
+    "fc 25. champions league": {
+      "n": 36,
+      "result": {
+        "home": 0.3888888888888889,
+        "draw": 0.25,
+        "away": 0.3611111111111111
+      },
+      "score": {
+        "home": 1.75,
+        "away": 1.7222222222222223
+      }
+    },
+    "fc 24. 4x4. championnat d'angleterre": {
+      "n": 45,
+      "result": {
+        "home": 0.4888888888888889,
+        "draw": 0.08888888888888889,
+        "away": 0.4222222222222222
+      },
+      "score": {
+        "home": 7.844444444444444,
+        "away": 7.688888888888889
+      }
+    },
+    "fc 25. 3x3. ligue de conférence": {
+      "n": 99,
+      "result": {
+        "home": 0.43434343434343436,
+        "draw": 0.09090909090909091,
+        "away": 0.47474747474747475
+      },
+      "score": {
+        "home": 7.121212121212121,
+        "away": 7.222222222222222
+      }
+    },
+    "fc 26. champions league": {
+      "n": 41,
+      "result": {
+        "home": 0.34146341463414637,
+        "draw": 0.24390243902439024,
+        "away": 0.4146341463414634
+      },
+      "score": {
+        "home": 1.951219512195122,
+        "away": 2.073170731707317
+      }
+    },
+    "fc 25. championnat d'angleterre": {
+      "n": 31,
+      "result": {
+        "home": 0.3870967741935484,
+        "draw": 0.0967741935483871,
+        "away": 0.5161290322580645
+      },
+      "score": {
+        "home": 1.1935483870967742,
+        "away": 1.3548387096774193
+      }
+    },
+    "fc 26. championnat du monde": {
+      "n": 43,
+      "result": {
+        "home": 0.37209302325581395,
+        "draw": 0.2558139534883721,
+        "away": 0.37209302325581395
+      },
+      "score": {
+        "home": 1.3953488372093024,
+        "away": 1.558139534883721
+      }
+    },
+    "fc 25. championnat d'espagne": {
+      "n": 32,
+      "result": {
+        "home": 0.21875,
+        "draw": 0.21875,
+        "away": 0.5625
+      },
+      "score": {
+        "home": 1.21875,
+        "away": 1.9375
+      }
+    },
+    "fc25. penalty": {
+      "n": 123,
+      "result": {
+        "home": 0.4065040650406504,
+        "draw": 0,
+        "away": 0.5934959349593496
+      },
+      "score": {
+        "home": 3.5528455284552845,
+        "away": 3.5284552845528454
+      }
+    },
+    "fc24. penalty": {
+      "n": 82,
+      "result": {
+        "home": 0.3780487804878049,
+        "draw": 0,
+        "away": 0.6219512195121951
+      },
+      "score": {
+        "home": 3.841463414634146,
+        "away": 4.134146341463414
+      }
+    },
+    "fc 25. ligue européenne": {
+      "n": 35,
+      "result": {
+        "home": 0.22857142857142856,
+        "draw": 0.3142857142857143,
+        "away": 0.45714285714285713
+      },
+      "score": {
+        "home": 1.2571428571428571,
+        "away": 1.8857142857142857
+      }
+    },
+    "penalty": {
+      "n": 155,
+      "result": {
+        "home": 0.43870967741935485,
+        "draw": 0,
+        "away": 0.5612903225806452
+      },
+      "score": {
+        "home": 2.574193548387097,
+        "away": 2.503225806451613
+      }
+    },
+    "fc 25. italy championship": {
+      "n": 36,
+      "result": {
+        "home": 0.3055555555555556,
+        "draw": 0.2222222222222222,
+        "away": 0.4722222222222222
+      },
+      "score": {
+        "home": 1.5833333333333333,
+        "away": 1.8333333333333333
+      }
+    },
+    "fc 25. championnat d'allemagne": {
+      "n": 28,
+      "result": {
+        "home": 0.39285714285714285,
+        "draw": 0.25,
+        "away": 0.35714285714285715
+      },
+      "score": {
+        "home": 1.6428571428571428,
+        "away": 1.6428571428571428
+      }
+    },
+    "fifa23. penalty": {
+      "n": 7,
+      "result": {
+        "home": 0.14285714285714285,
+        "draw": 0,
+        "away": 0.8571428571428571
+      },
+      "score": {
+        "home": 5.714285714285714,
+        "away": 6.428571428571429
+      }
+    },
+    "fc26. penalty": {
+      "n": 9,
+      "result": {
+        "home": 0.3333333333333333,
+        "draw": 0,
+        "away": 0.6666666666666666
+      },
+      "score": {
+        "home": 2.888888888888889,
+        "away": 3.6666666666666665
+      }
+    }
+  },
+  "teams": {
+    "lombardia": {
+      "n": 17,
+      "for": 2.9411764705882355,
+      "against": 2.5294117647058822
+    },
+    "psv eindhoven": {
+      "n": 14,
+      "for": 2.642857142857143,
+      "against": 3.7142857142857144
+    },
+    "arsenal": {
+      "n": 114,
+      "for": 3.4298245614035086,
+      "against": 3.4035087719298245
+    },
+    "lille osc": {
+      "n": 14,
+      "for": 5.642857142857143,
+      "against": 6.428571428571429
+    },
+    "nottingham forest": {
+      "n": 8,
+      "for": 5.5,
+      "against": 7.75
+    },
+    "manchester united": {
+      "n": 12,
+      "for": 7.083333333333333,
+      "against": 4.25
+    },
+    "anderlecht": {
+      "n": 15,
+      "for": 6.333333333333333,
+      "against": 6
+    },
+    "fiorentine": {
+      "n": 16,
+      "for": 6.9375,
+      "against": 6.25
+    },
+    "chelsea": {
+      "n": 26,
+      "for": 4.846153846153846,
+      "against": 4.6923076923076925
+    },
+    "club atlético de madrid": {
+      "n": 17,
+      "for": 2.6470588235294117,
+      "against": 2.4705882352941178
+    },
+    "borussia monchengladbach": {
+      "n": 16,
+      "for": 6.0625,
+      "against": 6.625
+    },
+    "olympique lyonnais": {
+      "n": 9,
+      "for": 2.111111111111111,
+      "against": 2.5555555555555554
+    },
+    "barcelone": {
+      "n": 96,
+      "for": 3.1666666666666665,
+      "against": 2.9583333333333335
+    },
+    "porto": {
+      "n": 9,
+      "for": 3.3333333333333335,
+      "against": 3
+    },
+    "juventus": {
+      "n": 60,
+      "for": 3.433333333333333,
+      "against": 3.35
+    },
+    "morocco": {
+      "n": 6,
+      "for": 1,
+      "against": 1.1666666666666667
+    },
+    "états-unis": {
+      "n": 6,
+      "for": 1.1666666666666667,
+      "against": 2.1666666666666665
+    },
+    "bournemouth": {
+      "n": 6,
+      "for": 3.6666666666666665,
+      "against": 4
+    },
+    "liverpool": {
+      "n": 114,
+      "for": 3.4210526315789473,
+      "against": 3.4649122807017543
+    },
+    "napoli": {
+      "n": 5,
+      "for": 1.6,
+      "against": 2.2
+    },
+    "las palmas": {
+      "n": 6,
+      "for": 1.3333333333333333,
+      "against": 1.3333333333333333
+    },
+    "villarreal": {
+      "n": 16,
+      "for": 5.8125,
+      "against": 4.8125
+    },
+    "wolverhampton wanderers": {
+      "n": 5,
+      "for": 6,
+      "against": 5.2
+    },
+    "luton town": {
+      "n": 8,
+      "for": 8.625,
+      "against": 7.75
+    },
+    "aston villa": {
+      "n": 14,
+      "for": 2.7142857142857144,
+      "against": 3.2857142857142856
+    },
+    "sheffield united": {
+      "n": 3,
+      "for": 7.333333333333333,
+      "against": 6
+    },
+    "braga": {
+      "n": 13,
+      "for": 4.846153846153846,
+      "against": 4.769230769230769
+    },
+    "red bull": {
+      "n": 13,
+      "for": 6.923076923076923,
+      "against": 6
+    },
+    "bayer 04": {
+      "n": 14,
+      "for": 2.7857142857142856,
+      "against": 2.357142857142857
+    },
+    "brentford": {
+      "n": 7,
+      "for": 6.285714285714286,
+      "against": 7.285714285714286
+    },
+    "tottenham hotspur": {
+      "n": 15,
+      "for": 2.8,
+      "against": 3.066666666666667
+    },
+    "az alkmaar": {
+      "n": 12,
+      "for": 4.75,
+      "against": 6.166666666666667
+    },
+    "roma": {
+      "n": 21,
+      "for": 5.714285714285714,
+      "against": 5.238095238095238
+    },
+    "olympiacos": {
+      "n": 20,
+      "for": 4.55,
+      "against": 4.65
+    },
+    "paris saint-germain": {
+      "n": 111,
+      "for": 3.144144144144144,
+      "against": 3.1981981981981984
+    },
+    "ghana": {
+      "n": 6,
+      "for": 1.1666666666666667,
+      "against": 2.8333333333333335
+    },
+    "france": {
+      "n": 8,
+      "for": 2.25,
+      "against": 1.125
+    },
+    "crystal palace": {
+      "n": 6,
+      "for": 3,
+      "against": 4.5
+    },
+    "bayern munich": {
+      "n": 115,
+      "for": 3.382608695652174,
+      "against": 3.0695652173913044
+    },
+    "benfica": {
+      "n": 6,
+      "for": 0.8333333333333334,
+      "against": 2.5
+    },
+    "ipswich town": {
+      "n": 3,
+      "for": 1.6666666666666667,
+      "against": 2
+    },
+    "al nassr": {
+      "n": 22,
+      "for": 3.6363636363636362,
+      "against": 3.727272727272727
+    },
+    "rangers": {
+      "n": 7,
+      "for": 1,
+      "against": 1
+    },
+    "newcastle united": {
+      "n": 14,
+      "for": 3.2857142857142856,
+      "against": 4.714285714285714
+    },
+    "everton": {
+      "n": 7,
+      "for": 4.714285714285714,
+      "against": 3.2857142857142856
+    },
+    "real madrid": {
+      "n": 92,
+      "for": 3.3369565217391304,
+      "against": 2.782608695652174
+    },
+    "piemonte calcio (juventus)": {
+      "n": 35,
+      "for": 2.5428571428571427,
+      "against": 2.5428571428571427
+    },
+    "portugal": {
+      "n": 4,
+      "for": 0.75,
+      "against": 0.75
+    },
+    "croatie": {
+      "n": 4,
+      "for": 1.25,
+      "against": 1
+    },
+    "udinese calcio": {
+      "n": 5,
+      "for": 1.8,
+      "against": 2.8
+    },
+    "celta": {
+      "n": 14,
+      "for": 6.928571428571429,
+      "against": 5.928571428571429
+    },
+    "manchester city": {
+      "n": 117,
+      "for": 3.452991452991453,
+      "against": 3.3333333333333335
+    },
+    "athletic bilbao": {
+      "n": 5,
+      "for": 2.2,
+      "against": 1
+    },
+    "brighton et hove albion": {
+      "n": 5,
+      "for": 6.2,
+      "against": 6.6
+    },
+    "fulham": {
+      "n": 5,
+      "for": 5.8,
+      "against": 8
+    },
+    "bergamo calcio": {
+      "n": 13,
+      "for": 1.9230769230769231,
+      "against": 2
+    },
+    "latium": {
+      "n": 10,
+      "for": 1.4,
+      "against": 1.8
+    },
+    "hellas verona": {
+      "n": 4,
+      "for": 1.25,
+      "against": 1.25
+    },
+    "suède": {
+      "n": 2,
+      "for": 3,
+      "against": 1
+    },
+    "heart of midlothian": {
+      "n": 11,
+      "for": 6.7272727272727275,
+      "against": 8
+    },
+    "inter miami": {
+      "n": 21,
+      "for": 3.142857142857143,
+      "against": 2.6666666666666665
+    },
+    "ajax": {
+      "n": 6,
+      "for": 1.6666666666666667,
+      "against": 2.3333333333333335
+    },
+    "pologne": {
+      "n": 3,
+      "for": 0.6666666666666666,
+      "against": 1.6666666666666667
+    },
+    "eintracht": {
+      "n": 18,
+      "for": 3.8333333333333335,
+      "against": 5.055555555555555
+    },
+    "west ham united": {
+      "n": 23,
+      "for": 5.869565217391305,
+      "against": 6.391304347826087
+    },
+    "borussia dortmund": {
+      "n": 11,
+      "for": 2.6363636363636362,
+      "against": 1.9090909090909092
+    },
+    "augsburg": {
+      "n": 3,
+      "for": 1.3333333333333333,
+      "against": 2
+    },
+    "empoli": {
+      "n": 4,
+      "for": 1,
+      "against": 2.25
+    },
+    "deportivo alaves": {
+      "n": 5,
+      "for": 1.4,
+      "against": 1.6
+    },
+    "rayo vallecano": {
+      "n": 3,
+      "for": 2,
+      "against": 2
+    },
+    "real betis": {
+      "n": 4,
+      "for": 0.5,
+      "against": 1.5
+    },
+    "osasuna": {
+      "n": 2,
+      "for": 1.5,
+      "against": 2.5
+    },
+    "fenerbahçe": {
+      "n": 16,
+      "for": 5.0625,
+      "against": 5.8125
+    },
+    "union berlin": {
+      "n": 3,
+      "for": 2.6666666666666665,
+      "against": 1.3333333333333333
+    },
+    "st. pauli": {
+      "n": 4,
+      "for": 1.25,
+      "against": 1.75
+    },
+    "torino": {
+      "n": 6,
+      "for": 1.1666666666666667,
+      "against": 1.5
+    },
+    "como": {
+      "n": 5,
+      "for": 2.2,
+      "against": 1.2
+    },
+    "nice": {
+      "n": 12,
+      "for": 7.583333333333333,
+      "against": 6.833333333333333
+    },
+    "bâle": {
+      "n": 9,
+      "for": 6.666666666666667,
+      "against": 8.88888888888889
+    },
+    "valencia": {
+      "n": 1,
+      "for": 1,
+      "against": 2
+    },
+    "real sociedad": {
+      "n": 6,
+      "for": 1.3333333333333333,
+      "against": 2.5
+    },
+    "espagne": {
+      "n": 6,
+      "for": 2.3333333333333335,
+      "against": 1.3333333333333333
+    },
+    "sporting clube de portugal": {
+      "n": 9,
+      "for": 1.3333333333333333,
+      "against": 2.111111111111111
+    },
+    "southampton": {
+      "n": 3,
+      "for": 0.6666666666666666,
+      "against": 1
+    },
+    "italie": {
+      "n": 3,
+      "for": 1.6666666666666667,
+      "against": 0.6666666666666666
+    },
+    "qatar": {
+      "n": 5,
+      "for": 0.8,
+      "against": 2.8
+    },
+    "monza": {
+      "n": 4,
+      "for": 1.5,
+      "against": 1
+    },
+    "parma": {
+      "n": 4,
+      "for": 1.5,
+      "against": 1.75
+    },
+    "gérone": {
+      "n": 4,
+      "for": 1,
+      "against": 2.25
+    },
+    "1. heidenheim 1846": {
+      "n": 4,
+      "for": 1,
+      "against": 2.5
+    },
+    "werder bremen": {
+      "n": 6,
+      "for": 1.6666666666666667,
+      "against": 1.5
+    },
+    "galatasaray": {
+      "n": 11,
+      "for": 2.909090909090909,
+      "against": 2.272727272727273
+    },
+    "celtic": {
+      "n": 3,
+      "for": 1.3333333333333333,
+      "against": 1.6666666666666667
+    },
+    "danemark": {
+      "n": 4,
+      "for": 0.75,
+      "against": 1
+    },
+    "lecce": {
+      "n": 5,
+      "for": 1.6,
+      "against": 1.4
+    },
+    "genoa": {
+      "n": 3,
+      "for": 1.3333333333333333,
+      "against": 2
+    },
+    "ukraine": {
+      "n": 6,
+      "for": 0.6666666666666666,
+      "against": 1
+    },
+    "allemagne": {
+      "n": 4,
+      "for": 1.75,
+      "against": 1.5
+    },
+    "leipzig": {
+      "n": 3,
+      "for": 2,
+      "against": 2
+    },
+    "beşiktaş": {
+      "n": 4,
+      "for": 1.25,
+      "against": 1.25
+    },
+    "cagliari calcio": {
+      "n": 3,
+      "for": 2,
+      "against": 2.3333333333333335
+    },
+    "milano": {
+      "n": 4,
+      "for": 1.75,
+      "against": 1
+    },
+    "club brugge": {
+      "n": 6,
+      "for": 1.3333333333333333,
+      "against": 2.5
+    },
+    "vfl wolfsburg": {
+      "n": 4,
+      "for": 2.5,
+      "against": 0.75
+    },
+    "hongrie": {
+      "n": 2,
+      "for": 1.5,
+      "against": 1
+    },
+    "holstein": {
+      "n": 5,
+      "for": 1,
+      "against": 2.2
+    },
+    "angleterre": {
+      "n": 2,
+      "for": 1.5,
+      "against": 2.5
+    },
+    "argentine": {
+      "n": 5,
+      "for": 3,
+      "against": 1
+    },
+    "venise": {
+      "n": 2,
+      "for": 3.5,
+      "against": 3
+    },
+    "burnley": {
+      "n": 3,
+      "for": 7.333333333333333,
+      "against": 9.666666666666666
+    },
+    "leicester city": {
+      "n": 3,
+      "for": 0.6666666666666666,
+      "against": 1.6666666666666667
+    },
+    "pays-bas": {
+      "n": 5,
+      "for": 2.4,
+      "against": 0.6
+    },
+    "freiburg": {
+      "n": 2,
+      "for": 1,
+      "against": 1.5
+    },
+    "1. fsv mainz 05": {
+      "n": 3,
+      "for": 2.3333333333333335,
+      "against": 2
+    },
+    "espanyol": {
+      "n": 3,
+      "for": 0.6666666666666666,
+      "against": 1
+    },
+    "vfl bochum": {
+      "n": 4,
+      "for": 0.75,
+      "against": 1.5
+    },
+    "vfb stuttgart": {
+      "n": 4,
+      "for": 1.75,
+      "against": 1.25
+    },
+    "norvège": {
+      "n": 2,
+      "for": 0.5,
+      "against": 3.5
+    },
+    "séville": {
+      "n": 5,
+      "for": 1.4,
+      "against": 1.8
+    },
+    "feyenoord": {
+      "n": 3,
+      "for": 1,
+      "against": 0.6666666666666666
+    },
+    "tsg 1899 hoffenheim": {
+      "n": 4,
+      "for": 1,
+      "against": 3.25
+    },
+    "real valladolid": {
+      "n": 3,
+      "for": 3.3333333333333335,
+      "against": 2
+    },
+    "getafe": {
+      "n": 1,
+      "for": 2,
+      "against": 1
+    },
+    "leganes": {
+      "n": 2,
+      "for": 0.5,
+      "against": 3.5
+    },
+    "majorque": {
+      "n": 2,
+      "for": 1.5,
+      "against": 2
+    },
+    "mexique": {
+      "n": 3,
+      "for": 0.6666666666666666,
+      "against": 1.6666666666666667
+    },
+    "bologna 1909": {
+      "n": 1,
+      "for": 4,
+      "against": 1
+    }
+  }
+}
