@@ -1,5 +1,6 @@
 /* global Chart */
 const AUTO_REFRESH_SECONDS = 60;
+const LIVE_SILENT_REFRESH_SECONDS = 10;
 const DRIFT_THRESHOLD_PERCENT = 8;
 const PAGE_REFRESH_STORAGE_KEY = "fc25_page_refresh_minutes_v1";
 const DEFAULT_PAGE_REFRESH_MINUTES = 5;
@@ -20,6 +21,7 @@ let lastDetailsData = null;
 let coachModeEnabled = true;
 let lowDataEnabled = false;
 let previousMasterConfidence = null;
+let liveSilentRefreshIntervalId = null;
 
 function qs(name) {
   return new URLSearchParams(window.location.search).get(name);
@@ -68,7 +70,60 @@ function setLowDataMode(value) {
 function updateRefreshBadge() {
   const el = document.getElementById("refreshBadge");
   if (!el) return;
-  el.textContent = AUTO_REFRESH_ENABLED ? `Auto-refresh dans ${countdown}s` : "Auto-refresh desactive";
+  el.textContent = `Mise a jour live auto toutes les ${LIVE_SILENT_REFRESH_SECONDS}s`;
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isMatchStarted(match) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const startUnix = Number(match?.startTimeUnix || 0);
+  const statusText = normalizeText(match?.statusText || "");
+  const phaseText = normalizeText(match?.phase || "");
+  const statusCode = Number(match?.statusCode || 0);
+
+  if (statusCode === 3) return true; // termine
+  if (statusText.includes("termine")) return true;
+  if (statusText.includes("evenement en cours")) return true;
+  if (statusText.includes("mi-temps") || statusText.includes("mi temps")) return true;
+  if (phaseText.includes("mi-temps") || phaseText.includes("mi temps")) return true;
+  if (/\d+\s*minutes?/.test(statusText) && !statusText.includes("debut dans")) return true;
+  if (startUnix > 0 && nowSec >= startUnix) return true;
+  return false;
+}
+
+function formatKickoffDate(startUnix) {
+  if (!startUnix || startUnix <= 0) return "";
+  const date = new Date(startUnix * 1000);
+  return new Intl.DateTimeFormat("fr-FR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function updateKickoffInfo(match) {
+  const kickoffEl = document.getElementById("kickoffInfo");
+  if (!kickoffEl) return;
+  const startUnix = Number(match?.startTimeUnix || 0);
+
+  if (!startUnix || isMatchStarted(match)) {
+    kickoffEl.textContent = "";
+    kickoffEl.classList.add("hidden");
+    return;
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const minutesLeft = Math.max(0, Math.floor((startUnix - nowSec) / 60));
+  kickoffEl.textContent = `Coup d'envoi: ${formatKickoffDate(startUnix)} (${minutesLeft} min)`;
+  kickoffEl.classList.remove("hidden");
 }
 
 function getPageRefreshMinutes() {
@@ -168,6 +223,16 @@ function startAutoRefresh() {
       updateRefreshBadge();
     }, 1000);
   }
+}
+
+function startSilentLiveRefresh() {
+  if (liveSilentRefreshIntervalId) {
+    clearInterval(liveSilentRefreshIntervalId);
+    liveSilentRefreshIntervalId = null;
+  }
+  liveSilentRefreshIntervalId = setInterval(() => {
+    loadData("silent");
+  }, LIVE_SILENT_REFRESH_SECONDS * 1000);
 }
 
 function impliedProbabilities(odds1x2) {
@@ -1551,7 +1616,8 @@ async function loadData(trigger = "manual") {
     lastDetailsData = data;
     setMatchTelegramButtonEnabled(true);
     document.getElementById("title").textContent = `${match.teamHome} vs ${match.teamAway}`;
-    document.getElementById("sub").textContent = `${match.league} | marche(s): ${data.bettingMarkets?.length || 0}${trigger === "auto" ? " | mise a jour auto" : ""}`;
+    document.getElementById("sub").textContent = `${match.league} | marche(s): ${data.bettingMarkets?.length || 0}${trigger === "auto" || trigger === "silent" ? " | mise a jour auto" : ""}`;
+    updateKickoffInfo(match);
 
     renderMaster(
       data.prediction?.maitre?.decision_finale || {},
@@ -1660,6 +1726,7 @@ function init() {
   if (exportAllBtn) exportAllBtn.addEventListener("click", exportMatchAllInOne);
   loadData("manual");
   startAutoRefresh();
+  startSilentLiveRefresh();
 }
 
 init();
