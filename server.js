@@ -3400,6 +3400,162 @@ app.get("/api/cron/learn", async (req, res) => {
   }
 });
 
+app.get("/api/cron/snapshots/capture", async (req, res) => {
+  const auth = isAuthorizedCronRequest(req);
+  if (!auth.ok) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: "CRON_FORBIDDEN",
+        message: auth.reason === "missing_server_secret"
+          ? "CRON_SECRET n'est pas configure sur le serveur."
+          : "Cle cron invalide.",
+      },
+    });
+  }
+
+  try {
+    const result = await runMatchTrackingCycle("cron-job.org");
+    if (!result) {
+      return res.status(503).json({
+        success: false,
+        error: {
+          code: "SNAPSHOT_CAPTURE_DISABLED",
+          message: "Le snapshot tracking est desactive ou deja en cours d'execution.",
+        },
+      });
+    }
+
+    if (!result.ok) {
+      return res.status(500).json({
+        success: false,
+        source: "cron-job.org",
+        error: {
+          code: "SNAPSHOT_CAPTURE_ERROR",
+          message: "Echec de la capture snapshot.",
+          details: result.error || "Erreur inconnue.",
+        },
+        data: {
+          reason: result.reason || "cron-job.org",
+          startedAt: result.startedAt || null,
+          completedAt: result.completedAt || null,
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      source: "cron-job.org",
+      data: {
+        reason: result.reason || "cron-job.org",
+        tracked: Number(result.tracked || 0),
+        counts: result.counts || { live: 0, upcoming: 0, finished: 0, total: 0 },
+        fetchedAt: result.fetchedAt || null,
+        startedAt: result.startedAt || null,
+        completedAt: result.completedAt || null,
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "SNAPSHOT_CAPTURE_ERROR",
+        message: "Impossible d'executer la capture snapshot.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/cron/snapshots/count", async (req, res) => {
+  const auth = isAuthorizedCronRequest(req);
+  if (!auth.ok) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: "CRON_FORBIDDEN",
+        message: auth.reason === "missing_server_secret"
+          ? "CRON_SECRET n'est pas configure sur le serveur."
+          : "Cle cron invalide.",
+      },
+    });
+  }
+
+  try {
+    const state = await authDb.getMatchTrackingState(matchTrackingConfig.trackerKey);
+    return res.json({
+      success: true,
+      source: "cron-job.org",
+      data: {
+        trackerKey: matchTrackingConfig.trackerKey,
+        totalRuns: Number(state?.totalRuns || 0),
+        lastSuccessAt: state?.lastSuccessAt || null,
+        counts: state?.lastSnapshot?.counts || { live: 0, upcoming: 0, finished: 0, total: 0 },
+        table: "match_tracking_runs",
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "SNAPSHOT_COUNT_ERROR",
+        message: "Impossible de lire le compteur snapshots.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/cron/snapshots/export", async (req, res) => {
+  const auth = isAuthorizedCronRequest(req);
+  if (!auth.ok) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: "CRON_FORBIDDEN",
+        message: auth.reason === "missing_server_secret"
+          ? "CRON_SECRET n'est pas configure sur le serveur."
+          : "Cle cron invalide.",
+      },
+    });
+  }
+
+  try {
+    const limit = Math.max(1, Math.min(500, Number(req.query?.limit) || 100));
+    const rows = await authDb.getMatchTrackingRuns(matchTrackingConfig.trackerKey, limit);
+    return res.json({
+      success: true,
+      source: "cron-job.org",
+      data: {
+        trackerKey: matchTrackingConfig.trackerKey,
+        total: rows.length,
+        rows,
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "SNAPSHOT_EXPORT_ERROR",
+        message: "Impossible d'exporter les snapshots.",
+        details: error.message,
+      },
+    });
+  }
+});
+
 app.get("/api/cron/finished-matches/export", async (req, res) => {
   const auth = isAuthorizedCronRequest(req);
   if (!auth.ok) {
