@@ -818,6 +818,9 @@ function buildMatchPredictionDetails(event) {
     teamAway: match.teamAway,
     league: match.league,
   });
+  if (trainedModelPrediction?.available) {
+    applyTrainedModelFusion(prediction, bets, trainedModelPrediction);
+  }
 
   return {
     match,
@@ -828,6 +831,67 @@ function buildMatchPredictionDetails(event) {
     exactScoreAvailable: Boolean(exactScore),
     leagueProfile: getLeagueProfileSummary(leagueProfile),
   };
+}
+
+function applyTrainedModelFusion(prediction = {}, bets = [], trained = {}) {
+  const master = prediction?.maitre?.decision_finale || {};
+  const outcome = String(trained?.recommendation || "").toLowerCase();
+  const market = pickOutcomeMarketFromBets(bets, outcome);
+  if (!market) return;
+
+  const baseConfidence = Number(master?.confiance_numerique || master?.confidence || 0);
+  const trainedConfidence = Number(trained?.confidence || 0);
+  const fusedConfidence = clamp(Math.max(baseConfidence * 0.7 + trainedConfidence * 0.6, trainedConfidence), 0, 99);
+
+  const fusedDecision = {
+    ...master,
+    pari_choisi: market.nom,
+    cote: Number(market.cote || master?.cote || 0),
+    confidence: Number(fusedConfidence.toFixed(1)),
+    confiance_numerique: Number(fusedConfidence.toFixed(1)),
+    action: fusedConfidence >= 62 ? "MISE RECOMMANDEE" : (master?.action || "SURVEILLER"),
+    recommandation: `FUSION MODELE ENTRAINE + MAITRE (${outcome.toUpperCase() || "N/A"})`,
+    moteur: "TRAINED-FUSION-1.0",
+  };
+
+  prediction.maitre = prediction.maitre || {};
+  prediction.maitre.originalDecision = prediction.maitre.originalDecision || master;
+  prediction.maitre.decision_finale = fusedDecision;
+  prediction.trainedFusion = {
+    enabled: true,
+    modelSource: trained?.source || "trained-finished-matches-model",
+    modelFile: trained?.modelFile || null,
+    outcome,
+    exactScore: trained?.exactScore || null,
+    marketUsed: market.nom,
+    confidence: fusedDecision.confiance_numerique,
+  };
+}
+
+function pickOutcomeMarketFromBets(bets = [], outcome = "") {
+  const rows = Array.isArray(bets) ? bets : [];
+  const outcomeKey = String(outcome || "").toLowerCase();
+  const byOutcomeLabel =
+    outcomeKey === "home"
+      ? ["1 - victoire", "1 - "]
+      : outcomeKey === "away"
+        ? ["2 - victoire", "2 - "]
+        : ["x - match nul", "x - "];
+
+  const foundDirect = rows.find((m) => {
+    const low = normalizeText(m?.nom || "");
+    return byOutcomeLabel.some((p) => low.startsWith(normalizeText(p)));
+  });
+  if (foundDirect) return foundDirect;
+
+  // fallback: double chance markets aligned with trained side
+  if (outcomeKey === "home") {
+    return rows.find((m) => normalizeText(m?.nom || "").includes("1x")) || null;
+  }
+  if (outcomeKey === "away") {
+    return rows.find((m) => normalizeText(m?.nom || "").includes("x2")) || null;
+  }
+  return rows.find((m) => normalizeText(m?.nom || "").includes("match nul")) || null;
 }
 
 function riskConfig(profile = "balanced") {
