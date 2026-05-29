@@ -1,6 +1,7 @@
 (function () {
   const OPT_IN_KEY = "one_delux_push_opt_in_v2";
   const PREFS_KEY = "one_delux_push_prefs_v2";
+  const FORCE_GATE_ID = "pushForceGate";
 
   function getDefaultPrefs() {
     return {
@@ -83,6 +84,7 @@
     if (status !== "granted") return { ok: false, reason: status };
     localStorage.setItem(OPT_IN_KEY, "1");
     await syncSubscription();
+    unlockNotificationGate();
     return { ok: true };
   }
 
@@ -118,6 +120,154 @@
       optedIn: localStorage.getItem(OPT_IN_KEY) === "1",
       preferences: getPrefs(),
     };
+  }
+
+  function removeForceGate() {
+    const gate = document.getElementById(FORCE_GATE_ID);
+    if (gate) gate.remove();
+    document.body.classList.remove("push-gate-active");
+  }
+
+  function ensureGateStyles() {
+    if (document.getElementById("push-force-gate-style")) return;
+    const style = document.createElement("style");
+    style.id = "push-force-gate-style";
+    style.textContent = `
+      body.push-gate-active {
+        overflow: hidden !important;
+      }
+      #${FORCE_GATE_ID} {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: radial-gradient(circle at 20% 20%, rgba(31, 58, 103, 0.95), rgba(7, 12, 24, 0.98));
+        color: #e9f2ff;
+        font-family: "Sora", Arial, sans-serif;
+      }
+      #${FORCE_GATE_ID} .gate-card {
+        width: min(560px, 100%);
+        border: 1px solid rgba(122, 170, 255, 0.45);
+        border-radius: 14px;
+        background: rgba(10, 20, 40, 0.94);
+        box-shadow: 0 18px 46px rgba(0,0,0,0.45);
+        padding: 18px;
+      }
+      #${FORCE_GATE_ID} h2 {
+        margin: 0 0 8px;
+        font-size: 1.1rem;
+      }
+      #${FORCE_GATE_ID} p {
+        margin: 0 0 10px;
+        font-size: 0.92rem;
+        color: #c9d7f2;
+        line-height: 1.45;
+      }
+      #${FORCE_GATE_ID} .gate-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      #${FORCE_GATE_ID} button {
+        border: 1px solid rgba(116, 168, 255, 0.55);
+        border-radius: 10px;
+        background: #142746;
+        color: #f4f8ff;
+        padding: 9px 12px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      #${FORCE_GATE_ID} button.primary {
+        background: linear-gradient(135deg, #2c67d9, #25b4ff);
+        border-color: rgba(164, 217, 255, 0.9);
+      }
+      #${FORCE_GATE_ID} .gate-status {
+        margin-top: 10px;
+        font-size: 0.85rem;
+        color: #9ac4ff;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function ensureNotificationGate() {
+    if (!("Notification" in window)) return;
+    const status = getStatus();
+    const active = status.permission === "granted" && status.optedIn;
+    if (active) {
+      removeForceGate();
+      return;
+    }
+
+    ensureGateStyles();
+    document.body.classList.add("push-gate-active");
+    let gate = document.getElementById(FORCE_GATE_ID);
+    if (!gate) {
+      gate = document.createElement("div");
+      gate.id = FORCE_GATE_ID;
+      gate.innerHTML = `
+        <div class="gate-card" role="dialog" aria-modal="true" aria-labelledby="pushForceTitle">
+          <h2 id="pushForceTitle">Notifications obligatoires</h2>
+          <p>Pour utiliser ONE-DELUX en mode complet, les notifications en arriere-plan doivent etre actives.</p>
+          <p>Tu recevras les alertes instantanees (but, match live, match termine) en continu.</p>
+          <div class="gate-actions">
+            <button type="button" class="primary" id="pushForceEnableBtn">Activer maintenant</button>
+            <button type="button" id="pushForceRetryBtn">Verifier</button>
+          </div>
+          <div class="gate-status" id="pushForceStatus">Etat: en attente d'autorisation navigateur</div>
+        </div>
+      `;
+      document.body.appendChild(gate);
+    }
+
+    const statusEl = gate.querySelector("#pushForceStatus");
+    const enableBtn = gate.querySelector("#pushForceEnableBtn");
+    const retryBtn = gate.querySelector("#pushForceRetryBtn");
+
+    const refreshGateStatus = () => {
+      const s = getStatus();
+      const on = s.permission === "granted" && s.optedIn;
+      if (statusEl) {
+        statusEl.textContent = on
+          ? "Etat: notifications actives"
+          : `Etat: permission=${s.permission}, abonnement=${s.optedIn ? "ok" : "non"}`;
+      }
+      if (on) removeForceGate();
+    };
+
+    if (enableBtn && !enableBtn.dataset.bound) {
+      enableBtn.dataset.bound = "1";
+      enableBtn.addEventListener("click", async () => {
+        try {
+          const result = await enablePush();
+          if (!result?.ok && statusEl) {
+            statusEl.textContent = `Etat: autorisation ${result?.reason || "refusee"}`;
+          }
+        } catch (error) {
+          if (statusEl) statusEl.textContent = `Erreur activation: ${error.message}`;
+        }
+        refreshGateStatus();
+      });
+    }
+
+    if (retryBtn && !retryBtn.dataset.bound) {
+      retryBtn.dataset.bound = "1";
+      retryBtn.addEventListener("click", async () => {
+        try {
+          await syncSubscription();
+        } catch (_error) {}
+        refreshGateStatus();
+      });
+    }
+
+    refreshGateStatus();
+  }
+
+  function unlockNotificationGate() {
+    removeForceGate();
   }
 
   function injectMiniPushPanel() {
@@ -179,5 +329,9 @@
     }
     syncSubscription().catch(() => {});
     injectMiniPushPanel();
+    ensureNotificationGate();
+    setInterval(() => {
+      ensureNotificationGate();
+    }, 10000);
   });
 })();
