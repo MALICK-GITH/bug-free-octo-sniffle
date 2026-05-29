@@ -226,6 +226,9 @@
     const statusEl = gate.querySelector("#pushForceStatus");
     const enableBtn = gate.querySelector("#pushForceEnableBtn");
     const retryBtn = gate.querySelector("#pushForceRetryBtn");
+    const setGateStatus = (text) => {
+      if (statusEl) statusEl.textContent = text;
+    };
 
     const refreshGateStatus = () => {
       const s = getStatus();
@@ -241,13 +244,17 @@
     if (enableBtn && !enableBtn.dataset.bound) {
       enableBtn.dataset.bound = "1";
       enableBtn.addEventListener("click", async () => {
+        enableBtn.disabled = true;
+        setGateStatus("Etat: activation en cours...");
         try {
           const result = await enablePush();
-          if (!result?.ok && statusEl) {
-            statusEl.textContent = `Etat: autorisation ${result?.reason || "refusee"}`;
+          if (!result?.ok) {
+            setGateStatus(`Etat: autorisation ${result?.reason || "refusee"}`);
           }
         } catch (error) {
-          if (statusEl) statusEl.textContent = `Erreur activation: ${error.message}`;
+          setGateStatus(`Erreur activation: ${error.message}`);
+        } finally {
+          enableBtn.disabled = false;
         }
         refreshGateStatus();
       });
@@ -256,9 +263,24 @@
     if (retryBtn && !retryBtn.dataset.bound) {
       retryBtn.dataset.bound = "1";
       retryBtn.addEventListener("click", async () => {
+        retryBtn.disabled = true;
+        setGateStatus("Etat: verification en cours...");
         try {
+          if ("Notification" in window && Notification.permission === "default") {
+            await Notification.requestPermission();
+          }
           await syncSubscription();
-        } catch (_error) {}
+          const statusRes = await fetch("/api/push/status", { cache: "no-store" }).catch(() => null);
+          if (statusRes && statusRes.ok) {
+            const payload = await statusRes.json().catch(() => ({}));
+            const n = Number(payload?.data?.subscriptions || 0);
+            setGateStatus(`Etat: ${n} abonnement(s) actif(s).`);
+          }
+        } catch (error) {
+          setGateStatus(`Erreur verification: ${error.message}`);
+        } finally {
+          retryBtn.disabled = false;
+        }
         refreshGateStatus();
       });
     }
