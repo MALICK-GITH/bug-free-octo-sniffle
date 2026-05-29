@@ -118,6 +118,7 @@ const COUPON_IMAGE_MODE_KEY = "fc25_coupon_export_mode_v1";
 const SAFE_WINDOW_ENABLED_KEY = "fc25_safe_window_enabled_v1";
 const SAFE_WINDOW_MIN_MINUTES = 5;
 const SAFE_WINDOW_MAX_MINUTES = 20;
+const AUTO_SWAP_LEVEL_KEY = "fc25_auto_swap_level_v1";
 const AUTO_REFRESH_ENABLED = false;
 
 function siteLog(level, message, meta) {
@@ -894,6 +895,44 @@ function pickOptionFromDetails(details, profile = "balanced") {
   return { pari: fallback.nom, cote: Number(fallback.cote), confiance: clamp(45 + exactScoreSignal, 0, 100), source: "FALLBACK" };
 }
 
+function getAutoSwapLevel() {
+  const raw = String(localStorage.getItem(AUTO_SWAP_LEVEL_KEY) || "standard").toLowerCase();
+  if (raw === "soft" || raw === "aggressive" || raw === "standard") return raw;
+  return "standard";
+}
+
+function setAutoSwapLevel(level) {
+  const safe = ["soft", "standard", "aggressive"].includes(String(level)) ? String(level) : "standard";
+  localStorage.setItem(AUTO_SWAP_LEVEL_KEY, safe);
+  return safe;
+}
+
+function getProfileForAutoSwap(baseRisk = "balanced") {
+  const level = getAutoSwapLevel();
+  const risk = normalizeRiskProfile(baseRisk || "balanced");
+  if (level === "soft") {
+    if (risk === "aggressive") return "balanced";
+    if (risk === "balanced") return "safe";
+    return "safe";
+  }
+  if (level === "aggressive") {
+    if (risk === "safe" || risk === "ultra_safe") return "balanced";
+    return "aggressive";
+  }
+  return risk;
+}
+
+function replacementPassesLevel(targetOdd, nextOdd) {
+  const level = getAutoSwapLevel();
+  const base = Number(targetOdd || 0);
+  const next = Number(nextOdd || 0);
+  if (!(base > 0 && next > 0)) return true;
+  const diffPct = Math.abs(((next - base) / base) * 100);
+  if (level === "soft") return diffPct <= 12;
+  if (level === "aggressive") return diffPct <= 40;
+  return diffPct <= 25;
+}
+
 function readHistory() {
   try {
     const raw = localStorage.getItem(COUPON_HISTORY_KEY);
@@ -1143,6 +1182,7 @@ async function runCoachAiOneClick() {
     if (panel) {
       panel.innerHTML = `
         <p>Coach IA termine: ${changed} ajustement(s) applique(s).</p>
+        <p>Niveau Auto-swap: <strong>${getAutoSwapLevel().toUpperCase()}</strong>.</p>
         ${buildCoachHistoryHtml(beforeCoupon, afterCoupon)}
       `;
     }
@@ -3711,8 +3751,8 @@ async function replaceWeakSelection() {
       const res = await fetch(`/api/matches/${encodeURIComponent(target.matchId)}/details`, { cache: "no-store" });
       const details = await readJsonSafe(res);
       if (res.ok && details?.success) {
-        const rec = pickOptionFromDetails(details, lastCouponData.riskProfile || "balanced");
-        if (rec && String(rec.pari) !== String(target.pari)) {
+        const rec = pickOptionFromDetails(details, getProfileForAutoSwap(lastCouponData.riskProfile || "balanced"));
+        if (rec && String(rec.pari) !== String(target.pari) && replacementPassesLevel(target.cote, rec.cote)) {
           replacement = { pari: rec.pari, cote: Number(rec.cote), confiance: Number(rec.confiance || target.confiance), source: rec.source };
         }
       }
@@ -3921,6 +3961,8 @@ function applyStoredCouponFormValues() {
   if (safeWindowSwitch) safeWindowSwitch.checked = isSafeWindowEnabled();
   const riskSelect = document.getElementById("riskSelect");
   if (riskSelect) riskSelect.value = getStoredString(COUPON_RISK_KEY, riskSelect.value || "balanced");
+  const autoSwapLevelSelect = document.getElementById("autoSwapLevelSelect");
+  if (autoSwapLevelSelect) autoSwapLevelSelect.value = getAutoSwapLevel();
   const stakeInput = document.getElementById("stakeInput");
   if (stakeInput) stakeInput.value = String(getStoredNumber(COUPON_STAKE_KEY, Number(stakeInput.value || 1000)));
   const bankrollInput = document.getElementById("bankrollInput");
@@ -4085,6 +4127,15 @@ async function initCouponPage() {
       if (lastCouponData?.coupon?.length) {
         generateCoupon();
       }
+    });
+  }
+
+  const autoSwapLevelSelect = document.getElementById("autoSwapLevelSelect");
+  if (autoSwapLevelSelect) {
+    autoSwapLevelSelect.value = getAutoSwapLevel();
+    autoSwapLevelSelect.addEventListener("change", () => {
+      const next = setAutoSwapLevel(autoSwapLevelSelect.value);
+      autoSwapLevelSelect.value = next;
     });
   }
 

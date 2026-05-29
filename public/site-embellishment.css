@@ -646,3 +646,127 @@ footer, .site-signature {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ===== UNIFORMISATION GLOBALE INTER-PAGES ===== */
+.page {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1rem 1rem 1.35rem;
+}
+
+.bg-grid {
+  opacity: 0.35;
+  background-size: 28px 28px;
+}
+
+.hero h1,
+h1, h2, h3, h4 {
+  letter-spacing: 0;
+}
+
+.hero p,
+.subtitle,
+p {
+  color: var(--text-secondary);
+}
+
+.hero {
+  border-radius: 0 0 18px 18px;
+}
+
+.panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.page-link-cloud .back,
+.coupon-page-link,
+.match-aux-link,
+.generated-media-open {
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(16, 24, 40, 0.72);
+  color: var(--text-primary);
+}
+
+.page-link-cloud .back:hover,
+.coupon-page-link:hover,
+.match-aux-link:hover,
+.generated-media-open:hover {
+  border-color: var(--border-glow);
+  box-shadow: 0 0 0 1px rgba(0, 242, 122, 0.18) inset;
+}
+
+button,
+.btn,
+.actions button {
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  font-weight: 600;
+}
+
+button:focus-visible,
+.btn:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(0, 242, 122, 0.5);
+  outline-offset: 2px;
+}
+
+/* Galerie */
+.generated-media-card,
+.generated-media-lightbox-panel {
+  border-radius: 14px;
+  border-color: var(--border-subtle);
+}
+
+.portal-grid,
+.updates-grid,
+.finder-grid,
+.generated-media-grid,
+.secondary-grid,
+.primary-grid {
+  gap: 0.85rem;
+}
+
+.portal-card,
+.updates-card,
+.watchlist-card,
+.generated-media-card,
+.hero-metric-card,
+.mode-spotlight-card,
+.action-lane-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: rgba(16, 24, 40, 0.72);
+}
+
+.portal-card:hover,
+.updates-card:hover,
+.watchlist-card:hover,
+.generated-media-card:hover,
+.hero-metric-card:hover,
+.mode-spotlight-card:hover,
+.action-lane-card:hover {
+  border-color: var(--border-glow);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.26);
+}
+
+a {
+  color: #8fe5ff;
+}
+
+a:hover {
+  color: #bff2ff;
+}
+
+/* Coupon sublime: alignement palette globale sans casser la page */
+html[data-theme="dark"] .sublime-body {
+  background: radial-gradient(ellipse at top, rgba(0, 210, 106, 0.08), transparent 50%), #0a0f1a;
+}
+html[data-theme="dark"] .orbital-btn.active {
+  box-shadow: 0 0 0 1px rgba(0, 242, 122, 0.25), 0 12px 26px rgba(0, 0, 0, 0.35);
+}
