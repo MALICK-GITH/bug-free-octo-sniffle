@@ -119,6 +119,51 @@
     border-radius: 8px;
   }
 
+  .pick-stability-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    width: fit-content;
+  }
+
+  .pick-stability-badge.tone-stable { background: rgba(66, 245, 108, 0.18); color: #9dffba; }
+  .pick-stability-badge.tone-medium { background: rgba(255, 196, 69, 0.2); color: #ffd882; }
+  .pick-stability-badge.tone-fragile { background: rgba(255, 95, 121, 0.2); color: #ffb5c2; }
+
+  .coupon-why-block {
+    margin-top: 0.7rem;
+    padding: 0.75rem;
+    border-radius: 12px;
+    border: 1px solid rgba(105, 156, 255, 0.28);
+    background: rgba(9, 18, 36, 0.72);
+  }
+
+  .coupon-why-block h4 {
+    margin: 0 0 0.4rem;
+    font-size: 0.86rem;
+  }
+
+  .coupon-why-block p {
+    margin: 0.25rem 0;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  .autoswap-premium-line {
+    margin-top: 0.55rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 10px;
+    background: rgba(37, 180, 255, 0.16);
+    border: 1px solid rgba(37, 180, 255, 0.35);
+    color: #b8e9ff;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
   body.competitive-dense .hero {
     padding: 0.55rem;
     margin-bottom: 0.4rem;
@@ -191,14 +236,38 @@
   }
 
   .sticky-ticket-bar {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
 
   .sticky-ticket-bar button {
-    min-width: 80px;
+    min-width: 72px;
     white-space: nowrap;
+    font-size: 0.66rem;
+    padding: 0.45rem 0.22rem;
+  }
+
+  body.coupon-portal .coupon-quickstart-panel,
+  body.coupon-portal .hero-metric-strip,
+  body.coupon-portal .coupon-hero-badges,
+  body.coupon-portal .page-link-cloud {
+    display: none !important;
+  }
+
+  body.coupon-portal .hero {
+    padding: 0.45rem 0.55rem;
+    margin-bottom: 0.35rem;
+  }
+
+  body.coupon-portal .hero h1 {
+    font-size: 1.05rem;
+    margin-bottom: 0.2rem;
+  }
+
+  body.coupon-portal .hero p {
+    font-size: 0.72rem;
+    line-height: 1.28;
   }
 }
 

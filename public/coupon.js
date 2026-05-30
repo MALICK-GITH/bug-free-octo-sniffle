@@ -177,6 +177,7 @@ const stabilityCache = {
 };
 let ticketSnapshotA = null;
 let ticketSnapshotB = null;
+let lastAutoSwapSummary = null;
 
 // Vider tous les caches localStorage liés au coupon au chargement
 (function clearCouponCache() {
@@ -933,6 +934,140 @@ function replacementPassesLevel(targetOdd, nextOdd) {
   return diffPct <= 25;
 }
 
+function getAutoSwapMaxReplacements() {
+  const level = getAutoSwapLevel();
+  if (level === "soft") return 1;
+  if (level === "aggressive") return 3;
+  return 2;
+}
+
+function computeFragilityScore(pick) {
+  const conf = Number(pick?.confiance || 0);
+  const odd = Number(pick?.cote || 0);
+  const startIn = Number(pick?.minutesToStart ?? pick?.startInMinutes ?? 999);
+  let score = 0;
+  if (conf < 55) score += 45;
+  else if (conf < 62) score += 30;
+  else if (conf < 68) score += 15;
+  if (odd >= 2.4) score += 22;
+  else if (odd >= 2.1) score += 15;
+  else if (odd >= 1.95) score += 8;
+  if (Number.isFinite(startIn) && startIn >= 0) {
+    if (startIn <= 4) score += 20;
+    else if (startIn <= 8) score += 12;
+  }
+  return score;
+}
+
+async function findReplacementForPick(target, profile) {
+  let replacement = null;
+  try {
+    const res = await fetch(`/api/matches/${encodeURIComponent(target.matchId)}/details`, { cache: "no-store" });
+    const details = await readJsonSafe(res);
+    if (res.ok && details?.success) {
+      const rec = pickOptionFromDetails(details, profile);
+      if (rec && String(rec.pari) !== String(target.pari) && replacementPassesLevel(target.cote, rec.cote)) {
+        replacement = {
+          pari: rec.pari,
+          cote: Number(rec.cote),
+          confiance: Number(rec.confiance || target.confiance),
+          source: rec.source,
+        };
+      }
+    }
+  } catch { }
+
+  if (!replacement) {
+    const b = lastCouponBackups.get(String(target.matchId));
+    if (b && String(b.pari) !== String(target.pari) && replacementPassesLevel(target.cote, b.odd)) {
+      replacement = {
+        pari: b.pari,
+        cote: Number(b.odd),
+        confiance: Number(b.confidence || target.confiance),
+        source: b.source || "PLAN_B",
+      };
+    }
+  }
+
+  return replacement;
+}
+
+async function autoSwapBeforeSend() {
+  if (!lastCouponData?.coupon?.length) return { replaced: 0, checked: 0 };
+  if (isCouponFrozen(lastCouponData.coupon)) return { replaced: 0, checked: 0, skipped: "freeze" };
+
+  const picks = [...lastCouponData.coupon];
+  if (!lastCouponBackups.size) {
+    lastCouponBackups = await buildBackupPlan(picks, lastCouponData.riskProfile || "balanced");
+  }
+
+  const profile = getProfileForAutoSwap(lastCouponData.riskProfile || "balanced");
+  const maxReplacements = getAutoSwapMaxReplacements();
+  const ranked = picks
+    .map((pick, index) => ({ index, pick, fragility: computeFragilityScore(pick) }))
+    .filter((x) => x.fragility >= 28)
+    .sort((a, b) => b.fragility - a.fragility)
+    .slice(0, maxReplacements);
+
+  let replaced = 0;
+  const beforeInsights = computeCouponInsights(picks, lastCouponData.riskProfile || "balanced");
+  for (const row of ranked) {
+    const current = picks[row.index];
+    const replacement = await findReplacementForPick(current, profile);
+    if (!replacement) continue;
+    picks[row.index] = { ...current, ...replacement };
+    replaced += 1;
+    addHistoryEntry({
+      type: "coupon",
+      at: new Date().toISOString(),
+      note: `Auto-swap (${getAutoSwapLevel()}): ${current.pari} -> ${replacement.pari} (${current.matchId})`,
+    });
+  }
+
+  if (replaced > 0) {
+    const afterInsights = computeCouponInsights(picks, lastCouponData.riskProfile || "balanced");
+    const qualityDelta = Math.round(Number(afterInsights.qualityScore || 0) - Number(beforeInsights.qualityScore || 0));
+    lastAutoSwapSummary = {
+      checked: ranked.length,
+      replaced,
+      qualityDelta,
+    };
+    lastCouponData = {
+      ...lastCouponData,
+      coupon: picks,
+      summary: createCouponSummary(picks),
+      warning: `Auto-swap avant envoi: ${replaced} pick(s) fragile(s) remplace(s).`,
+    };
+    renderCoupon(lastCouponData);
+    pushAlert({
+      severity: "low",
+      title: "Auto-swap applique",
+      detail: `${replaced} pick(s) remplace(s) avant envoi (${getAutoSwapLevel()}).`,
+      type: "auto_swap",
+    });
+  }
+  if (!replaced) {
+    lastAutoSwapSummary = {
+      checked: ranked.length,
+      replaced: 0,
+      qualityDelta: 0,
+    };
+  }
+
+  return { replaced, checked: ranked.length };
+}
+
+async function readyToSend() {
+  const panel = document.getElementById("validation");
+  if (!lastCouponData?.coupon?.length) {
+    if (panel) panel.innerHTML = "<p>Genere d'abord un coupon avant envoi.</p>";
+    return;
+  }
+  if (panel) panel.innerHTML = "<p>Mode Pret a envoyer: validation + auto-swap + controle drift + envoi...</p>";
+  await validateTicket();
+  await sendCouponToTelegram(false);
+}
+
 function readHistory() {
   try {
     const raw = localStorage.getItem(COUPON_HISTORY_KEY);
@@ -1106,6 +1241,8 @@ function updateSendButtonState() {
   const watchBtn = document.getElementById("watchlistFromCouponBtn");
   const stickyBtn = document.getElementById("sendTelegramBtnSticky");
   const stickyImageBtn = document.getElementById("sendTelegramImageBtnSticky");
+  const readyBtn = document.getElementById("readyToSendBtn");
+  const readyBtnSticky = document.getElementById("readyToSendBtnSticky");
   const replaceWeakBtn = document.getElementById("replaceWeakBtn");
   const replaceTooCloseBtn = document.getElementById("replaceTooCloseBtn");
   const imageBtn = document.getElementById("downloadImageBtn");
@@ -1135,6 +1272,8 @@ function updateSendButtonState() {
   if (watchBtn) watchBtn.disabled = !enabled;
   if (stickyBtn) stickyBtn.disabled = !enabled;
   if (stickyImageBtn) stickyImageBtn.disabled = !enabled;
+  if (readyBtn) readyBtn.disabled = !enabled;
+  if (readyBtnSticky) readyBtnSticky.disabled = !enabled;
   if (replaceWeakBtn) replaceWeakBtn.disabled = !enabled || frozen;
   if (replaceTooCloseBtn) replaceTooCloseBtn.disabled = !enabled || frozen;
   if (coachBtn) coachBtn.disabled = !enabled || frozen;
@@ -1153,6 +1292,33 @@ function updateSendButtonState() {
   if (exportBtn) exportBtn.disabled = !enabled;
   if (pdfStickyBtn) pdfStickyBtn.disabled = !enabled;
   if (simulateBtn) simulateBtn.disabled = !enabled;
+}
+
+function getPickStabilityBadge(pick) {
+  const fragility = computeFragilityScore(pick);
+  if (fragility >= 45) return { label: "Fragile", tone: "fragile", icon: "!" };
+  if (fragility >= 28) return { label: "Moyen", tone: "medium", icon: "~" };
+  return { label: "Stable", tone: "stable", icon: "+" };
+}
+
+function buildWhyCouponLines(coupon = []) {
+  if (!Array.isArray(coupon) || !coupon.length) {
+    return {
+      strength: "Force principale: aucune selection active.",
+      risk: "Risque principal: ticket non genere.",
+      cancel: "Condition d'annulation: aucune.",
+    };
+  }
+  const insights = computeCouponInsights(coupon, lastCouponData?.riskProfile || "balanced");
+  const ranked = coupon.map((p) => ({ p, f: computeFragilityScore(p) }));
+  const topStable = [...ranked].sort((a, b) => a.f - b.f)[0]?.p;
+  const weak = [...ranked].sort((a, b) => b.f - a.f)[0]?.p;
+  const minStart = Number(insights?.minStartMinutes);
+  return {
+    strength: `Force principale: ${topStable?.pari || "signal stable"} (${Number(topStable?.confiance || 0).toFixed(1)}%).`,
+    risk: `Risque principal: ${weak?.pari || "n/a"} (fragilite ${computeFragilityScore(weak || {}).toFixed(0)}).`,
+    cancel: `Condition d'annulation: ne pas envoyer si drift > ${getDriftThreshold()}% ou match < ${Math.max(1, Math.floor(Number.isFinite(minStart) ? minStart : 5))} min.`,
+  };
 }
 
 async function runCoachAiOneClick() {
@@ -2019,6 +2185,7 @@ async function sendCouponPackToTelegram() {
     await replaceStartedSelectionsBeforeTelegram();
     await preflightTelegramSafety();
     await maybeStartAlertAndReplace();
+    await autoSwapBeforeSend();
     const adapted = await enforceTicketShield("envoi groupe Telegram");
     const insights = computeCouponInsights(lastCouponData.coupon, lastCouponData.riskProfile || "balanced");
     const telegramConfidenceScore = computeTelegramConfidenceScore(
@@ -2461,6 +2628,7 @@ function renderCoupon(data) {
       const tooClose = startMin < minStartMinutes;
       const timeBadgeClass = tooClose ? "time-badge time-badge-danger" : startMin <= minStartMinutes + 2 ? "time-badge time-badge-warn" : "time-badge time-badge-ok";
       const q = computeDataQualityScore(p);
+      const stability = getPickStabilityBadge(p);
       const replay = buildReplayLines(p, data.riskProfile || "balanced")
         .map((x) => `<li>${x}</li>`)
         .join("");
@@ -2484,6 +2652,7 @@ function renderCoupon(data) {
       ).toFixed(0)}%</em></div>
         <span class="stability-badge" id="stability-${String(p.matchId)}">Stabilite: calcul...</span>
         <span class="quality-badge" id="quality-${String(p.matchId)}">Qualite donnees: ${q.score}/100</span>
+        <span class="pick-stability-badge tone-${stability.tone}">${stability.icon} ${stability.label}</span>
         <div class="coach-pick-line">${explainPickSimple(p, data.riskProfile || "balanced")}</div>
         <ul class="replay-list">${replay}</ul>
         <a href="/match.html?id=${encodeURIComponent(p.matchId)}">Voir detail match</a>
@@ -2498,6 +2667,10 @@ function renderCoupon(data) {
   const pay = payoutFromStake(stake, data.summary?.combinedOdd);
   const couponEv = computeCouponEV(picks);
   const leadExactScore = getCouponExactScorePreview(picks[0]?.exactScore);
+  const why = buildWhyCouponLines(picks);
+  const autoSwapSummaryHtml = lastAutoSwapSummary
+    ? `<p class="autoswap-premium-line">Auto-swap Premium: ${lastAutoSwapSummary.checked} picks scannes, ${lastAutoSwapSummary.replaced} remplaces, qualite ${lastAutoSwapSummary.qualityDelta > 0 ? "+" : ""}${lastAutoSwapSummary.qualityDelta}.</p>`
+    : "";
 
   const antiChaosHtml =
     data?.antiChaosReport?.removed > 0
@@ -2532,6 +2705,13 @@ function renderCoupon(data) {
       <span>Freeze ticket: ${freeze ? "ACTIF" : "OFF"} (${getFreezeMinutes()} min)</span>
     </div>
     <ol>${items}</ol>
+    <div class="coupon-why-block">
+      <h4>Pourquoi ce coupon</h4>
+      <p>${why.strength}</p>
+      <p>${why.risk}</p>
+      <p>${why.cancel}</p>
+    </div>
+    ${autoSwapSummaryHtml}
     ${insights.correlationRisk >= 55
       ? `<p class="correlation-alert">Alerte correlation: ${insights.correlationRisk}% (plusieurs picks proches). Utilise "Remplacer Pick Faible" avant validation.</p>`
       : ""
@@ -3027,6 +3207,7 @@ async function sendCouponToTelegram(sendImage = false, mini = false) {
     await replaceStartedSelectionsBeforeTelegram();
     await preflightTelegramSafety();
     await maybeStartAlertAndReplace();
+    await autoSwapBeforeSend();
     const nowSec = Math.floor(Date.now() / 1000);
     const minStartMinutes = getMinStartMinutesFilter();
     const stillTooClose = (lastCouponData.coupon || []).filter((x) => !matchRespectsMinStart(x, nowSec, minStartMinutes));
@@ -3811,6 +3992,8 @@ const downloadPdfBtn = document.getElementById("downloadPdfBtn");
 const downloadPdfDetailedBtn = document.getElementById("downloadPdfDetailedBtn");
 const exportProBtn = document.getElementById("exportProBtn");
 const generateBtnSticky = document.getElementById("generateBtnSticky");
+const readyToSendBtn = document.getElementById("readyToSendBtn");
+const readyToSendBtnSticky = document.getElementById("readyToSendBtnSticky");
 const validateBtnSticky = document.getElementById("validateBtnSticky");
 const sendTelegramBtnSticky = document.getElementById("sendTelegramBtnSticky");
 const sendTelegramImageBtnSticky = document.getElementById("sendTelegramImageBtnSticky");
@@ -3820,6 +4003,7 @@ const saveTicketBBtn = document.getElementById("saveTicketBBtn");
 const compareTicketBtn = document.getElementById("compareTicketBtn");
 
 if (generateBtn) generateBtn.addEventListener("click", generateCoupon);
+if (readyToSendBtn) readyToSendBtn.addEventListener("click", readyToSend);
 if (generateLadderBtn) generateLadderBtn.addEventListener("click", generateLadderCoupons);
 if (generateMultiBtn) generateMultiBtn.addEventListener("click", renderMultiStrategy);
 if (coachAiBtn) coachAiBtn.addEventListener("click", runCoachAiOneClick);
@@ -3926,6 +4110,9 @@ if (compareTicketBtn) {
 }
 if (generateBtnSticky) {
   generateBtnSticky.addEventListener("click", generateCoupon);
+}
+if (readyToSendBtnSticky) {
+  readyToSendBtnSticky.addEventListener("click", readyToSend);
 }
 if (validateBtnSticky) {
   validateBtnSticky.addEventListener("click", validateTicket);
