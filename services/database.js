@@ -824,6 +824,21 @@ class DatabaseService {
   async saveMatchTrackingSnapshot(entry = {}) {
     const trackerKey = String(entry.trackerKey || "default").trim() || "default";
     const matches = Array.isArray(entry.matches) ? entry.matches : [];
+    const newIds = Array.isArray(entry.newIds) ? entry.newIds.map((id) => String(id || "").trim()).filter(Boolean) : [];
+    const disappearedIds = Array.isArray(entry.disappearedIds)
+      ? entry.disappearedIds.map((id) => String(id || "").trim()).filter(Boolean)
+      : [];
+    const finishedDetected = Array.isArray(entry.finishedDetected)
+      ? entry.finishedDetected
+          .map((item) => ({
+            matchId: String(item?.matchId || "").trim(),
+            detectedFinished: item?.detectedFinished !== false,
+            source: String(item?.source || "snapshot-comparison").trim() || "snapshot-comparison",
+            detectedAt: item?.detectedAt || new Date().toISOString(),
+            previousStatus: item?.previousStatus ? String(item.previousStatus).trim() : null,
+          }))
+          .filter((item) => item.matchId)
+      : [];
     const counts = {
       live: Number(entry.counts?.live) || 0,
       upcoming: Number(entry.counts?.upcoming) || 0,
@@ -834,7 +849,11 @@ class DatabaseService {
       counts,
       source: String(entry.source || "liveFeed").trim() || "liveFeed",
       fetchedAt: entry.fetchedAt || new Date().toISOString(),
+      meta: entry.meta && typeof entry.meta === "object" ? { ...entry.meta } : {},
       matches,
+      newIds,
+      disappearedIds,
+      finishedDetected,
     };
     for (const match of matches) {
       await this.upsertTrackedMatch(match);

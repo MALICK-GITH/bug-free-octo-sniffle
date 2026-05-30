@@ -2945,6 +2945,11 @@ app.get("/api/match-tracking/status", async (_req, res) => {
         state,
         runs,
         matches,
+        snapshots: {
+          previous: runs[1]?.snapshot || null,
+          current: state?.lastSnapshot || state?.last_snapshot || null,
+          history: runs.map((run) => run.snapshot || {}).filter((snapshot) => Object.keys(snapshot).length > 0),
+        },
       },
       meta: {
         timestamp: new Date().toISOString(),
@@ -6177,6 +6182,36 @@ function buildMatchTrackingCounts(matches = []) {
   return buckets;
 }
 
+function buildMatchIndex(matches = []) {
+  const index = new Map();
+  for (const match of matches) {
+    const normalized = normalizePersistedMatch(match);
+    if (!normalized.matchId) continue;
+    index.set(normalized.matchId, normalized);
+  }
+  return index;
+}
+
+function buildSnapshotTransition(previousMatches = [], currentMatches = [], detectedAt = new Date().toISOString()) {
+  const previousIndex = buildMatchIndex(previousMatches);
+  const currentIndex = buildMatchIndex(currentMatches);
+  const previousIds = Array.from(previousIndex.keys());
+  const currentIds = Array.from(currentIndex.keys());
+  const newIds = currentIds.filter((matchId) => !previousIndex.has(matchId));
+  const disappearedIds = previousIds.filter((matchId) => !currentIndex.has(matchId));
+  const finishedDetected = disappearedIds.map((matchId) => {
+    const previousMatch = previousIndex.get(matchId) || {};
+    return {
+      matchId,
+      detectedFinished: true,
+      source: "snapshot-comparison",
+      detectedAt,
+      previousStatus: previousMatch.status || null,
+    };
+  });
+  return { newIds, disappearedIds, finishedDetected, previousIndex };
+}
+
 async function runMatchTrackingCycle(reason = "scheduled") {
   if (!matchTrackingConfig.enabled) return null;
   if (matchTrackingRunning && matchTrackingRunningPromise) {
@@ -6204,15 +6239,15 @@ async function runMatchTrackingCycle(reason = "scheduled") {
       }
 
       const matches = Array.isArray(data?.matches) ? data.matches : [];
+      const previousState = await authDb.getMatchTrackingState(matchTrackingConfig.trackerKey).catch(() => null);
+      const previousSnapshot = previousState?.lastSnapshot || previousState?.last_snapshot || {};
+      const previousMatches = Array.isArray(previousSnapshot?.matches) ? previousSnapshot.matches : [];
       let trackedMatches = matches.map(normalizePersistedMatch).filter((item) => item.matchId);
       let counts = buildMatchTrackingCounts(trackedMatches);
       let reusedPreviousSnapshot = false;
 
       // Do not overwrite a healthy snapshot with an empty transient feed.
       if (!hasUsableData || trackedMatches.length === 0) {
-        const previousState = await authDb.getMatchTrackingState(matchTrackingConfig.trackerKey).catch(() => null);
-        const previousSnapshot = previousState?.lastSnapshot || {};
-        const previousMatches = Array.isArray(previousSnapshot?.matches) ? previousSnapshot.matches : [];
         if (previousMatches.length > 0) {
           trackedMatches = previousMatches.map(normalizePersistedMatch).filter((item) => item.matchId);
           counts = previousSnapshot?.counts || buildMatchTrackingCounts(trackedMatches);
@@ -6221,6 +6256,29 @@ async function runMatchTrackingCycle(reason = "scheduled") {
       }
       matchTrackingRunCount += 1;
       const finishedAt = new Date().toISOString();
+      const fetchedAt = data?.fetchedAt || startedAt;
+      const transition = buildSnapshotTransition(previousMatches, trackedMatches, finishedAt);
+
+      for (const finishedEntry of transition.finishedDetected) {
+        const previousMatch = transition.previousIndex.get(finishedEntry.matchId) || {};
+        await upsertFinishedMatchDataset({
+          matchId: finishedEntry.matchId,
+          teamHome: previousMatch.teamHome,
+          teamAway: previousMatch.teamAway,
+          league: previousMatch.league,
+          scoreHome: previousMatch.scoreHome,
+          scoreAway: previousMatch.scoreAway,
+          finishedAt: fetchedAt,
+          source: finishedEntry.source,
+          raw: {
+            ...previousMatch,
+            detectedFinished: true,
+            detectionReason: "match-disappeared-from-snapshot",
+            previousStatus: finishedEntry.previousStatus,
+            detectedAt: finishedEntry.detectedAt,
+          },
+        }).catch(() => null);
+      }
 
       await authDb.saveMatchTrackingSnapshot({
         trackerKey: matchTrackingConfig.trackerKey,
@@ -6228,18 +6286,22 @@ async function runMatchTrackingCycle(reason = "scheduled") {
         intervalSeconds: matchTrackingConfig.intervalSeconds,
         totalRuns: matchTrackingRunCount,
         source: "liveFeed",
-        fetchedAt: data?.fetchedAt || startedAt,
+        fetchedAt,
         lastStartedAt: startedAt,
         lastCompletedAt: finishedAt,
         lastSuccessAt: finishedAt,
         counts,
         matches: trackedMatches,
+        newIds: transition.newIds,
+        disappearedIds: transition.disappearedIds,
+        finishedDetected: transition.finishedDetected,
         meta: {
           reason,
           attempts,
           hasUsableData,
           reusedPreviousSnapshot,
           fetchStatus: hasUsableData ? "ok" : "empty_after_retries",
+          previousSnapshotFetchedAt: previousSnapshot?.fetchedAt || null,
         },
       });
 
@@ -6248,12 +6310,15 @@ async function runMatchTrackingCycle(reason = "scheduled") {
         reason,
         counts,
         tracked: trackedMatches.length,
-        fetchedAt: data?.fetchedAt || startedAt,
+        fetchedAt,
         startedAt,
         completedAt: finishedAt,
         attempts,
         reusedPreviousSnapshot,
         fetchStatus: hasUsableData ? "ok" : "empty_after_retries",
+        newIds: transition.newIds,
+        disappearedIds: transition.disappearedIds,
+        finishedDetected: transition.finishedDetected,
       };
     } catch (error) {
       const finishedAt = new Date().toISOString();

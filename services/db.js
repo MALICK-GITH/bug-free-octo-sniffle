@@ -2155,6 +2155,21 @@ async function upsertMatchTrackingState(entry = {}) {
 async function saveMatchTrackingSnapshot(entry = {}) {
   const trackerKey = normalizeKey(entry.trackerKey, "default");
   const matches = Array.isArray(entry.matches) ? entry.matches : [];
+  const newIds = Array.isArray(entry.newIds) ? entry.newIds.map((id) => String(id || "").trim()).filter(Boolean) : [];
+  const disappearedIds = Array.isArray(entry.disappearedIds)
+    ? entry.disappearedIds.map((id) => String(id || "").trim()).filter(Boolean)
+    : [];
+  const finishedDetected = Array.isArray(entry.finishedDetected)
+    ? entry.finishedDetected
+        .map((item) => ({
+          matchId: String(item?.matchId || "").trim(),
+          detectedFinished: item?.detectedFinished !== false,
+          source: String(item?.source || "snapshot-comparison").trim() || "snapshot-comparison",
+          detectedAt: normalizeDate(item?.detectedAt) || new Date().toISOString(),
+          previousStatus: item?.previousStatus ? String(item.previousStatus).trim() : null,
+        }))
+        .filter((item) => item.matchId)
+    : [];
   const counts = {
     live: Number(entry.counts?.live) || 0,
     upcoming: Number(entry.counts?.upcoming) || 0,
@@ -2167,6 +2182,9 @@ async function saveMatchTrackingSnapshot(entry = {}) {
     fetchedAt: entry.fetchedAt || new Date().toISOString(),
     meta: normalizeObject(entry.meta),
     matches,
+    newIds,
+    disappearedIds,
+    finishedDetected,
   };
 
   for (const match of matches) {
