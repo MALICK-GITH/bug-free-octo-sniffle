@@ -181,6 +181,21 @@
     }
   }
 
+  function isRetryableChatError(error) {
+    const status = Number(error?.status || 0);
+    if (status === 408 || status === 425 || status === 429) return true;
+    if (status >= 500) return true;
+    const msg = String(error?.message || "").toLowerCase();
+    return (
+      msg.includes("timeout") ||
+      msg.includes("trop de temps") ||
+      msg.includes("reponse vide") ||
+      msg.includes("réponse vide") ||
+      msg.includes("network") ||
+      msg.includes("failed to fetch")
+    );
+  }
+
   async function sendMessage({ message, history = [], context = {}, onRetry = null }) {
     const payload = {
       message: String(message || "").trim(),
@@ -229,11 +244,15 @@
     };
 
     let attempt = 0;
-    while (true) {
+    const MAX_ATTEMPTS = 8;
+    while (attempt < MAX_ATTEMPTS) {
       attempt += 1;
       try {
         return await trySend();
       } catch (error) {
+        if (!isRetryableChatError(error) || attempt >= MAX_ATTEMPTS) {
+          throw error;
+        }
         const retryDelayMs = Math.min(6000, 700 + (attempt - 1) * 450);
         if (typeof onRetry === "function") {
           try {
@@ -249,6 +268,7 @@
         await new Promise((r) => setTimeout(r, retryDelayMs));
       }
     }
+    throw new Error("Le serveur chat est indisponible apres plusieurs tentatives.");
   }
 
   window.SolitaireAIClient = {
