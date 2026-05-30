@@ -20,6 +20,56 @@ function weightedPick(counts) {
   return best ? best.k : "draw";
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeOutcomeDistribution(input = {}) {
+  const home = Math.max(0.0001, Number(input.home) || 0.0001);
+  const draw = Math.max(0.0001, Number(input.draw) || 0.0001);
+  const away = Math.max(0.0001, Number(input.away) || 0.0001);
+  const sum = home + draw + away;
+  return {
+    home: home / sum,
+    draw: draw / sum,
+    away: away / sum,
+  };
+}
+
+function computeDynamicOutcomeDistribution({ leagueResult = {}, scoreHome = 1, scoreAway = 1 }) {
+  const base = normalizeOutcomeDistribution({
+    home: Number(leagueResult.home) || 0.34,
+    draw: Number(leagueResult.draw) || 0.32,
+    away: Number(leagueResult.away) || 0.34,
+  });
+
+  const delta = Number(scoreHome) - Number(scoreAway);
+  const absDelta = Math.abs(delta);
+  const direction = delta === 0 ? 0 : delta > 0 ? 1 : -1;
+
+  // Shift probabilities with team-level edge while preserving league priors.
+  const edgeBoost = clamp(absDelta * 0.06, 0, 0.34);
+  let home = base.home;
+  let draw = base.draw;
+  let away = base.away;
+
+  if (direction > 0) {
+    home += edgeBoost;
+    away -= edgeBoost * 0.85;
+  } else if (direction < 0) {
+    away += edgeBoost;
+    home -= edgeBoost * 0.85;
+  }
+
+  // When teams are close, keep higher draw likelihood.
+  const closeness = clamp(1 - absDelta / 3, 0, 1);
+  draw += 0.12 * closeness;
+  home -= 0.06 * closeness;
+  away -= 0.06 * closeness;
+
+  return normalizeOutcomeDistribution({ home, draw, away });
+}
+
 function toPercent(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
@@ -83,8 +133,7 @@ function predictFromTrainedModel(input = {}) {
     const away = model?.teams?.[awayKey] || null;
     const priors = model?.priors || {};
 
-    const resultDist = league?.result || priors?.result || { home: 0.34, draw: 0.32, away: 0.34 };
-    const predResult = weightedPick(resultDist);
+    const leagueResult = league?.result || priors?.result || { home: 0.34, draw: 0.32, away: 0.34 };
 
     const baseHome = Number(league?.score?.home ?? priors?.score?.home ?? 1.2);
     const baseAway = Number(league?.score?.away ?? priors?.score?.away ?? 1.2);
@@ -92,6 +141,13 @@ function predictFromTrainedModel(input = {}) {
     const awayAdj = away ? (Number(away.for || 0) - Number(away.against || 0)) * 0.25 : 0;
     const scoreHome = roundScore(baseHome + homeAdj - awayAdj * 0.15);
     const scoreAway = roundScore(baseAway + awayAdj - homeAdj * 0.15);
+
+    const resultDist = computeDynamicOutcomeDistribution({
+      leagueResult,
+      scoreHome,
+      scoreAway,
+    });
+    const predResult = weightedPick(resultDist);
 
     const confidence = toPercent(resultDist?.[predResult]);
     const modelFile = modelCache.path ? path.basename(modelCache.path) : null;
