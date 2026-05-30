@@ -90,6 +90,7 @@ const matchTrackingConfig = {
 };
 let matchTrackingTimer = null;
 let matchTrackingRunning = false;
+let matchTrackingRunningPromise = null;
 let matchTrackingRunCount = 0;
 let activeServerPort = DEFAULT_PORT;
 const CRON_SECRET = String(process.env.CRON_SECRET || "").trim();
@@ -264,6 +265,7 @@ async function sendBackgroundPushToAll(payload = {}, options = {}) {
   let sent = 0;
   let failed = 0;
   let removed = 0;
+  let retried = 0;
   const keep = [];
   const safePayload = payload && typeof payload === "object" ? payload : {};
   const pushMessage = {
@@ -279,6 +281,7 @@ async function sendBackgroundPushToAll(payload = {}, options = {}) {
     ttlSeconds: Math.max(60, Number(safePayload.ttlSeconds || 3600)),
   };
   const body = JSON.stringify(pushMessage);
+  const maxAttempts = Math.max(1, Math.min(4, Number(options.maxAttempts || 3)));
   for (const entry of entries) {
     if (!force) {
       if (!shouldSendByTopic(entry.preferences, topic)) {
@@ -298,10 +301,26 @@ async function sendBackgroundPushToAll(payload = {}, options = {}) {
       }
     }
     try {
-      await webPush.sendNotification(entry.subscription, body, {
-        TTL: Number(pushMessage.ttlSeconds || 3600),
-        urgency: ["very-low", "low", "normal", "high"].includes(pushMessage.urgency) ? pushMessage.urgency : "normal",
-      });
+      let delivered = false;
+      let lastError = null;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          if (attempt > 1) retried += 1;
+          await webPush.sendNotification(entry.subscription, body, {
+            TTL: Number(pushMessage.ttlSeconds || 3600),
+            urgency: ["very-low", "low", "normal", "high"].includes(pushMessage.urgency) ? pushMessage.urgency : "normal",
+          });
+          delivered = true;
+          break;
+        } catch (error) {
+          lastError = error;
+          const code = Number(error?.statusCode || 0);
+          const retryable = !code || code === 408 || code === 425 || code === 429 || code >= 500;
+          if (!retryable || attempt >= maxAttempts) break;
+          await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+        }
+      }
+      if (!delivered && lastError) throw lastError;
       sent += 1;
       keep.push({
         ...entry,
@@ -332,8 +351,9 @@ async function sendBackgroundPushToAll(payload = {}, options = {}) {
     sent,
     failed,
     removed,
+    retried,
   });
-  return { sent, failed, removed };
+  return { sent, failed, removed, retried };
 }
 
 function normalizeTrackedPushMatch(match = {}) {
@@ -3710,6 +3730,9 @@ app.get("/api/cron/snapshots/capture", async (req, res) => {
         reason: result.reason || "cron-job.org",
         tracked: Number(result.tracked || 0),
         counts: result.counts || { live: 0, upcoming: 0, finished: 0, total: 0 },
+        attempts: Number(result.attempts || 1),
+        fetchStatus: result.fetchStatus || "ok",
+        reusedPreviousSnapshot: Boolean(result.reusedPreviousSnapshot),
         fetchedAt: result.fetchedAt || null,
         startedAt: result.startedAt || null,
         completedAt: result.completedAt || null,
@@ -3750,14 +3773,17 @@ app.get("/api/cron/snapshots/count", async (req, res) => {
     const lastSuccessAt = state?.lastSuccessAt ?? state?.last_success_at ?? null;
     const lastSnapshot = state?.lastSnapshot ?? state?.last_snapshot ?? {};
     const counts = lastSnapshot?.counts || { live: 0, upcoming: 0, finished: 0, total: 0 };
+    const captureMeta = lastSnapshot?.meta || {};
     return res.json({
       success: true,
       source: "cron-job.org",
       data: {
         trackerKey: matchTrackingConfig.trackerKey,
+        running: Boolean(matchTrackingRunning),
         totalRuns,
         lastSuccessAt,
         counts,
+        captureMeta,
         table: "match_tracking_runs",
       },
       meta: {
@@ -6153,63 +6179,112 @@ function buildMatchTrackingCounts(matches = []) {
 
 async function runMatchTrackingCycle(reason = "scheduled") {
   if (!matchTrackingConfig.enabled) return null;
-  if (matchTrackingRunning) return null;
+  if (matchTrackingRunning && matchTrackingRunningPromise) {
+    return matchTrackingRunningPromise;
+  }
 
   matchTrackingRunning = true;
   const startedAt = new Date().toISOString();
-  try {
-    const data = await withTimeout(getPenaltyMatches(), 25_000, null);
-    const matches = Array.isArray(data?.matches) ? data.matches : [];
-    const trackedMatches = matches.map(normalizePersistedMatch).filter((item) => item.matchId);
-    const counts = buildMatchTrackingCounts(trackedMatches);
-    matchTrackingRunCount += 1;
-    const finishedAt = new Date().toISOString();
-
-    await authDb.saveMatchTrackingSnapshot({
-      trackerKey: matchTrackingConfig.trackerKey,
-      enabled: true,
-      intervalSeconds: matchTrackingConfig.intervalSeconds,
-      totalRuns: matchTrackingRunCount,
-      source: "liveFeed",
-      fetchedAt: data?.fetchedAt || startedAt,
-      lastStartedAt: startedAt,
-      lastCompletedAt: finishedAt,
-      lastSuccessAt: finishedAt,
-      counts,
-      matches: trackedMatches,
-    });
-
-    return {
-      ok: true,
-      reason,
-      counts,
-      tracked: trackedMatches.length,
-      fetchedAt: data?.fetchedAt || startedAt,
-      startedAt,
-      completedAt: finishedAt,
-    };
-  } catch (error) {
-    const finishedAt = new Date().toISOString();
+  matchTrackingRunningPromise = (async () => {
     try {
+      const MAX_ATTEMPTS = 3;
+      let data = null;
+      let attempts = 0;
+      let hasUsableData = false;
+
+      while (attempts < MAX_ATTEMPTS) {
+        attempts += 1;
+        data = await withTimeout(getPenaltyMatches(), 25_000, null);
+        const candidateMatches = Array.isArray(data?.matches) ? data.matches : [];
+        if (candidateMatches.length > 0 || attempts >= MAX_ATTEMPTS) {
+          hasUsableData = candidateMatches.length > 0;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 900 * attempts));
+      }
+
+      const matches = Array.isArray(data?.matches) ? data.matches : [];
+      let trackedMatches = matches.map(normalizePersistedMatch).filter((item) => item.matchId);
+      let counts = buildMatchTrackingCounts(trackedMatches);
+      let reusedPreviousSnapshot = false;
+
+      // Do not overwrite a healthy snapshot with an empty transient feed.
+      if (!hasUsableData || trackedMatches.length === 0) {
+        const previousState = await authDb.getMatchTrackingState(matchTrackingConfig.trackerKey).catch(() => null);
+        const previousSnapshot = previousState?.lastSnapshot || {};
+        const previousMatches = Array.isArray(previousSnapshot?.matches) ? previousSnapshot.matches : [];
+        if (previousMatches.length > 0) {
+          trackedMatches = previousMatches.map(normalizePersistedMatch).filter((item) => item.matchId);
+          counts = previousSnapshot?.counts || buildMatchTrackingCounts(trackedMatches);
+          reusedPreviousSnapshot = true;
+        }
+      }
+      matchTrackingRunCount += 1;
+      const finishedAt = new Date().toISOString();
+
       await authDb.saveMatchTrackingSnapshot({
         trackerKey: matchTrackingConfig.trackerKey,
         enabled: true,
         intervalSeconds: matchTrackingConfig.intervalSeconds,
         totalRuns: matchTrackingRunCount,
         source: "liveFeed",
+        fetchedAt: data?.fetchedAt || startedAt,
         lastStartedAt: startedAt,
         lastCompletedAt: finishedAt,
-        lastErrorAt: finishedAt,
-        lastErrorText: error.message,
-        counts: { live: 0, upcoming: 0, finished: 0, total: 0 },
-        matches: [],
-        error: error.message,
+        lastSuccessAt: finishedAt,
+        counts,
+        matches: trackedMatches,
+        meta: {
+          reason,
+          attempts,
+          hasUsableData,
+          reusedPreviousSnapshot,
+          fetchStatus: hasUsableData ? "ok" : "empty_after_retries",
+        },
       });
-    } catch (_persistError) {}
-    return { ok: false, error: error.message, reason, startedAt, completedAt: finishedAt };
-  } finally {
-    matchTrackingRunning = false;
-  }
+
+      return {
+        ok: true,
+        reason,
+        counts,
+        tracked: trackedMatches.length,
+        fetchedAt: data?.fetchedAt || startedAt,
+        startedAt,
+        completedAt: finishedAt,
+        attempts,
+        reusedPreviousSnapshot,
+        fetchStatus: hasUsableData ? "ok" : "empty_after_retries",
+      };
+    } catch (error) {
+      const finishedAt = new Date().toISOString();
+      try {
+        await authDb.saveMatchTrackingSnapshot({
+          trackerKey: matchTrackingConfig.trackerKey,
+          enabled: true,
+          intervalSeconds: matchTrackingConfig.intervalSeconds,
+          totalRuns: matchTrackingRunCount,
+          source: "liveFeed",
+          lastStartedAt: startedAt,
+          lastCompletedAt: finishedAt,
+          lastErrorAt: finishedAt,
+          lastErrorText: error.message,
+          counts: { live: 0, upcoming: 0, finished: 0, total: 0 },
+          matches: [],
+          error: error.message,
+          meta: {
+            reason,
+            attempts: 1,
+            fetchStatus: "error",
+          },
+        });
+      } catch (_persistError) {}
+      return { ok: false, error: error.message, reason, startedAt, completedAt: finishedAt };
+    } finally {
+      matchTrackingRunning = false;
+      matchTrackingRunningPromise = null;
+    }
+  })();
+  return matchTrackingRunningPromise;
 }
 
 async function startMatchTrackingService() {

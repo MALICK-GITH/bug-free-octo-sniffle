@@ -74,14 +74,32 @@
 
   /* Rendre les contrôles toujours visibles sur mobile */
   .controls {
-    max-height: none;
-    overflow: visible;
-    opacity: 1;
+    position: fixed;
+    top: calc(var(--safe-top, 0px) + 62px);
+    left: 10px;
+    right: 10px;
+    z-index: 9999;
+    margin: 0;
+    padding: 0.85rem;
+    border-radius: 14px;
+    background: rgba(7, 14, 26, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.42);
+    backdrop-filter: saturate(170%) blur(16px);
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+    transition: max-height 0.28s ease, opacity 0.2s ease, transform 0.2s ease;
   }
 
   .controls.mobile-menu-open {
-    max-height: none;
+    max-height: 72vh;
+    overflow-y: auto;
     opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
   }
 }
 

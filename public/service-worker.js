@@ -256,12 +256,55 @@ async function syncFavorites() {
   }
 }
 
+function cleanPushText(value) {
+  return String(value || "")
+    .replace(/[{}[\]"]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizePushDisplay(rawText, parsed) {
+  const safeParsed = parsed && typeof parsed === "object" ? parsed : {};
+  const raw = String(rawText || "").trim();
+  const parsedBody = String(safeParsed?.body || "").trim();
+  const parsedType = String(safeParsed?.type || "").trim().toLowerCase();
+
+  const title = String(safeParsed?.title || "ONE-DELUX");
+  let body = parsedBody;
+
+  if (!body && raw) {
+    if (raw.startsWith("{") || raw.startsWith("[")) {
+      body = "Nouvelle alerte ONE-DELUX disponible.";
+    } else {
+      body = cleanPushText(raw);
+    }
+  }
+
+  if (!body) {
+    body = "Nouvelle mise a jour ONE-DELUX";
+  }
+
+  if (parsedType === "goal" && safeParsed?.homeTeam && safeParsed?.awayTeam) {
+    const hs = Number(safeParsed?.scoreHome ?? safeParsed?.homeScore ?? 0);
+    const as = Number(safeParsed?.scoreAway ?? safeParsed?.awayScore ?? 0);
+    body = `${safeParsed.homeTeam} ${hs}-${as} ${safeParsed.awayTeam}`;
+  } else if (parsedType === "finished" && safeParsed?.homeTeam && safeParsed?.awayTeam) {
+    const hs = Number(safeParsed?.scoreHome ?? safeParsed?.homeScore ?? 0);
+    const as = Number(safeParsed?.scoreAway ?? safeParsed?.awayScore ?? 0);
+    body = `Termine: ${safeParsed.homeTeam} ${hs}-${as} ${safeParsed.awayTeam}`;
+  }
+
+  return {
+    title,
+    body: cleanPushText(body),
+  };
+}
+
 self.addEventListener('push', (event) => {
   let parsed = {};
-  let fallbackText = 'Nouvelle mise a jour ONE-DELUX';
+  let rawText = '';
   if (event.data) {
-    const rawText = event.data.text();
-    fallbackText = rawText || fallbackText;
+    rawText = event.data.text() || '';
     try {
       parsed = JSON.parse(rawText || '{}');
     } catch (_error) {
@@ -269,8 +312,9 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  const title = String(parsed?.title || 'ONE-DELUX');
-  const body = String(parsed?.body || fallbackText || 'Nouvelle mise a jour ONE-DELUX');
+  const display = normalizePushDisplay(rawText, parsed);
+  const title = display.title;
+  const body = display.body;
   const url = String(parsed?.url || '/');
   const tag = String(parsed?.tag || `one-delux-${Date.now()}`);
   const requireInteraction = Boolean(parsed?.requireInteraction);

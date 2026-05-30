@@ -2165,6 +2165,7 @@ async function saveMatchTrackingSnapshot(entry = {}) {
     counts,
     source: String(entry.source || "liveFeed").trim() || "liveFeed",
     fetchedAt: entry.fetchedAt || new Date().toISOString(),
+    meta: normalizeObject(entry.meta),
     matches,
   };
 

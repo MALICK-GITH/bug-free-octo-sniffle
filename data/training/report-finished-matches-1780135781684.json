@@ -1,0 +1,97 @@
+{
+  "generatedAt": "2026-05-30T10:09:41.683Z",
+  "sourceCsv": "F:\\finished_matches_dataset_1780135385482.csv",
+  "rowsRaw": 2136,
+  "rowsAfterDedupe": 2136,
+  "split": {
+    "train": 1708,
+    "valid": 428
+  },
+  "metrics": {
+    "resultAccuracy": 0.45560747663551404,
+    "scoreMaeHome": 1.219626168224299,
+    "scoreMaeAway": 1.2873831775700935
+  },
+  "byLeagueValidation": [
+    {
+      "league": "penalty",
+      "n": 82,
+      "accuracy": 0.4634146341463415
+    },
+    {
+      "league": "fc25. penalty",
+      "n": 64,
+      "accuracy": 0.421875
+    },
+    {
+      "league": "fc24. penalty",
+      "n": 45,
+      "accuracy": 0.6444444444444445
+    },
+    {
+      "league": "fc 24. 4x4. championnat d'angleterre",
+      "n": 32,
+      "accuracy": 0.46875
+    },
+    {
+      "league": "fc 25. 3x3. ligue de conférence",
+      "n": 31,
+      "accuracy": 0.3870967741935484
+    },
+    {
+      "league": "fc 26. 5x5 rush. superligue",
+      "n": 25,
+      "accuracy": 0.44
+    },
+    {
+      "league": "fc 25. championnat d'allemagne",
+      "n": 22,
+      "accuracy": 0.5
+    },
+    {
+      "league": "fc 25. ligue européenne",
+      "n": 21,
+      "accuracy": 0.47619047619047616
+    },
+    {
+      "league": "fc 26. champions league",
+      "n": 20,
+      "accuracy": 0.3
+    },
+    {
+      "league": "fc 25. championnat d'angleterre",
+      "n": 18,
+      "accuracy": 0.2777777777777778
+    },
+    {
+      "league": "fc 26. championnat du monde",
+      "n": 16,
+      "accuracy": 0.3125
+    },
+    {
+      "league": "fc 25. championnat d'espagne",
+      "n": 16,
+      "accuracy": 0.5625
+    },
+    {
+      "league": "fc 25. italy championship",
+      "n": 14,
+      "accuracy": 0.35714285714285715
+    },
+    {
+      "league": "fc 25. champions league",
+      "n": 12,
+      "accuracy": 0.4166666666666667
+    },
+    {
+      "league": "fc26. penalty",
+      "n": 7,
+      "accuracy": 0.5714285714285714
+    },
+    {
+      "league": "fifa23. penalty",
+      "n": 3,
+      "accuracy": 1
+    }
+  ]
+}

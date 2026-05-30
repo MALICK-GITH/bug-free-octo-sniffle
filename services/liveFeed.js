@@ -837,7 +837,6 @@ function applyTrainedModelFusion(prediction = {}, bets = [], trained = {}) {
   const master = prediction?.maitre?.decision_finale || {};
   const outcome = String(trained?.recommendation || "").toLowerCase();
   const market = pickOutcomeMarketFromBets(bets, outcome);
-  if (!market) return;
 
   const baseConfidence = Number(master?.confiance_numerique || master?.confidence || 0);
   const trainedConfidence = Number(trained?.confidence || 0);
@@ -845,12 +844,12 @@ function applyTrainedModelFusion(prediction = {}, bets = [], trained = {}) {
 
   const fusedDecision = {
     ...master,
-    pari_choisi: market.nom,
-    cote: Number(market.cote || master?.cote || 0),
+    pari_choisi: market?.nom || master?.pari_choisi || "N/A",
+    cote: Number(market?.cote || master?.cote || 0),
     confidence: Number(fusedConfidence.toFixed(1)),
     confiance_numerique: Number(fusedConfidence.toFixed(1)),
     action: fusedConfidence >= 62 ? "MISE RECOMMANDEE" : (master?.action || "SURVEILLER"),
-    recommandation: `FUSION MODELE ENTRAINE + MAITRE (${outcome.toUpperCase() || "N/A"})`,
+    recommandation: `FUSION MODELE ENTRAINE + MAITRE (${outcome.toUpperCase() || "N/A"})${market ? "" : " | marché conservé faute de mapping direct"}`,
     moteur: "TRAINED-FUSION-1.0",
   };
 
@@ -863,7 +862,8 @@ function applyTrainedModelFusion(prediction = {}, bets = [], trained = {}) {
     modelFile: trained?.modelFile || null,
     outcome,
     exactScore: trained?.exactScore || null,
-    marketUsed: market.nom,
+    marketUsed: market?.nom || null,
+    marketMapped: Boolean(market),
     confidence: fusedDecision.confiance_numerique,
   };
 }
@@ -873,16 +873,24 @@ function pickOutcomeMarketFromBets(bets = [], outcome = "") {
   const outcomeKey = String(outcome || "").toLowerCase();
   const byOutcomeLabel =
     outcomeKey === "home"
-      ? ["1 - victoire", "1 - "]
+      ? ["1 - victoire", "1 - ", "victoire domicile", "domicile"]
       : outcomeKey === "away"
-        ? ["2 - victoire", "2 - "]
-        : ["x - match nul", "x - "];
+        ? ["2 - victoire", "2 - ", "victoire exterieur", "victoire extérieur", "exterieur", "extérieur"]
+        : ["x - match nul", "x - ", "match nul", "nul"];
 
   const foundDirect = rows.find((m) => {
     const low = normalizeText(m?.nom || "");
     return byOutcomeLabel.some((p) => low.startsWith(normalizeText(p)));
   });
   if (foundDirect) return foundDirect;
+
+  const found1x2 = rows.find((m) => {
+    const low = normalizeText(m?.nom || "");
+    if (outcomeKey === "home") return low === "1" || low.includes(" 1 ") || low.startsWith("1 -");
+    if (outcomeKey === "away") return low === "2" || low.includes(" 2 ") || low.startsWith("2 -");
+    return low === "x" || low.includes(" x ") || low.startsWith("x -");
+  });
+  if (found1x2) return found1x2;
 
   // fallback: double chance markets aligned with trained side
   if (outcomeKey === "home") {

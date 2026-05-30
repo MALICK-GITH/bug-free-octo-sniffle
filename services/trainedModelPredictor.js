@@ -50,6 +50,12 @@ function loadLatestModel() {
     return modelCache.model;
   }
   const model = JSON.parse(fs.readFileSync(modelPath, "utf8"));
+  if (!model || typeof model !== "object") {
+    throw new Error("modele invalide (structure vide)");
+  }
+  if (!model.priors || typeof model.priors !== "object") {
+    throw new Error("modele invalide (priors manquants)");
+  }
   modelCache = { path: modelPath, mtimeMs: stat.mtimeMs, model };
   return model;
 }
@@ -113,6 +119,8 @@ function predictFromTrainedModel(input = {}) {
       },
     };
   } catch (error) {
+    // Reset cache in case of transient corrupted model load to avoid sticky failures.
+    modelCache = { path: null, mtimeMs: 0, model: null };
     return {
       available: false,
       reason: "predict_error",
@@ -124,4 +132,3 @@ function predictFromTrainedModel(input = {}) {
 module.exports = {
   predictFromTrainedModel,
 };
-
