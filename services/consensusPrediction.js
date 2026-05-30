@@ -39,7 +39,7 @@ function familyStability(family) {
     TOTAL: 8,
     ONE_X_TWO: 6,
     HANDICAP: -3,
-    PAIR_IMPAIR: -8,
+    PAIR_IMPAIR: 4,
     EXACT_SCORE: -22,
     OTHER: -4,
   };
@@ -200,6 +200,7 @@ function buildReasons({ family, botSignal, valuePercent, probability, profileSco
   if (valuePercent > 8) reasons.push("Value positive detectee contre la cote");
   if (probability >= 0.55) reasons.push("Probabilite estimee favorable");
   if (family === "DOUBLE_CHANCE" || family.startsWith("TOTAL")) reasons.push("Marche plus stable qu'un score exact");
+  if (family === "PAIR_IMPAIR") reasons.push("Marche binaire pair/impair, lisible en live");
   if (family === "EXACT_SCORE") reasons.push("Marche exact score: risque structurel eleve");
   if (profileScore > 8) reasons.push("Profil de ligue favorable");
   if (odd > 2.75) reasons.push("Cote elevee, variance plus forte");

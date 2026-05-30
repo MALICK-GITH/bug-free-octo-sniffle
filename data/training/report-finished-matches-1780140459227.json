@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-30T10:09:41.683Z",
+  "generatedAt": "2026-05-30T11:27:39.222Z",
   "sourceCsv": "F:\\finished_matches_dataset_1780135385482.csv",
   "rowsRaw": 2136,
   "rowsAfterDedupe": 2136,
@@ -92,6 +92,36 @@
       "league": "fifa23. penalty",
       "n": 3,
       "accuracy": 1
+    }
+  ],
+  "segmentTraining": [
+    {
+      "segment": "fc25_penalty",
+      "n": 821,
+      "home": 0.3934226552984166,
+      "draw": 0.1315468940316687,
+      "away": 0.47503045066991473
+    },
+    {
+      "segment": "global_penalty",
+      "n": 320,
+      "home": 0.4625,
+      "draw": 0,
+      "away": 0.5375
+    },
+    {
+      "segment": "fc26_penalty",
+      "n": 289,
+      "home": 0.39100346020761245,
+      "draw": 0.17647058823529413,
+      "away": 0.43252595155709345
+    },
+    {
+      "segment": "fc24_penalty",
+      "n": 278,
+      "home": 0.37410071942446044,
+      "draw": 0.03237410071942446,
+      "away": 0.5935251798561151
     }
   ]
 }

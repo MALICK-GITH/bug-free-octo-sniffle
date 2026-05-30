@@ -11,6 +11,14 @@ function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function detectPenaltySegment(leagueValue) {
+  const league = normalizeText(leagueValue);
+  if (league.includes("fc 24") || league.includes("fc24")) return "fc24_penalty";
+  if (league.includes("fc 25") || league.includes("fc25")) return "fc25_penalty";
+  if (league.includes("fc 26") || league.includes("fc26")) return "fc26_penalty";
+  return "global_penalty";
+}
+
 function weightedPick(counts) {
   let best = null;
   for (const [k, v] of Object.entries(counts || {})) {
@@ -129,14 +137,16 @@ function predictFromTrainedModel(input = {}) {
     const awayKey = normalizeText(input.teamAway || input.awayTeam);
 
     const league = model?.leagues?.[leagueKey] || null;
+    const segmentKey = detectPenaltySegment(input.league);
+    const segment = model?.segments?.[segmentKey] || model?.segments?.global_penalty || null;
     const home = model?.teams?.[homeKey] || null;
     const away = model?.teams?.[awayKey] || null;
     const priors = model?.priors || {};
 
-    const leagueResult = league?.result || priors?.result || { home: 0.34, draw: 0.32, away: 0.34 };
+    const leagueResult = league?.result || segment?.result || priors?.result || { home: 0.34, draw: 0.32, away: 0.34 };
 
-    const baseHome = Number(league?.score?.home ?? priors?.score?.home ?? 1.2);
-    const baseAway = Number(league?.score?.away ?? priors?.score?.away ?? 1.2);
+    const baseHome = Number(league?.score?.home ?? segment?.score?.home ?? priors?.score?.home ?? 1.2);
+    const baseAway = Number(league?.score?.away ?? segment?.score?.away ?? priors?.score?.away ?? 1.2);
     const homeAdj = home ? (Number(home.for || 0) - Number(home.against || 0)) * 0.25 : 0;
     const awayAdj = away ? (Number(away.for || 0) - Number(away.against || 0)) * 0.25 : 0;
     const scoreHome = roundScore(baseHome + homeAdj - awayAdj * 0.15);
@@ -170,6 +180,8 @@ function predictFromTrainedModel(input = {}) {
       },
       coverage: {
         leagueKnown: Boolean(league),
+        segmentKey,
+        segmentKnown: Boolean(segment),
         homeKnown: Boolean(home),
         awayKnown: Boolean(away),
       },

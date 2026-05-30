@@ -73,6 +73,14 @@ function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function detectPenaltySegment(leagueValue) {
+  const league = normalizeText(leagueValue);
+  if (league.includes("fc 24") || league.includes("fc24")) return "fc24_penalty";
+  if (league.includes("fc 25") || league.includes("fc25")) return "fc25_penalty";
+  if (league.includes("fc 26") || league.includes("fc26")) return "fc26_penalty";
+  return "global_penalty";
+}
+
 function buildLabel(scoreHome, scoreAway) {
   if (scoreHome > scoreAway) return "home";
   if (scoreHome < scoreAway) return "away";
@@ -176,6 +184,7 @@ function run() {
   const valid = data.slice(splitAt);
 
   const leagueStats = {};
+  const segmentStats = {};
   const teamStats = {};
   const global = { home: 0, draw: 0, away: 0, count: 0, scoreHome: 0, scoreAway: 0 };
 
@@ -190,6 +199,12 @@ function run() {
     leagueStats[leagueKey].n += 1;
     leagueStats[leagueKey].gsH.push(m.scoreHome);
     leagueStats[leagueKey].gsA.push(m.scoreAway);
+    const segmentKey = detectPenaltySegment(m.league);
+    if (!segmentStats[segmentKey]) segmentStats[segmentKey] = { home: 0, draw: 0, away: 0, n: 0, gsH: [], gsA: [] };
+    segmentStats[segmentKey][y] += 1;
+    segmentStats[segmentKey].n += 1;
+    segmentStats[segmentKey].gsH.push(m.scoreHome);
+    segmentStats[segmentKey].gsA.push(m.scoreAway);
 
     if (!teamStats[homeKey]) teamStats[homeKey] = { for: [], against: [] };
     if (!teamStats[awayKey]) teamStats[awayKey] = { for: [], against: [] };
@@ -221,6 +236,7 @@ function run() {
       },
     },
     leagues: {},
+    segments: {},
     teams: {},
   };
 
@@ -241,6 +257,18 @@ function run() {
       n: s.for.length,
       for: mean(s.for),
       against: mean(s.against),
+    };
+  }
+
+  for (const [segmentKey, s] of Object.entries(segmentStats)) {
+    model.segments[segmentKey] = {
+      n: s.n,
+      result: {
+        home: s.home / Math.max(1, s.n),
+        draw: s.draw / Math.max(1, s.n),
+        away: s.away / Math.max(1, s.n),
+      },
+      score: { home: mean(s.gsH), away: mean(s.gsA) },
     };
   }
 
@@ -296,6 +324,15 @@ function run() {
         league,
         n: s.n,
         accuracy: s.n ? s.correct / s.n : null,
+      }))
+      .sort((a, b) => b.n - a.n),
+    segmentTraining: Object.entries(model.segments || {})
+      .map(([segment, stats]) => ({
+        segment,
+        n: Number(stats?.n || 0),
+        home: Number(stats?.result?.home || 0),
+        draw: Number(stats?.result?.draw || 0),
+        away: Number(stats?.result?.away || 0),
       }))
       .sort((a, b) => b.n - a.n),
   };
