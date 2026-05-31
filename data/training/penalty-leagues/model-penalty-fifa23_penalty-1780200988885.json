@@ -1,0 +1,61 @@
+{
+  "version": "1.0.0",
+  "scope": "penalty-league",
+  "league": "FIFA23. Penalty",
+  "trainedAt": "2026-05-31T04:16:29.123Z",
+  "trainSize": 18,
+  "validSize": 5,
+  "priors": {
+    "result": {
+      "home": 0.2777777777777778,
+      "draw": 0,
+      "away": 0.7222222222222222
+    },
+    "score": {
+      "home": 6.055555555555555,
+      "away": 6.5
+    }
+  },
+  "teams": {
+    "manchester city": {
+      "n": 2,
+      "for": 6.5,
+      "against": 6.5
+    },
+    "barcelone": {
+      "n": 6,
+      "for": 6.666666666666667,
+      "against": 6
+    },
+    "liverpool": {
+      "n": 6,
+      "for": 5.5,
+      "against": 6.5
+    },
+    "juventus": {
+      "n": 7,
+      "for": 6.428571428571429,
+      "against": 6.571428571428571
+    },
+    "paris saint-germain": {
+      "n": 4,
+      "for": 6.75,
+      "against": 6.75
+    },
+    "bayern munich": {
+      "n": 3,
+      "for": 4.333333333333333,
+      "against": 4.666666666666667
+    },
+    "arsenal": {
+      "n": 3,
+      "for": 6.333333333333333,
+      "against": 6
+    },
+    "real madrid": {
+      "n": 5,
+      "for": 7.2,
+      "against": 6.6
+    }
+  }
+}

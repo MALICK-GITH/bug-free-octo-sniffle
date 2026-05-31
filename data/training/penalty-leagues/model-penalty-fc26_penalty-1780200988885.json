@@ -1,0 +1,71 @@
+{
+  "version": "1.0.0",
+  "scope": "penalty-league",
+  "league": "FC26. Penalty",
+  "trainedAt": "2026-05-31T04:16:29.186Z",
+  "trainSize": 39,
+  "validSize": 10,
+  "priors": {
+    "result": {
+      "home": 0.46153846153846156,
+      "draw": 0,
+      "away": 0.5384615384615384
+    },
+    "score": {
+      "home": 3,
+      "away": 2.8461538461538463
+    }
+  },
+  "teams": {
+    "paris saint-germain": {
+      "n": 10,
+      "for": 2.1,
+      "against": 2.7
+    },
+    "liverpool": {
+      "n": 10,
+      "for": 3.5,
+      "against": 2.1
+    },
+    "barcelone": {
+      "n": 7,
+      "for": 3,
+      "against": 2.7142857142857144
+    },
+    "al nassr": {
+      "n": 9,
+      "for": 2.5555555555555554,
+      "against": 3.6666666666666665
+    },
+    "arsenal": {
+      "n": 6,
+      "for": 2.8333333333333335,
+      "against": 4.166666666666667
+    },
+    "real madrid": {
+      "n": 9,
+      "for": 3.111111111111111,
+      "against": 3
+    },
+    "inter miami": {
+      "n": 6,
+      "for": 2.5,
+      "against": 2.8333333333333335
+    },
+    "bayern munich": {
+      "n": 9,
+      "for": 3,
+      "against": 3.2222222222222223
+    },
+    "manchester city": {
+      "n": 8,
+      "for": 3,
+      "against": 2.375
+    },
+    "juventus": {
+      "n": 4,
+      "for": 4.25,
+      "against": 2.75
+    }
+  }
+}

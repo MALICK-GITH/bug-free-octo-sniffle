@@ -1,0 +1,66 @@
+{
+  "version": "1.0.0",
+  "scope": "penalty-league",
+  "league": "Penalty",
+  "trainedAt": "2026-05-31T04:16:29.022Z",
+  "trainSize": 472,
+  "validSize": 119,
+  "priors": {
+    "result": {
+      "home": 0.4788135593220339,
+      "draw": 0,
+      "away": 0.5211864406779662
+    },
+    "score": {
+      "home": 2.6313559322033897,
+      "away": 2.48728813559322
+    }
+  },
+  "teams": {
+    "piemonte calcio (juventus)": {
+      "n": 103,
+      "for": 2.563106796116505,
+      "against": 2.592233009708738
+    },
+    "paris saint-germain": {
+      "n": 122,
+      "for": 2.5081967213114753,
+      "against": 2.540983606557377
+    },
+    "manchester city": {
+      "n": 109,
+      "for": 2.44954128440367,
+      "against": 2.5779816513761467
+    },
+    "bayern munich": {
+      "n": 163,
+      "for": 2.6134969325153374,
+      "against": 2.754601226993865
+    },
+    "liverpool": {
+      "n": 117,
+      "for": 2.700854700854701,
+      "against": 2.5042735042735043
+    },
+    "barcelone": {
+      "n": 97,
+      "for": 2.381443298969072,
+      "against": 2.577319587628866
+    },
+    "arsenal": {
+      "n": 127,
+      "for": 2.4645669291338583,
+      "against": 2.3307086614173227
+    },
+    "real madrid": {
+      "n": 101,
+      "for": 2.742574257425743,
+      "against": 2.603960396039604
+    },
+    "juventus": {
+      "n": 5,
+      "for": 3.2,
+      "against": 1.4
+    }
+  }
+}

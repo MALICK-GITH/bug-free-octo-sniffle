@@ -263,18 +263,60 @@ function cleanPushText(value) {
     .trim();
 }
 
+function normalizePushTextLine(value, fallback = "") {
+  const cleaned = cleanPushText(value);
+  return cleaned || fallback;
+}
+
+function normalizePushBodyBlock(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => cleanPushText(line))
+    .filter(Boolean)
+    .join("\n");
+}
+
+function pushEmojiForType(type = "") {
+  const normalized = String(type || "").trim().toLowerCase();
+  if (normalized === "goal") return "⚽";
+  if (normalized === "kickoff") return "⏰";
+  if (normalized === "finished") return "🏁";
+  if (normalized === "prediction") return "🤖";
+  if (normalized === "live") return "🔴";
+  return "🔔";
+}
+
+function buildPushTitle(title, type) {
+  const safeTitle = normalizePushTextLine(title, "ONE-DELUX");
+  const emoji = pushEmojiForType(type);
+  return safeTitle.startsWith(emoji) ? safeTitle : `${emoji} ${safeTitle}`;
+}
+
+function buildPushBody({ body, league, type }) {
+  const safeLeague = normalizePushTextLine(league, "Compétition ONE-DELUX");
+  const safeBody = normalizePushBodyBlock(body) || "Nouvelle alerte ONE-DELUX";
+  const normalizedType = String(type || "").trim().toLowerCase();
+
+  if (normalizedType === "kickoff" && !/debut|débute|commence|kick|dans\s+\d+/i.test(safeBody)) {
+    return `${safeLeague}\n\n${safeBody}\n\nDébute bientôt`;
+  }
+
+  return `${safeLeague}\n\n${safeBody}`;
+}
+
 function normalizePushDisplay(rawText, parsed) {
   const safeParsed = parsed && typeof parsed === "object" ? parsed : {};
   const raw = String(rawText || "").trim();
   const parsedBody = String(safeParsed?.body || "").trim();
+  const parsedLeague = String(safeParsed?.league || safeParsed?.competition || "").trim();
   const parsedType = String(safeParsed?.type || "").trim().toLowerCase();
 
-  const title = String(safeParsed?.title || "ONE-DELUX");
+  const title = buildPushTitle(String(safeParsed?.title || "ONE-DELUX"), parsedType);
   let body = parsedBody;
 
   if (!body && raw) {
     if (raw.startsWith("{") || raw.startsWith("[")) {
-      body = "Nouvelle alerte ONE-DELUX disponible.";
+      body = "";
     } else {
       body = cleanPushText(raw);
     }
@@ -291,12 +333,16 @@ function normalizePushDisplay(rawText, parsed) {
   } else if (parsedType === "finished" && safeParsed?.homeTeam && safeParsed?.awayTeam) {
     const hs = Number(safeParsed?.scoreHome ?? safeParsed?.homeScore ?? 0);
     const as = Number(safeParsed?.scoreAway ?? safeParsed?.awayScore ?? 0);
-    body = `Termine: ${safeParsed.homeTeam} ${hs}-${as} ${safeParsed.awayTeam}`;
+    body = `${safeParsed.homeTeam} ${hs}-${as} ${safeParsed.awayTeam}`;
   }
 
   return {
     title,
-    body: cleanPushText(body),
+    body: buildPushBody({
+      body,
+      league: parsedLeague,
+      type: parsedType,
+    }),
   };
 }
 
@@ -320,6 +366,7 @@ self.addEventListener('push', (event) => {
   const requireInteraction = Boolean(parsed?.requireInteraction);
   const renotify = Boolean(parsed?.renotify);
   const urgency = String(parsed?.urgency || 'normal');
+  const ttlSeconds = Number(parsed?.ttlSeconds);
 
   event.waitUntil(
     self.registration.showNotification(title, {
@@ -330,13 +377,15 @@ self.addEventListener('push', (event) => {
       tag,
       requireInteraction,
       renotify,
+      ...(Number.isFinite(ttlSeconds) && ttlSeconds > 0 ? { timestamp: Date.now() + ttlSeconds * 1000 } : {}),
       silent: false,
       data: {
         dateOfArrival: Date.now(),
         primaryKey: 1,
         url,
         payload: parsed || null,
-        urgency
+        urgency,
+        ttlSeconds: Number.isFinite(ttlSeconds) && ttlSeconds > 0 ? ttlSeconds : null
       },
       actions: [
         { action: 'explore', title: 'Ouvrir maintenant', icon: '/icon-96.png' },
@@ -351,8 +400,9 @@ self.addEventListener('notificationclick', (event) => {
   const targetUrl = event.notification?.data?.url || '/';
   if (event.action === 'snooze') {
     const payload = event.notification?.data?.payload || {};
-    const title = String(payload?.title || event.notification.title || 'ONE-DELUX');
-    const body = String(payload?.body || event.notification.body || 'Rappel notification');
+    const reminderDisplay = normalizePushDisplay('', payload);
+    const title = reminderDisplay.title || String(event.notification.title || 'ONE-DELUX');
+    const body = reminderDisplay.body || String(event.notification.body || 'Rappel notification');
     const tag = String(payload?.tag || `snooze-${Date.now()}`);
     event.waitUntil(
       new Promise((resolve) => {

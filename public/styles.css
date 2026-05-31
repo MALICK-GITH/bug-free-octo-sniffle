@@ -2646,6 +2646,28 @@ footer {
   }
 }
 
+@media (max-width: 768px) {
+  .hero .controls {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    z-index: auto !important;
+    margin-top: 0.85rem !important;
+    margin-bottom: 1.05rem !important;
+    max-height: none !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+    transform: none !important;
+    pointer-events: auto !important;
+  }
+
+  .hero .controls.mobile-menu-open {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
+
 /* Enhanced mobile experience */
 @media (max-width: 560px) {
 

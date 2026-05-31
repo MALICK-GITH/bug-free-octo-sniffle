@@ -902,6 +902,102 @@ function normalizePlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+const CHAT_ACTION_TYPES = new Set([
+  "open_page",
+  "refresh_page",
+  "clear_chat",
+  "set_coupon_form",
+  "site_control",
+  "run_site_action",
+]);
+
+function normalizeChatAction(rawAction = {}) {
+  const action = normalizePlainObject(rawAction);
+  const type = trimText(action.type || action.kind || "", 40).toLowerCase();
+  if (!CHAT_ACTION_TYPES.has(type)) return null;
+
+  if (type === "open_page") {
+    const target = trimText(action.target || action.url || "", 240);
+    if (!target || (!target.startsWith("/") && !target.startsWith("http"))) return null;
+    return { type, target };
+  }
+
+  if (type === "refresh_page" || type === "clear_chat") {
+    return { type };
+  }
+
+  if (type === "set_coupon_form") {
+    const next = { type };
+    if (Number.isFinite(Number(action.size))) next.size = Math.max(1, Math.min(12, Number(action.size)));
+    if (action.risk) next.risk = trimText(action.risk, 32);
+    if (action.league) next.league = trimText(action.league, 120);
+    return next;
+  }
+
+  const name = trimText(action.name || action.action || "", 80);
+  if (!name) return null;
+  return {
+    type,
+    name,
+    payload: normalizePlainObject(action.payload),
+  };
+}
+
+function mergeChatActions(primary = [], secondary = []) {
+  const merged = [];
+  const seen = new Set();
+  for (const candidate of [...primary, ...secondary]) {
+    const action = normalizeChatAction(candidate);
+    if (!action) continue;
+    const signature = JSON.stringify(action);
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    merged.push(action);
+  }
+  return merged;
+}
+
+function extractStructuredChatPayload(rawAnswer) {
+  const source = String(rawAnswer || "").trim();
+  if (!source) return { answer: "", actions: [] };
+
+  const candidates = [];
+  const fencedBlocks = source.match(/```(?:json)?\s*[\s\S]*?```/gi) || [];
+  for (const block of fencedBlocks) {
+    candidates.push({
+      raw: block,
+      json: block.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim(),
+    });
+  }
+  candidates.push({ raw: source, json: source });
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate.json);
+      const parsedObject = Array.isArray(parsed) ? null : normalizePlainObject(parsed);
+      const extractedActions = mergeChatActions(
+        Array.isArray(parsedObject?.actions) ? parsedObject.actions : [],
+        parsedObject?.action ? [parsedObject.action] : []
+      );
+      if (!parsedObject || !extractedActions.length) continue;
+
+      const explicitAnswer = trimText(
+        parsedObject.answer || parsedObject.message || parsedObject.reply || parsedObject.text || "",
+        4000
+      );
+      const fallbackAnswer = trimText(source.replace(candidate.raw, "").trim(), 4000);
+      return {
+        answer: explicitAnswer || fallbackAnswer,
+        actions: extractedActions,
+      };
+    } catch (_error) {
+      continue;
+    }
+  }
+
+  return { answer: source, actions: [] };
+}
+
 function parseCookies(header = "") {
   return String(header || "")
     .split(";")
@@ -3774,11 +3870,19 @@ app.get("/api/cron/snapshots/count", async (req, res) => {
 
   try {
     const state = await authDb.getMatchTrackingState(matchTrackingConfig.trackerKey);
+    const runs = await authDb.getMatchTrackingRuns(matchTrackingConfig.trackerKey, 10).catch(() => []);
     const totalRuns = Number(state?.totalRuns ?? state?.total_runs ?? 0);
     const lastSuccessAt = state?.lastSuccessAt ?? state?.last_success_at ?? null;
     const lastSnapshot = state?.lastSnapshot ?? state?.last_snapshot ?? {};
     const counts = lastSnapshot?.counts || { live: 0, upcoming: 0, finished: 0, total: 0 };
     const captureMeta = lastSnapshot?.meta || {};
+    const snapshots = {
+      previous: runs?.[1]?.snapshot || null,
+      current: lastSnapshot || null,
+      history: Array.isArray(runs)
+        ? runs.map((run) => run.snapshot || {}).filter((snapshot) => Object.keys(snapshot).length > 0)
+        : [],
+    };
     return res.json({
       success: true,
       source: "cron-job.org",
@@ -3789,6 +3893,7 @@ app.get("/api/cron/snapshots/count", async (req, res) => {
         lastSuccessAt,
         counts,
         captureMeta,
+        snapshots,
         table: "match_tracking_runs",
       },
       meta: {
@@ -6323,23 +6428,33 @@ async function runMatchTrackingCycle(reason = "scheduled") {
     } catch (error) {
       const finishedAt = new Date().toISOString();
       try {
+        const previousState = await authDb.getMatchTrackingState(matchTrackingConfig.trackerKey).catch(() => null);
+        const previousSnapshot = previousState?.lastSnapshot || previousState?.last_snapshot || {};
+        const previousCounts = previousSnapshot?.counts || { live: 0, upcoming: 0, finished: 0, total: 0 };
+        const previousMatches = Array.isArray(previousSnapshot?.matches) ? previousSnapshot.matches : [];
+        // Preserve the last healthy snapshot on error to avoid losing transition history.
         await authDb.saveMatchTrackingSnapshot({
           trackerKey: matchTrackingConfig.trackerKey,
           enabled: true,
           intervalSeconds: matchTrackingConfig.intervalSeconds,
           totalRuns: matchTrackingRunCount,
           source: "liveFeed",
+          fetchedAt: previousSnapshot?.fetchedAt || startedAt,
           lastStartedAt: startedAt,
           lastCompletedAt: finishedAt,
           lastErrorAt: finishedAt,
           lastErrorText: error.message,
-          counts: { live: 0, upcoming: 0, finished: 0, total: 0 },
-          matches: [],
+          counts: previousCounts,
+          matches: previousMatches,
+          newIds: [],
+          disappearedIds: [],
+          finishedDetected: [],
           error: error.message,
           meta: {
             reason,
             attempts: 1,
             fetchStatus: "error",
+            preservedPreviousSnapshot: true,
           },
         });
       } catch (_persistError) {}
@@ -8127,7 +8242,7 @@ app.post("/api/chat", validateBody(chatSchema), async (req, res) => {
       String(process.env.OPENAI_COMPAT_FIRST || process.env.THE_OLD_FIRST || "0").trim() === "1";
     const errors = [];
     const attempted = [];
-    const actions = deriveControlActions(message, {
+    const derivedActions = deriveControlActions(message, {
       page,
       league,
       matchId,
@@ -8136,7 +8251,9 @@ app.post("/api/chat", validateBody(chatSchema), async (req, res) => {
     });
 
     const finishRemote = (provider, result) => {
-      let answer = result.answer;
+      const structuredPayload = extractStructuredChatPayload(result.answer);
+      const actions = mergeChatActions(derivedActions, structuredPayload.actions);
+      let answer = structuredPayload.answer || result.answer;
       if (isRefusalAnswer(answer) && !isSiteQuestion(message)) {
         answer = localGeneralAnswer(message);
       }
@@ -8147,6 +8264,9 @@ app.post("/api/chat", validateBody(chatSchema), async (req, res) => {
           .replace(/clique sur\s*\"?quick generate\"?\.?/gi, "je peux le lancer directement.")
           .replace(/je te propose d'utiliser la fonction\s*\"?quick generate\"?\.?/gi, "je peux lancer la generation directement.")
           .replace(/utiliser la fonction\s*\"?quick generate\"?/gi, "lancer la generation directe");
+        if (!String(answer || "").trim()) {
+          answer = "Je prends la main et j'exécute l'action demandée.";
+        }
       }
       return res.json({
         success: true,
@@ -8255,7 +8375,7 @@ app.post("/api/chat", validateBody(chatSchema), async (req, res) => {
             ? localResearchAnswer(message, webResearchContext)
             : localGeneralAnswer(message)
       }\n\n[Info technique: ${errors.join(" | ")}]`,
-      actions,
+      actions: derivedActions,
     });
   } catch (error) {
     const fallbackMessage = req.body?.message;

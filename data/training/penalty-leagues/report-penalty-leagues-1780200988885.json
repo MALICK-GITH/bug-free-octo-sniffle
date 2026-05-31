@@ -1,0 +1,64 @@
+{
+  "generatedAt": "2026-05-31T04:16:29.276Z",
+  "sourceCsv": "C:\\Users\\HP\\Downloads\\finished_matches_dataset_1780200240252.csv",
+  "rowsRaw": 3179,
+  "rowsPenaltyAfterDedupe": 1449,
+  "leaguesTrained": 5,
+  "models": [
+    {
+      "league": "FC25. Penalty",
+      "key": "fc25_penalty",
+      "rows": 445,
+      "modelPath": "F:\\bug-free-octo-sniffle-main\\bug-free-octo-sniffle-main\\data\\training\\penalty-leagues\\model-penalty-fc25_penalty-1780200988885.json",
+      "metrics": {
+        "resultAccuracy": 0.6741573033707865,
+        "scoreMaeHome": 1.101123595505618,
+        "scoreMaeAway": 1.1348314606741574
+      }
+    },
+    {
+      "league": "FC24. Penalty",
+      "key": "fc24_penalty",
+      "rows": 341,
+      "modelPath": "F:\\bug-free-octo-sniffle-main\\bug-free-octo-sniffle-main\\data\\training\\penalty-leagues\\model-penalty-fc24_penalty-1780200988885.json",
+      "metrics": {
+        "resultAccuracy": 0.6666666666666666,
+        "scoreMaeHome": 1.3333333333333333,
+        "scoreMaeAway": 1.0144927536231885
+      }
+    },
+    {
+      "league": "Penalty",
+      "key": "penalty",
+      "rows": 591,
+      "modelPath": "F:\\bug-free-octo-sniffle-main\\bug-free-octo-sniffle-main\\data\\training\\penalty-leagues\\model-penalty-penalty-1780200988885.json",
+      "metrics": {
+        "resultAccuracy": 0.5210084033613446,
+        "scoreMaeHome": 0.9915966386554622,
+        "scoreMaeAway": 1.1764705882352942
+      }
+    },
+    {
+      "league": "FIFA23. Penalty",
+      "key": "fifa23_penalty",
+      "rows": 23,
+      "modelPath": "F:\\bug-free-octo-sniffle-main\\bug-free-octo-sniffle-main\\data\\training\\penalty-leagues\\model-penalty-fifa23_penalty-1780200988885.json",
+      "metrics": {
+        "resultAccuracy": 0.2,
+        "scoreMaeHome": 1.4,
+        "scoreMaeAway": 2
+      }
+    },
+    {
+      "league": "FC26. Penalty",
+      "key": "fc26_penalty",
+      "rows": 49,
+      "modelPath": "F:\\bug-free-octo-sniffle-main\\bug-free-octo-sniffle-main\\data\\training\\penalty-leagues\\model-penalty-fc26_penalty-1780200988885.json",
+      "metrics": {
+        "resultAccuracy": 0.6,
+        "scoreMaeHome": 1.9,
+        "scoreMaeAway": 1.9
+      }
+    }
+  ]
+}

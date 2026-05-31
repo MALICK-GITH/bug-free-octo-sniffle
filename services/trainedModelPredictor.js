@@ -4,8 +4,12 @@ const fs = require("fs");
 const path = require("path");
 
 const MODEL_DIR = path.join(process.cwd(), "data", "training");
+const PENALTY_MODEL_DIR = path.join(MODEL_DIR, "penalty-leagues");
 const MODEL_PREFIX = "model-finished-matches-";
+const PENALTY_MODEL_PREFIX = "model-penalty-";
+const PINNED_GLOBAL_MODEL_FILE = String(process.env.TRAINED_GLOBAL_MODEL_FILE || "").trim();
 let modelCache = { path: null, mtimeMs: 0, model: null };
+let penaltyModelCache = { byLeague: new Map(), byPath: new Map() };
 
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
@@ -17,6 +21,16 @@ function detectPenaltySegment(leagueValue) {
   if (league.includes("fc 25") || league.includes("fc25")) return "fc25_penalty";
   if (league.includes("fc 26") || league.includes("fc26")) return "fc26_penalty";
   return "global_penalty";
+}
+
+function detectPenaltyLeagueModelKey(leagueValue) {
+  const league = normalizeText(leagueValue);
+  if (!league.includes("penalty")) return null;
+  if (league.includes("fc 24") || league.includes("fc24")) return "fc24_penalty";
+  if (league.includes("fc 25") || league.includes("fc25")) return "fc25_penalty";
+  if (league.includes("fc 26") || league.includes("fc26")) return "fc26_penalty";
+  if (league.includes("fifa23")) return "fifa23_penalty";
+  return "penalty";
 }
 
 function weightedPick(counts) {
@@ -85,6 +99,12 @@ function toPercent(value) {
 }
 
 function findLatestModelPath() {
+  if (PINNED_GLOBAL_MODEL_FILE) {
+    const pinnedPath = path.isAbsolute(PINNED_GLOBAL_MODEL_FILE)
+      ? PINNED_GLOBAL_MODEL_FILE
+      : path.join(MODEL_DIR, PINNED_GLOBAL_MODEL_FILE);
+    if (fs.existsSync(pinnedPath)) return pinnedPath;
+  }
   if (!fs.existsSync(MODEL_DIR)) return null;
   const files = fs
     .readdirSync(MODEL_DIR)
@@ -98,6 +118,44 @@ function findLatestModelPath() {
     });
   if (!files.length) return null;
   return path.join(MODEL_DIR, files[0]);
+}
+
+function getPenaltyModelPathsByLeague() {
+  if (!fs.existsSync(PENALTY_MODEL_DIR)) return new Map();
+  const files = fs
+    .readdirSync(PENALTY_MODEL_DIR)
+    .filter((name) => name.startsWith(PENALTY_MODEL_PREFIX) && name.endsWith(".json"))
+    .sort((a, b) => {
+      const pa = path.join(PENALTY_MODEL_DIR, a);
+      const pb = path.join(PENALTY_MODEL_DIR, b);
+      const sa = fs.statSync(pa).mtimeMs;
+      const sb = fs.statSync(pb).mtimeMs;
+      return sb - sa;
+    });
+  const byLeague = new Map();
+  for (const fileName of files) {
+    const withoutPrefix = fileName.slice(PENALTY_MODEL_PREFIX.length);
+    const leagueKey = withoutPrefix.replace(/-\d+\.json$/i, "").trim();
+    if (!leagueKey || byLeague.has(leagueKey)) continue;
+    byLeague.set(leagueKey, path.join(PENALTY_MODEL_DIR, fileName));
+  }
+  return byLeague;
+}
+
+function loadPenaltyModelByLeague(leagueKey) {
+  if (!leagueKey) return null;
+  const byLeague = getPenaltyModelPathsByLeague();
+  penaltyModelCache.byLeague = byLeague;
+  const modelPath = byLeague.get(leagueKey) || null;
+  if (!modelPath) return null;
+  const stat = fs.statSync(modelPath);
+  const cached = penaltyModelCache.byPath.get(modelPath);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.model) {
+    return { model: cached.model, path: modelPath };
+  }
+  const model = JSON.parse(fs.readFileSync(modelPath, "utf8"));
+  penaltyModelCache.byPath.set(modelPath, { mtimeMs: stat.mtimeMs, model });
+  return { model, path: modelPath };
 }
 
 function loadLatestModel() {
@@ -124,7 +182,9 @@ function roundScore(value) {
 
 function predictFromTrainedModel(input = {}) {
   try {
-    const model = loadLatestModel();
+    const penaltyLeagueModelKey = detectPenaltyLeagueModelKey(input.league);
+    const penaltyLoaded = loadPenaltyModelByLeague(penaltyLeagueModelKey);
+    const model = penaltyLoaded?.model || loadLatestModel();
     if (!model) {
       return {
         available: false,
@@ -160,13 +220,18 @@ function predictFromTrainedModel(input = {}) {
     const predResult = weightedPick(resultDist);
 
     const confidence = toPercent(resultDist?.[predResult]);
-    const modelFile = modelCache.path ? path.basename(modelCache.path) : null;
+    const modelFile = penaltyLoaded?.path
+      ? path.basename(penaltyLoaded.path)
+      : modelCache.path
+        ? path.basename(modelCache.path)
+        : null;
 
     return {
       available: true,
       source: "trained-finished-matches-model",
       modelVersion: model?.version || "1.0.0",
       modelFile,
+      modelScope: penaltyLoaded?.path ? "penalty-league" : "global",
       trainedAt: model?.trainedAt || null,
       recommendation: predResult,
       confidence: Number(confidence.toFixed(2)),
