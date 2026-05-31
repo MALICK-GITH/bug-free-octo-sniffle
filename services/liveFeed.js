@@ -704,6 +704,110 @@ function schemaOf(value, depth = 2) {
   };
 }
 
+function toPlainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function looksLikeLiveFeedEvent(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  let score = 0;
+  if (value.I != null || value.id != null || value.eventId != null || value.matchId != null) score += 1;
+  if (value.O1 != null || value.homeTeam != null || value.teamHome != null) score += 1;
+  if (value.O2 != null || value.awayTeam != null || value.teamAway != null) score += 1;
+  if (value.L != null || value.LE != null || value.league != null || value.competition != null) score += 1;
+  if (value.SC != null || value.status != null || value.scoreboard != null || value.context != null) score += 1;
+  if (value.E != null || value.markets != null || value.odds != null) score += 1;
+  return score >= 2;
+}
+
+function normalizeLiveFeedEvent(raw = {}) {
+  const base = toPlainObject(raw);
+  const scoreContext = toPlainObject(base.SC ?? base.sc ?? base.status ?? base.statusInfo ?? base.scoreboard ?? base.context);
+  const finalScore = toPlainObject(scoreContext.FS ?? scoreContext.fs ?? scoreContext.score ?? base.score);
+  const mainMarkets = Array.isArray(base.E)
+    ? base.E
+    : Array.isArray(base.e)
+      ? base.e
+      : Array.isArray(base.markets)
+        ? base.markets
+        : Array.isArray(base.odds)
+          ? base.odds
+          : [];
+  const altMarkets = Array.isArray(base.AE)
+    ? base.AE
+    : Array.isArray(base.ae)
+      ? base.ae
+      : Array.isArray(base.alternativeMarkets)
+        ? base.alternativeMarkets
+        : [];
+
+  return {
+    ...base,
+    I: base.I ?? base.id ?? base.eventId ?? base.matchId ?? null,
+    O1: base.O1 ?? base.homeTeam ?? base.teamHome ?? base.home ?? base.team1 ?? "Equipe 1",
+    O2: base.O2 ?? base.awayTeam ?? base.teamAway ?? base.away ?? base.team2 ?? "Equipe 2",
+    O1I: base.O1I ?? base.homeTeamId ?? base.teamHomeId ?? base.homeId ?? null,
+    O2I: base.O2I ?? base.awayTeamId ?? base.teamAwayId ?? base.awayId ?? null,
+    O1IMG: Array.isArray(base.O1IMG) ? base.O1IMG : Array.isArray(base.homeTeamImages) ? base.homeTeamImages : [],
+    O2IMG: Array.isArray(base.O2IMG) ? base.O2IMG : Array.isArray(base.awayTeamImages) ? base.awayTeamImages : [],
+    L: base.L ?? base.league ?? base.competition ?? base.tournament ?? "",
+    LE: base.LE ?? base.leagueName ?? base.competitionName ?? "",
+    LR: base.LR ?? base.region ?? "",
+    N: base.N ?? base.name ?? base.matchName ?? "",
+    TN: base.TN ?? base.tournamentName ?? "",
+    SN: base.SN ?? base.sportName ?? "",
+    S: base.S ?? base.startTimeUnix ?? base.startTime ?? base.start ?? null,
+    SI: base.SI ?? base.sportId ?? base.sport ?? null,
+    E: mainMarkets,
+    AE: altMarkets,
+    SC: {
+      ...scoreContext,
+      SLS: scoreContext.SLS ?? scoreContext.statusText ?? scoreContext.label ?? base.statusText ?? base.status ?? "En attente",
+      I: scoreContext.I ?? scoreContext.infoText ?? scoreContext.info ?? base.infoText ?? "",
+      GS: scoreContext.GS ?? scoreContext.statusCode ?? base.statusCode ?? null,
+      CPS: scoreContext.CPS ?? scoreContext.phase ?? base.phase ?? "",
+      FS: finalScore,
+    },
+  };
+}
+
+function collectEventArrays(value, depth = 0, visited = new Set()) {
+  if (!value || typeof value !== "object" || depth > 4 || visited.has(value)) return [];
+  visited.add(value);
+
+  if (Array.isArray(value)) {
+    if (value.some(looksLikeLiveFeedEvent)) return [value];
+    return value.flatMap((entry) => collectEventArrays(entry, depth + 1, visited));
+  }
+
+  const results = [];
+  for (const nested of Object.values(value)) {
+    if (Array.isArray(nested) && nested.some(looksLikeLiveFeedEvent)) {
+      results.push(nested);
+      continue;
+    }
+    if (nested && typeof nested === "object") {
+      results.push(...collectEventArrays(nested, depth + 1, visited));
+    }
+  }
+  return results;
+}
+
+function extractLiveFeedEvents(payload) {
+  const candidateArrays = collectEventArrays(payload);
+  const best = candidateArrays
+    .map((rows) => rows.filter(looksLikeLiveFeedEvent))
+    .filter((rows) => rows.length > 0)
+    .sort((left, right) => right.length - left.length)[0];
+
+  if (!best) {
+    console.warn("[LIVEFEED] Unsupported payload schema", JSON.stringify(schemaOf(payload, 2)));
+    throw new Error("Schema API LiveFeed non reconnu. Envoie-moi la nouvelle reponse brute pour finaliser l'adaptation.");
+  }
+
+  return best.map(normalizeLiveFeedEvent);
+}
+
 async function fetchLiveFeedRaw() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45000);
@@ -729,7 +833,7 @@ async function fetchLiveFeedRaw() {
 
 async function getPenaltyMatches() {
   const payload = await fetchLiveFeedRaw();
-  const events = Array.isArray(payload?.Value) ? payload.Value : [];
+  const events = extractLiveFeedEvents(payload);
   const sportEvents = events.filter((event) => Number(event?.SI) === 85);
   
   // Debug: Log all league names from sport 85
@@ -782,7 +886,7 @@ async function getPenaltyMatches() {
 
 async function getMatchPredictionDetails(matchId) {
   const payload = await fetchLiveFeedRaw();
-  const events = Array.isArray(payload?.Value) ? payload.Value : [];
+  const events = extractLiveFeedEvents(payload);
   const found = events.find((event) => String(event?.I) === String(matchId));
   if (!found) {
     throw new Error("Match introuvable dans le flux actuel.");
@@ -1023,7 +1127,7 @@ function normalizeLeague(value) {
 async function getCouponSelection(size = 3, league = "all", profile = "balanced", minStartMinutes = 0) {
   const payload = await fetchLiveFeedRaw();
   const nowSec = Math.floor(Date.now() / 1000);
-  const events = Array.isArray(payload?.Value) ? payload.Value : [];
+  const events = extractLiveFeedEvents(payload);
   const sportEvents = events.filter((event) => Number(event?.SI) === 85);
   const penaltyOnly = sportEvents.filter(isPenaltyEvent);
   const sourceEvents = penaltyOnly.length > 0 ? penaltyOnly : sportEvents;

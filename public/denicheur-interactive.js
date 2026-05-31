@@ -381,7 +381,13 @@ class DenicheurEnhanced {
     try {
       const response = await fetch('/api/matches/upcoming');
       const data = await response.json();
-      const matches = data.matches || [];
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.error?.message || data?.error?.details || data?.message || 'API matches indisponible'
+        );
+      }
+      const payload = data?.data && typeof data.data === 'object' ? data.data : data;
+      const matches = Array.isArray(payload?.matches) ? payload.matches : Array.isArray(data?.matches) ? data.matches : [];
       
       // Populate league selector
       this.populateLeagueSelector(matches);
@@ -948,4 +954,3 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = DenicheurEnhanced;
 }
-

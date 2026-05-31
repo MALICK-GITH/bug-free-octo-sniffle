@@ -34,6 +34,27 @@ function siteLog(level, message, meta) {
   window.SiteLogger[level](message, meta);
 }
 
+function extractApiErrorMessage(payload, fallback = "Erreur inconnue") {
+  if (typeof payload === "string" && payload.trim()) return payload.trim();
+  if (payload instanceof Error && payload.message) return payload.message;
+  const objectPayload = payload && typeof payload === "object" ? payload : {};
+  const candidates = [
+    objectPayload?.error?.message,
+    objectPayload?.error?.details,
+    objectPayload?.message,
+    typeof objectPayload?.error === "string" ? objectPayload.error : "",
+  ];
+  const direct = candidates.find((value) => typeof value === "string" && value.trim());
+  if (direct) return direct.trim();
+  if (objectPayload?.error && typeof objectPayload.error === "object") {
+    try {
+      const compact = JSON.stringify(objectPayload.error);
+      if (compact && compact !== "{}") return compact;
+    } catch {}
+  }
+  return fallback;
+}
+
 function loadGeneratedMediaFilter() {
   try {
     const stored = String(localStorage.getItem(GENERATED_MEDIA_FILTER_KEY) || "all").toLowerCase();
@@ -2317,7 +2338,7 @@ async function loadMatches() {
   try {
     const res = await fetch("/api/matches", { cache: "no-store" });
     const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.error || data.message || "Reponse API invalide");
+    if (!res.ok || !data.success) throw new Error(extractApiErrorMessage(data, "Reponse API invalide"));
 
     if (requestId !== lastLoadRequestId) return;
 

@@ -211,8 +211,11 @@ class IntelligentCache {
     try {
       const res = await fetch('/api/matches', { cache: 'no-store' });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'API Error');
-      return data.matches || [];
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error?.message || data?.error?.details || data?.message || 'API Error');
+      }
+      const payload = data?.data && typeof data.data === 'object' ? data.data : data;
+      return Array.isArray(payload?.matches) ? payload.matches : Array.isArray(data?.matches) ? data.matches : [];
     } catch (error) {
       console.warn('IntelligentCache: Erreur fetch, utilisation cache:', error);
       return this.cache.data || [];
