@@ -1,8 +1,21 @@
 function registerSystemRoutes(app, { startedAt, getDbStatus, dbService }) {
+  async function getAuxiliaryPostgresHealth() {
+    if (dbService && typeof dbService.healthCheck === "function") {
+      return dbService.healthCheck();
+    }
+    const status = await getDbStatus();
+    return {
+      status: status?.ok ? "healthy" : "unhealthy",
+      database: status?.database || null,
+      mode: status?.mode || null,
+      fallback: true,
+    };
+  }
+
   app.get("/health", async (_req, res) => {
     try {
       const dbHealth = await getDbStatus();
-      const postgresHealth = await dbService.healthCheck();
+      const postgresHealth = await getAuxiliaryPostgresHealth();
       res.json({
         ok: true,
         uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
@@ -23,7 +36,7 @@ function registerSystemRoutes(app, { startedAt, getDbStatus, dbService }) {
   app.get("/api/health", async (_req, res) => {
     try {
       const dbHealth = await getDbStatus();
-      const postgresHealth = await dbService.healthCheck();
+      const postgresHealth = await getAuxiliaryPostgresHealth();
       res.json({
         success: true,
         status: "healthy",
