@@ -191,6 +191,9 @@
       msg.includes("trop de temps") ||
       msg.includes("reponse vide") ||
       msg.includes("réponse vide") ||
+      msg.includes("reponse chat invalide") ||
+      msg.includes("response chat invalide") ||
+      msg.includes("<!doctype html>") ||
       msg.includes("network") ||
       msg.includes("failed to fetch")
     );
@@ -213,16 +216,29 @@
           signal: controller.signal,
         });
         const raw = await response.text();
+        const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+        if (!contentType.includes("application/json")) {
+          const snippet = compactText(raw || "", 240);
+          const err = new Error(
+            snippet
+              ? `Reponse chat invalide: ${snippet}`
+              : "Le serveur chat a renvoye une reponse vide ou incomplete."
+          );
+          err.status = response.status;
+          throw err;
+        }
         let data = null;
         try {
           data = raw ? JSON.parse(raw) : null;
         } catch {
           const snippet = compactText(raw || "", 240);
-          throw new Error(
+          const err = new Error(
             snippet
               ? `Reponse chat invalide: ${snippet}`
               : "Le serveur chat a renvoye une reponse vide ou incomplete."
           );
+          err.status = response.status;
+          throw err;
         }
         if (!data) {
           throw new Error("Le serveur chat a renvoye une reponse vide ou incomplete.");
