@@ -18,6 +18,7 @@ const { getPenaltyTournaments } = require("./tournaments");
 const { predictFromTrainedModel } = require("./trainedModelPredictor");
 let lastGoodLiveFeedPayload = null;
 let lastGoodLiveFeedMeta = null;
+let oneXbetSessionCookie = "";
 
 const PENALTY_KEYWORDS = [
   "penalty",
@@ -716,6 +717,63 @@ function toPlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function buildBrowserLikeHeaders() {
+  const headers = {
+    "user-agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+    accept: "application/json, text/plain, */*",
+    "accept-language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    referer: "https://1xbet.com/fr/live/football",
+    origin: "https://1xbet.com",
+    pragma: "no-cache",
+    "cache-control": "no-cache",
+    "sec-ch-ua": "\"Google Chrome\";v=\"137\", \"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"Windows\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    priority: "u=1, i",
+  };
+  if (oneXbetSessionCookie) {
+    headers.cookie = oneXbetSessionCookie;
+  }
+  return headers;
+}
+
+async function warmOneXbetSession(signal) {
+  try {
+    const response = await fetch("https://1xbet.com/fr/live/football", {
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "accept-language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        pragma: "no-cache",
+        "cache-control": "no-cache",
+        "sec-ch-ua": "\"Google Chrome\";v=\"137\", \"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "none",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+      },
+      signal,
+    });
+    const setCookie = response.headers.get("set-cookie") || "";
+    if (setCookie) {
+      oneXbetSessionCookie = setCookie
+        .split(/,(?=[^;]+?=)/)
+        .map((chunk) => String(chunk || "").split(";")[0].trim())
+        .filter(Boolean)
+        .join("; ");
+    }
+  } catch (_error) {}
+}
+
 function looksLikeLiveFeedEvent(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   let score = 0;
@@ -822,20 +880,18 @@ async function fetchLiveFeedRaw() {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20000);
     try {
+      if (!oneXbetSessionCookie) {
+        await warmOneXbetSession(controller.signal);
+      }
       const response = await fetch(url, {
-        headers: {
-          "user-agent": "Mozilla/5.0",
-          accept: "application/json,text/plain,*/*",
-          "accept-language": "fr-FR,fr;q=0.9,en;q=0.8",
-          referer: "https://1xbet.com/",
-          origin: "https://1xbet.com",
-          pragma: "no-cache",
-          "cache-control": "no-cache",
-        },
+        headers: buildBrowserLikeHeaders(),
         signal: controller.signal,
       });
       const raw = await response.text();
       if (!response.ok) {
+        if (response.status === 403 && !oneXbetSessionCookie) {
+          await warmOneXbetSession(controller.signal);
+        }
         throw new Error(`HTTP ${response.status}`);
       }
       let payload = null;
