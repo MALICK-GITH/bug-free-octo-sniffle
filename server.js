@@ -3123,6 +3123,31 @@ app.get("/api/matches", async (_req, res) => {
       }
     });
   } catch (error) {
+    try {
+      const trackingState = await authDb.getMatchTrackingState(matchTrackingConfig.trackerKey).catch(() => null);
+      const lastSnapshot = trackingState?.lastSnapshot || trackingState?.last_snapshot || {};
+      const cachedMatches = Array.isArray(lastSnapshot?.matches) ? lastSnapshot.matches : [];
+      const cachedCounts = lastSnapshot?.counts || {};
+      if (cachedMatches.length > 0) {
+        return res.json({
+          success: true,
+          data: {
+            matches: cachedMatches,
+            totalFromApi: Number(cachedCounts.total || cachedMatches.length) || cachedMatches.length,
+            totalSport85: Number(cachedCounts.total || cachedMatches.length) || cachedMatches.length,
+            totalPenalty: null,
+            filterMode: "snapshot-fallback"
+          },
+          meta: {
+            source: "match_tracking_snapshot",
+            fetchedAt: lastSnapshot?.fetchedAt || null,
+            timestamp: new Date().toISOString(),
+            degraded: true,
+            reason: error.message,
+          }
+        });
+      }
+    } catch (_fallbackError) {}
     res.status(500).json({
       success: false,
       error: {
