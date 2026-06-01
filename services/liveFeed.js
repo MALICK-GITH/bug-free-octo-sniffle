@@ -1,5 +1,11 @@
 const API_URL =
   "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=200&lng=fr&gr=285&mode=4&country=96&getEmpty=true&virtualSports=true&noFilterBlockEvent=true";
+const API_URL_FALLBACKS = [
+  API_URL,
+  "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=200&lng=fr&gr=285&mode=4&country=96&virtualSports=true&noFilterBlockEvent=true",
+  "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=100&lng=fr&gr=285&mode=4&country=96&virtualSports=true",
+  "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=40&lng=fr&gr=285&mode=4&country=96&getEmpty=true&virtualSports=true&noFilterBlockEvent=true",
+];
 const { genererPredictionUnifiee, detectBetType } = require("./unifiedPrediction");
 const { evaluateMatch } = require("./extraPowerFilter");
 const { getLeagueProfile, getLeagueProfileSummary, scoreMarketAgainstProfile, weightExactScoreProbability } = require("./leagueProfiles");
@@ -10,6 +16,8 @@ const { analyserMatchMultiBots } = require("./bots");
 const { getHistoricalRecommendation } = require("./historical");
 const { getPenaltyTournaments } = require("./tournaments");
 const { predictFromTrainedModel } = require("./trainedModelPredictor");
+let lastGoodLiveFeedPayload = null;
+let lastGoodLiveFeedMeta = null;
 
 const PENALTY_KEYWORDS = [
   "penalty",
@@ -809,78 +817,72 @@ function extractLiveFeedEvents(payload) {
 }
 
 async function fetchLiveFeedRaw() {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45000);
-
-  try {
-    const response = await fetch(API_URL, {
-      headers: {
-        "user-agent": "Mozilla/5.0",
-        accept: "application/json",
-      },
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+  const errors = [];
+  for (const url of [...new Set(API_URL_FALLBACKS)]) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "user-agent": "Mozilla/5.0",
+          accept: "application/json,text/plain,*/*",
+          "accept-language": "fr-FR,fr;q=0.9,en;q=0.8",
+          referer: "https://1xbet.com/",
+          origin: "https://1xbet.com",
+          pragma: "no-cache",
+          "cache-control": "no-cache",
+        },
+        signal: controller.signal,
+      });
+      const raw = await response.text();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      let payload = null;
+      try {
+        payload = raw ? JSON.parse(raw) : null;
+      } catch (_error) {
+        throw new Error("INVALID_JSON");
+      }
+      const events = extractLiveFeedEvents(payload);
+      if (!events.length) {
+        throw new Error("EMPTY_EVENTS");
+      }
+      lastGoodLiveFeedPayload = payload;
+      lastGoodLiveFeedMeta = {
+        fetchedAt: new Date().toISOString(),
+        sourceUrl: url,
+        totalFromApi: events.length,
+      };
+      return payload;
+    } catch (error) {
+      errors.push(`${url} -> ${error.message}`);
+    } finally {
+      clearTimeout(timer);
     }
-
-    return await response.json();
-  } finally {
-    clearTimeout(timer);
   }
+  if (lastGoodLiveFeedPayload) {
+    console.warn("[LIVEFEED] Fallback to last good payload", lastGoodLiveFeedMeta || {});
+    return lastGoodLiveFeedPayload;
+  }
+  throw new Error(`LiveFeed unavailable: ${errors.join(" | ")}`);
 }
 
 async function getPenaltyMatches() {
   const payload = await fetchLiveFeedRaw();
   const events = extractLiveFeedEvents(payload);
   const sportEvents = events.filter((event) => Number(event?.SI) === 85);
-  
-  // Debug: Log all league names from sport 85
-  console.log('[DEBUG] Total sport 85 events:', sportEvents.length);
-  const leagues = [...new Set(sportEvents.map(e => e.L || e.LE || 'Unknown'))];
-  console.log('[DEBUG] Leagues found:', leagues);
-  
   const penaltyOnly = sportEvents.filter(isPenaltyEvent);
-  console.log('[DEBUG] Penalty events found:', penaltyOnly.length);
-  if (penaltyOnly.length > 0) {
-    console.log('[DEBUG] Penalty event leagues:', [...new Set(penaltyOnly.map(e => e.L || e.LE))]);
-  }
-  
-  // Combiner les deux sources: penalty + non-penalty
-  // Limiter à un mélange équilibré
-  const nonPenalty = sportEvents.filter(e => !isPenaltyEvent(e));
-  const maxPenalty = Math.min(penaltyOnly.length, 50);
-  const maxNonPenalty = Math.min(nonPenalty.length, 50);
-  
-  // Debug: Log status codes for penalty vs non-penalty
-  console.log('[DEBUG] Penalty status codes:', penaltyOnly.slice(0, 5).map(e => ({
-    league: e.L || e.LE,
-    statusCode: e.SC?.GS,
-    statusText: e.SC?.SLS,
-    phase: e.SC?.CPS
-  })));
-  console.log('[DEBUG] Non-penalty status codes:', nonPenalty.slice(0, 5).map(e => ({
-    league: e.L || e.LE,
-    statusCode: e.SC?.GS,
-    statusText: e.SC?.SLS,
-    phase: e.SC?.CPS
-  })));
-  
-  const selected = [
-    ...nonPenalty.slice(0, maxNonPenalty),
-    ...penaltyOnly.slice(0, maxPenalty)
-  ];
-  
-  const filterMode = "mixed-penalty-regular";
+  const nonPenalty = sportEvents.filter((event) => !isPenaltyEvent(event));
 
   return {
     fetchedAt: new Date().toISOString(),
     totalFromApi: events.length,
     totalSport85: sportEvents.length,
     totalPenalty: penaltyOnly.length,
-    filterMode,
-    matches: selected.map(simplifyEvent),
+    totalRegular: nonPenalty.length,
+    filterMode: "full-sport-85",
+    matches: sportEvents.map(simplifyEvent),
   };
 }
 
@@ -953,7 +955,7 @@ function applyTrainedModelFusion(prediction = {}, bets = [], trained = {}) {
     confidence: Number(fusedConfidence.toFixed(1)),
     confiance_numerique: Number(fusedConfidence.toFixed(1)),
     action: fusedConfidence >= 62 ? "MISE RECOMMANDEE" : (master?.action || "SURVEILLER"),
-    recommandation: `FUSION MODELE ENTRAINE + MAITRE (${outcome.toUpperCase() || "N/A"})${market ? "" : " | marché conservé faute de mapping direct"}`,
+    recommandation: `FUSION MODELE ENTRAINE + MAITRE (${outcome.toUpperCase() || "N/A"})${market ? "" : " | marchÃ© conservÃ© faute de mapping direct"}`,
     moteur: "TRAINED-FUSION-1.0",
   };
 
@@ -979,7 +981,7 @@ function pickOutcomeMarketFromBets(bets = [], outcome = "") {
     outcomeKey === "home"
       ? ["1 - victoire", "1 - ", "victoire domicile", "domicile"]
       : outcomeKey === "away"
-        ? ["2 - victoire", "2 - ", "victoire exterieur", "victoire extérieur", "exterieur", "extérieur"]
+        ? ["2 - victoire", "2 - ", "victoire exterieur", "victoire extÃ©rieur", "exterieur", "extÃ©rieur"]
         : ["x - match nul", "x - ", "match nul", "nul"];
 
   const foundDirect = rows.find((m) => {
@@ -1402,7 +1404,7 @@ async function getStructure() {
 }
 
 /**
- * Nouvelle fonction de prédiction avancée utilisant le moteur penaltyS
+ * Nouvelle fonction de prÃ©diction avancÃ©e utilisant le moteur penaltyS
  */
 async function getAdvancedPrediction(matchId) {
   const payload = await fetchLiveFeedRaw();
@@ -1416,7 +1418,7 @@ async function getAdvancedPrediction(matchId) {
   const match = simplifyEvent(found);
   const bets = extractAllBets(found);
   
-  // Utiliser le nouveau moteur de prédiction avancé
+  // Utiliser le nouveau moteur de prÃ©diction avancÃ©
   const advancedPrediction = predictionEngine.calculatePrediction({
     id: match.id,
     homeTeam: match.teamHome,
@@ -1426,7 +1428,7 @@ async function getAdvancedPrediction(matchId) {
     status: match.statusText
   });
 
-  // Analyser avec le système multi-bots
+  // Analyser avec le systÃ¨me multi-bots
   const botsAnalysis = analyserMatchMultiBots(match, bets);
 
   // Obtenir la recommandation historique
@@ -1434,7 +1436,7 @@ async function getAdvancedPrediction(matchId) {
     match.league,
     advancedPrediction.recommendedBet.type,
     advancedPrediction.recommendedBet.odds,
-    null // Pas de données historiques pour l'instant
+    null // Pas de donnÃ©es historiques pour l'instant
   );
 
   return {
@@ -1448,7 +1450,7 @@ async function getAdvancedPrediction(matchId) {
 }
 
 /**
- * Récupérer les tournois FIFA Penalty
+ * RÃ©cupÃ©rer les tournois FIFA Penalty
  */
 async function getTournamentsList() {
   try {
