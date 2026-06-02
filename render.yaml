@@ -5,7 +5,7 @@ services:
     env: node
     plan: free
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: npm run start:direct
     healthCheckPath: /health
     autoDeploy: true
     
