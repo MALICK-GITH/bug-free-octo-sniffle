@@ -12,7 +12,7 @@ try {
 }
 const config = require("./server/config");
 const { createHelmetMiddleware, csrfProtection, requestTimingLogger } = require("./server/middleware/security");
-const { defaultRateLimiter, strictRateLimiter, couponRateLimiter, chatRateLimiter } = require("./server/middleware/rateLimiter");
+const { defaultRateLimiter } = require("./server/middleware/rateLimiter");
 const { apiRequestLogger, suspiciousActivityDetector } = require("./server/middleware/auditLogger");
 const { apiNotFound, errorHandler } = require("./server/middleware/errors");
 const {
@@ -3006,21 +3006,6 @@ app.get("/api/db/status", async (_req, res) => {
   }
 });
 
-app.get("/api/health", (_req, res) => {
-  res.json({
-    success: true,
-    data: {
-      status: "healthy",
-      service: "ONE-DELUX Backend",
-      version: "1.0.0",
-      uptime: process.uptime()
-    },
-    meta: {
-      timestamp: new Date().toISOString()
-    }
-  });
-});
-
 app.get("/api/match-tracking/status", async (_req, res) => {
   try {
     const [state, runs, matches] = await Promise.all([
@@ -3727,18 +3712,6 @@ app.post("/api/coupon/validate", validateBody(couponValidateSchema), async (req,
     res.status(500).json({
       success: false,
       message: "Impossible de valider le ticket coupon.",
-      error: error.message,
-    });
-  }
-});
-
-app.get("/api/db/status", async (_req, res) => {
-  try {
-    return res.json({ success: true, db: await getDbStatus() });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de lire le statut DB.",
       error: error.message,
     });
   }
