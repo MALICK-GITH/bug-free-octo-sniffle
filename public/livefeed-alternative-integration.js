@@ -1,4 +1,4 @@
-// 1xBet Alternative Integration - Safe and Reliable Data Sources
+// LiveFeed Alternative Integration - safe and reliable data sources
 class SafeDataIntegration {
   constructor() {
     this.primarySource = 'traincdn'; // Already integrated, 9.2/10

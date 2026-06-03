@@ -1,11 +1,7 @@
 const API_URL =
-  "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=200&lng=fr&gr=285&mode=4&country=96&getEmpty=true&virtualSports=true&noFilterBlockEvent=true";
-const API_URL_FALLBACKS = [
-  API_URL,
-  "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=200&lng=fr&gr=285&mode=4&country=96&virtualSports=true&noFilterBlockEvent=true",
-  "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=100&lng=fr&gr=285&mode=4&country=96&virtualSports=true",
-  "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=40&lng=fr&gr=285&mode=4&country=96&getEmpty=true&virtualSports=true&noFilterBlockEvent=true",
-];
+  "https://888starz.bet/service-api/LiveFeed/Get1x2_VZip?sports=85&count=1000&lng=fr&gr=789&mode=4&country=96&partner=233&getEmpty=true&virtualSports=true&noFilterBlockEvent=true";
+const LIVEFEED_ORIGIN = new URL(API_URL).origin;
+const LIVEFEED_LIVE_PAGE_URL = `${LIVEFEED_ORIGIN}/fr/live/football`;
 const fs = require("fs");
 const path = require("path");
 let puppeteer = null;
@@ -31,6 +27,10 @@ const LIVEFEED_CACHE_FILE = path.resolve(
   path.dirname(process.env.DB_FILE || "data/app.sqlite"),
   "livefeed-cache.json"
 );
+const LIVEFEED_CACHE_MAX_AGE_MS = Math.max(
+  5 * 60 * 1000,
+  Number(process.env.LIVEFEED_CACHE_MAX_AGE_MINUTES) || 30
+);
 const USE_PUPPETEER = (() => {
   const explicit = String(process.env.LIVEFEED_USE_PUPPETEER || "").trim();
   if (explicit === "1") return true;
@@ -39,7 +39,20 @@ const USE_PUPPETEER = (() => {
 })();
 let lastGoodLiveFeedPayload = null;
 let lastGoodLiveFeedMeta = null;
-let oneXbetSessionCookie = "";
+let liveFeedSessionCookie = "";
+
+function getLiveFeedCacheAgeMs(entry = {}) {
+  const sourceDate = entry?.updatedAt || entry?.meta?.fetchedAt || entry?.meta?.updatedAt || null;
+  const parsed = sourceDate ? Date.parse(sourceDate) : NaN;
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Date.now() - parsed);
+}
+
+function isFreshLiveFeedCache(entry = {}) {
+  const ageMs = getLiveFeedCacheAgeMs(entry);
+  if (ageMs == null) return false;
+  return ageMs <= LIVEFEED_CACHE_MAX_AGE_MS;
+}
 
 function loadPersistedLiveFeedCache() {
   try {
@@ -48,6 +61,7 @@ function loadPersistedLiveFeedCache() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
     if (!parsed.payload) return null;
+    if (!isFreshLiveFeedCache(parsed)) return null;
     return {
       payload: parsed.payload,
       meta: parsed.meta || null,
@@ -159,7 +173,7 @@ function toTeamBadgeUrl(teamName) {
 
 function toTeamCdnLogoUrl(teamId) {
   const id = Number(teamId);
-  return Number.isFinite(id) && id > 1 ? `https://1xbet.com/sfiles/logo_teams/${id}.png` : null;
+  return Number.isFinite(id) && id > 1 ? `${LIVEFEED_ORIGIN}/sfiles/logo_teams/${id}.png` : null;
 }
 
 function parseScoreContext(event) {
@@ -907,8 +921,8 @@ function buildBrowserLikeHeaders() {
     accept: "*/*",
     "accept-language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
     "accept-encoding": "gzip, deflate, br",
-    referer: "https://1xbet.com/fr/live/football",
-    origin: "https://1xbet.com",
+    referer: LIVEFEED_LIVE_PAGE_URL,
+    origin: LIVEFEED_ORIGIN,
     "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": "\"Windows\"",
@@ -919,15 +933,15 @@ function buildBrowserLikeHeaders() {
     "sec-gpc": "1",
     "upgrade-insecure-requests": "1",
   };
-  if (oneXbetSessionCookie) {
-    headers.cookie = oneXbetSessionCookie;
+  if (liveFeedSessionCookie) {
+    headers.cookie = liveFeedSessionCookie;
   }
   return headers;
 }
 
-async function warmOneXbetSession(signal) {
+async function warmLiveFeedSession(signal) {
   try {
-    const response = await fetch("https://1xbet.com/fr/live/football", {
+    const response = await fetch(LIVEFEED_LIVE_PAGE_URL, {
       headers: {
         "user-agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
@@ -949,7 +963,7 @@ async function warmOneXbetSession(signal) {
     });
     const setCookie = response.headers.get("set-cookie") || "";
     if (setCookie) {
-      oneXbetSessionCookie = setCookie
+      liveFeedSessionCookie = setCookie
         .split(/,(?=[^;]+?=)/)
         .map((chunk) => String(chunk || "").split(";")[0].trim())
         .filter(Boolean)
@@ -1078,7 +1092,7 @@ async function fetchLiveFeedRaw() {
       });
 
       // First visit the page to establish session
-      await page.goto("https://1xbet.com/fr/live/football", { waitUntil: "domcontentloaded" });
+      await page.goto(LIVEFEED_LIVE_PAGE_URL, { waitUntil: "domcontentloaded" });
 
       // Then make the API request
       const url = API_URL;
@@ -1110,12 +1124,12 @@ async function fetchLiveFeedRaw() {
   }
 
   // Fallback to regular fetch with headers
-  for (const url of [...new Set(API_URL_FALLBACKS)]) {
+  for (const url of [API_URL]) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20000);
     try {
-      if (!oneXbetSessionCookie) {
-        await warmOneXbetSession(controller.signal);
+      if (!liveFeedSessionCookie) {
+        await warmLiveFeedSession(controller.signal);
       }
       const response = await fetch(url, {
         headers: buildBrowserLikeHeaders(),
@@ -1123,8 +1137,8 @@ async function fetchLiveFeedRaw() {
       });
       const raw = await response.text();
       if (!response.ok) {
-        if (response.status === 403 && !oneXbetSessionCookie) {
-          await warmOneXbetSession(controller.signal);
+        if (response.status === 403 && !liveFeedSessionCookie) {
+          await warmLiveFeedSession(controller.signal);
         }
         throw new Error(`HTTP ${response.status}`);
       }
@@ -1153,6 +1167,14 @@ async function fetchLiveFeedRaw() {
     }
   }
   if (lastGoodLiveFeedPayload) {
+    const cachedEnvelope = {
+      payload: lastGoodLiveFeedPayload,
+      meta: lastGoodLiveFeedMeta || null,
+      updatedAt: lastGoodLiveFeedMeta?.fetchedAt || lastGoodLiveFeedMeta?.updatedAt || null,
+    };
+    if (!isFreshLiveFeedCache(cachedEnvelope)) {
+      throw new Error(`LiveFeed unavailable: ${errors.join(" | ")}`);
+    }
     console.warn("[LIVEFEED] Fallback to last good payload", lastGoodLiveFeedMeta || {});
     persistLiveFeedCache(lastGoodLiveFeedPayload, lastGoodLiveFeedMeta);
     return lastGoodLiveFeedPayload;
@@ -1168,8 +1190,8 @@ async function getPenaltyMatches() {
   const nonPenalty = sportEvents.filter((event) => !isPenaltyEvent(event));
 
   const liveVisibleMatches = sportEvents.map((event) => toVisibleMatchFromRaw(event, new Date().toISOString(), "liveFeed"));
-  const trackedRows = await getTrackedMatches(200).catch(() => []);
-  const archivedRows = await getFinishedMatchesDataset(120).catch(() => []);
+  const trackedRows = await getTrackedMatches(500).catch(() => []);
+  const archivedRows = await getFinishedMatchesDataset(20000).catch(() => []);
   const trackedVisibleMatches = trackedRows.map((row) => toVisibleMatchFromStored(row, row?.status || null, row?.source || "tracked-db"));
   const archivedVisibleMatches = archivedRows.map((row) => toVisibleMatchFromStored(row, "finished", row?.source || "archive-db"));
   const visibleMatches = dedupeVisibleMatches([...liveVisibleMatches, ...trackedVisibleMatches, ...archivedVisibleMatches]);
@@ -1208,8 +1230,8 @@ async function getMatchPredictionDetails(matchId) {
     };
   }
 
-  const trackedRows = await getTrackedMatches(200).catch(() => []);
-  const archivedRows = await getFinishedMatchesDataset(120).catch(() => []);
+  const trackedRows = await getTrackedMatches(500).catch(() => []);
+  const archivedRows = await getFinishedMatchesDataset(20000).catch(() => []);
   const storedMatch = [...trackedRows, ...archivedRows].find((row) => String(row?.matchId || row?.match_id || row?.id || "") === String(matchId));
   if (storedMatch) {
     const storedEvent = synthesizeLiveFeedEvent(storedMatch, storedMatch?.status || null);

@@ -65,6 +65,7 @@ const {
 const authDb = require("./services/database");
 const legacyDbService = require("./services/db");
 const getDbStatus = (...args) => authDb.getDbStatus(...args);
+const LIVEFEED_ORIGIN = new URL(API_URL).origin;
 
 const app = express();
 const DEFAULT_PORT = config.port;
@@ -1293,7 +1294,7 @@ function buildSiteKnowledgeBlock() {
   return [
     "BASE CONNAISSANCE SITE ONE-DELUX (TOUS FORMATS) - Signe SOLITAIRE HACK:",
     "- Pages: / (matchs live), /match.html?id=... (detail match), /coupon.html (coupon builder), /suivre.html (suivi), /updates.html (mises a jour), /mode-emploi.html (guide), /about.html (createur), /developpeur.html (contacts).",
-    "- Donnees matchs: API 1xBet LiveFeed (FIFA virtuel global), tri ligue, statut match, cotes 1X2 et marches additionnels.",
+    "- Donnees matchs: API LiveFeed (FIFA virtuel global), tri ligue, statut match, cotes 1X2 et marches additionnels.",
     "- Couverture: FC 24, FC 25, et toutes les ligues/formats FIFA virtuels presentes sur le site.",
     "- Detail match: decision maitre, bots, top 3 recommandations, Neural Match Engine, alertes drift cotes, historique et suivi.",
     "- Coupon: generation optimisee par risque (safe/balanced/aggressive), validation ticket, remplacement selections faibles.",
@@ -2694,10 +2695,10 @@ app.get("/api/logo/:fileName", async (req, res) => {
 
   const fileCandidates = safe.includes(".") ? [safe] : [safe, `${safe}.png`];
   const baseUrls = [
-    "https://1xbet.com/LineFeedImages/",
-    "https://1xbet.com/linefeed/images/",
-    "https://1xbet.com/genfiles/team/",
-    "https://1xbet.com/genfiles/teams/",
+    `${LIVEFEED_ORIGIN}/sfiles/logo_teams/`,
+    `${LIVEFEED_ORIGIN}/sfiles/`,
+    `${LIVEFEED_ORIGIN}/linefeed/images/`,
+    `${LIVEFEED_ORIGIN}/images/`,
   ];
 
   for (const file of fileCandidates) {
@@ -2710,7 +2711,7 @@ app.get("/api/logo/:fileName", async (req, res) => {
           headers: {
             "user-agent": "Mozilla/5.0",
             accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-            referer: "https://1xbet.com/",
+            referer: LIVEFEED_ORIGIN,
           },
           signal: controller.signal,
         });

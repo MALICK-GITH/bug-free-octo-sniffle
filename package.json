@@ -1,7 +1,7 @@
 {
   "name": "one-delux",
   "version": "2.1.0",
-  "description": "Site Node.js pour afficher uniquement les matchs FIFA virtuel penalty (1xBet LiveFeed).",
+  "description": "Site Node.js pour afficher uniquement les matchs FIFA virtuel penalty via LiveFeed.",
   "main": "server/index.js",
   "scripts": {
     "start": "node scripts/auto-update-server.js",
@@ -10,6 +10,10 @@
     "lint": "eslint public --ext .js --max-warnings 200",
     "check:server": "node --check server.js && node --check services/db.js && node --check services/database.js",
     "check:update": "node --check scripts/auto-update-server.js",
+    "cron:learn": "node scripts/render-cron-runner.js learn",
+    "cron:capture": "node scripts/render-cron-runner.js capture",
+    "cron:push": "node scripts/render-cron-runner.js push",
+    "cron:dedupe": "node scripts/render-cron-runner.js dedupe",
     "test": "playwright test"
   },
   "keywords": [
@@ -18,7 +22,7 @@
     "fifa",
     "virtual",
     "penalty",
-    "1xbet"
+    "livefeed"
   ],
   "license": "MIT",
   "dependencies": {

@@ -122,7 +122,7 @@ class SublimeAR {
       date: new Date().toLocaleDateString('fr-FR'),
       matches: scannedMatches,
       totalOdds: scannedMatches.reduce((acc, m) => acc * m.odds, 1).toFixed(2),
-      bookmaker: ['1xBet', 'Bet365', 'Winamax'][Math.floor(Math.random() * 3)]
+      bookmaker: ['LiveFeed', 'Bet365', 'Winamax'][Math.floor(Math.random() * 3)]
     };
   }
 
