@@ -32,7 +32,7 @@ const {
 const { registerSystemRoutes } = require("./server/routes/system");
 const { registerAdvancedPredictionRoutes } = require("./server/routes/advancedPrediction");
 const { registerAIPredictionRoutes } = require("./server/routes/aiPrediction");
-const { API_URL, getPenaltyMatches, getStructure, getMatchPredictionDetails, getCouponSelection, validateCouponTicket } = require("./services/liveFeed");
+const { API_URL, getPenaltyMatches, getStructure, getMatchPredictionDetails, getMatchPredictionDetailsFromMatch, getCouponSelection, validateCouponTicket } = require("./services/liveFeed");
 const { getLeagueProfiles } = require("./services/leagueProfiles");
 const { toFeatures, deduplicate, extractRules, buildDecisionEngine, toTrainReadyCSV } = require("./services/patternEngineV2");
 const { runLearningCron } = require("./services/cronLearning");
@@ -717,10 +717,15 @@ function classifyMatchStatus(match = {}) {
   const nowSec = Math.floor(Date.now() / 1000);
   const start = Number(match?.startTimeUnix || 0);
   const statusCode = Number(match?.statusCode || 0);
+  const explicitStatus = normalizeLookupText(match?.status || "");
   const info = normalizeLookupText(match?.infoText || "");
   const status = normalizeLookupText(match?.statusText || "");
   const phase = normalizeLookupText(match?.phase || "");
   const minute = getMatchMinute(match);
+
+  if (explicitStatus === "finished" || explicitStatus === "upcoming" || explicitStatus === "live") {
+    return explicitStatus;
+  }
 
   const isFinishedByText =
     status.includes("termine") ||
@@ -3099,6 +3104,10 @@ app.get("/api/matches", async (_req, res) => {
         totalFromApi: data.totalFromApi,
         totalSport85: data.totalSport85,
         totalPenalty: data.totalPenalty,
+        totalVisible: data.totalVisible ?? data.matches.length,
+        totalTracked: data.totalTracked ?? 0,
+        totalArchived: data.totalArchived ?? 0,
+        sourceBreakdown: data.sourceBreakdown || null,
         filterMode: data.filterMode
       },
       meta: {
@@ -3643,7 +3652,20 @@ app.get("/api/predictions/:matchId", async (req, res) => {
 
 app.get("/api/matches/:id/details", async (req, res) => {
   try {
-    const details = await getMatchPredictionDetails(req.params.id);
+    let details = null;
+    try {
+      details = await getMatchPredictionDetails(req.params.id);
+    } catch (_liveError) {
+      const catalog = await getPenaltyMatches();
+      const fallbackMatch = Array.isArray(catalog?.matches)
+        ? catalog.matches.find((item) => getMatchId(item) === String(req.params.id))
+        : null;
+      if (fallbackMatch) {
+        details = await getMatchPredictionDetailsFromMatch(fallbackMatch);
+      } else {
+        throw _liveError;
+      }
+    }
     if (details?.match?.id) {
       // Persiste une empreinte du match pour que le suivi retrouve aussi le score final plus tard.
       authDb.upsertTrackedMatch(normalizePersistedMatch(details.match)).catch(() => {});

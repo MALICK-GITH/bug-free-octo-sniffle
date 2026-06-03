@@ -24,6 +24,7 @@ const { predictionEngine } = require("./prediction");
 const { analyserMatchMultiBots } = require("./bots");
 const { getHistoricalRecommendation } = require("./historical");
 const { getPenaltyTournaments } = require("./tournaments");
+const { getTrackedMatches, getFinishedMatchesDataset } = require("./db");
 const { predictFromTrainedModel } = require("./trainedModelPredictor");
 const LIVEFEED_CACHE_FILE = path.resolve(
   process.cwd(),
@@ -664,6 +665,116 @@ function simplifyEvent(event) {
   };
 }
 
+function normalizeVisibleStatus(value) {
+  const normalized = normalizeText(value);
+  if (normalized === "finished" || normalized.includes("termine")) return "finished";
+  if (normalized === "upcoming" || normalized.includes("a venir") || normalized.includes("avant le debut")) return "upcoming";
+  if (normalized === "live" || normalized.includes("en cours") || normalized.includes("minute") || normalized.includes("mi temps")) return "live";
+  return null;
+}
+
+function synthesizeLiveFeedEvent(match = {}, statusOverride = null) {
+  const status = normalizeVisibleStatus(statusOverride || match?.status) || "upcoming";
+  const matchId = String(match?.matchId || match?.match_id || match?.id || "").trim();
+  const teamHome = String(match?.teamHome || match?.team_home || match?.homeTeam || "Equipe 1").trim() || "Equipe 1";
+  const teamAway = String(match?.teamAway || match?.team_away || match?.awayTeam || "Equipe 2").trim() || "Equipe 2";
+  const league = String(match?.league || "Competition virtuelle").trim() || "Competition virtuelle";
+  const minute = Number(match?.minute || 0) || 0;
+  const startTimeUnix = Number(match?.startTimeUnix || match?.start_time_unix || 0) || null;
+  const scoreHome = Number(match?.scoreHome ?? match?.score_home ?? 0) || 0;
+  const scoreAway = Number(match?.scoreAway ?? match?.score_away ?? 0) || 0;
+  const oddsSource = match?.odds1x2 || match?.odds || match?.odds_json || {};
+  const oddsHome = Number(oddsSource?.home || oddsSource?.H || oddsSource?.one || 0) || null;
+  const oddsDraw = Number(oddsSource?.draw || oddsSource?.D || oddsSource?.x || 0) || null;
+  const oddsAway = Number(oddsSource?.away || oddsSource?.A || oddsSource?.two || 0) || null;
+  const bets = [];
+  if (oddsHome && oddsHome > 1) bets.push({ G: 1, T: 1, C: oddsHome });
+  if (oddsDraw && oddsDraw > 1) bets.push({ G: 1, T: 2, C: oddsDraw });
+  if (oddsAway && oddsAway > 1) bets.push({ G: 1, T: 3, C: oddsAway });
+
+  const statusCode = status === "finished" ? 3 : status === "upcoming" ? 128 : 1;
+  const statusText =
+    status === "finished"
+      ? "Termine"
+      : status === "upcoming"
+        ? "A venir"
+        : minute > 0
+          ? `Minute ${minute}`
+          : "En cours";
+
+  return {
+    I: matchId,
+    O1: teamHome,
+    O2: teamAway,
+    L: league,
+    S: startTimeUnix,
+    SI: Number(match?.sportId || 85) || 85,
+    O1I: match?.teamHomeId || match?.homeTeamId || null,
+    O2I: match?.teamAwayId || match?.awayTeamId || null,
+    O1IMG: Array.isArray(match?.teamHomeImages) ? match.teamHomeImages : Array.isArray(match?.teamHomeLogoFiles) ? match.teamHomeLogoFiles : [],
+    O2IMG: Array.isArray(match?.teamAwayImages) ? match.teamAwayImages : Array.isArray(match?.teamAwayLogoFiles) ? match.teamAwayLogoFiles : [],
+    SC: {
+      GS: statusCode,
+      SLS: statusText,
+      I: status === "finished" ? "Termine" : status === "upcoming" ? "Avant le debut" : "1ere mi temps",
+      CPS: status === "finished" ? "Termine" : status === "upcoming" ? "Avant le debut" : minute > 0 ? `Minute ${minute}` : "1ere mi temps",
+      FS: {
+        S1: scoreHome,
+        S2: scoreAway,
+      },
+    },
+    E: bets,
+  };
+}
+
+function compareVisibleMatches(a = {}, b = {}) {
+  const statusOrder = { live: 0, upcoming: 1, finished: 2 };
+  const aStatus = normalizeVisibleStatus(a?.statusText || a?.status) || "live";
+  const bStatus = normalizeVisibleStatus(b?.statusText || b?.status) || "live";
+  const orderDiff = (statusOrder[aStatus] ?? 9) - (statusOrder[bStatus] ?? 9);
+  if (orderDiff !== 0) return orderDiff;
+  const aStart = Number(a?.startTimeUnix || 0) || Number.MAX_SAFE_INTEGER;
+  const bStart = Number(b?.startTimeUnix || 0) || Number.MAX_SAFE_INTEGER;
+  if (aStart !== bStart) return aStart - bStart;
+  return String(a?.league || "").localeCompare(String(b?.league || ""), "fr");
+}
+
+function dedupeVisibleMatches(matches = []) {
+  const map = new Map();
+  for (const match of matches) {
+    const id = String(match?.id || "").trim();
+    if (!id) continue;
+    if (!map.has(id)) {
+      map.set(id, match);
+      continue;
+    }
+    const current = map.get(id) || {};
+    map.set(id, {
+      ...match,
+      ...current,
+      fetchedAt: current.fetchedAt || match.fetchedAt || null,
+      teamHomeLogo: current.teamHomeLogo || match.teamHomeLogo || null,
+      teamAwayLogo: current.teamAwayLogo || match.teamAwayLogo || null,
+      odds1x2: current.odds1x2 || match.odds1x2 || null,
+      context: current.context || match.context || null,
+      score: current.score || match.score || null,
+    });
+  }
+  return [...map.values()].sort(compareVisibleMatches);
+}
+
+function toVisibleMatchFromRaw(raw = {}, fetchedAt = null, source = "liveFeed") {
+  return {
+    ...simplifyEvent(raw),
+    fetchedAt: fetchedAt || new Date().toISOString(),
+    source,
+  };
+}
+
+function toVisibleMatchFromStored(match = {}, statusOverride = null, source = "liveFeed") {
+  return toVisibleMatchFromRaw(synthesizeLiveFeedEvent(match, statusOverride), match?.updatedAt || match?.lastSeenAt || match?.finishedAt || match?.createdAt || null, source);
+}
+
 function impliedOneXTwoPercents(odds = {}) {
   const h = Number(odds?.home);
   const d = Number(odds?.draw);
@@ -1047,14 +1158,29 @@ async function getPenaltyMatches() {
   const penaltyOnly = sportEvents.filter(isPenaltyEvent);
   const nonPenalty = sportEvents.filter((event) => !isPenaltyEvent(event));
 
+  const liveVisibleMatches = sportEvents.map((event) => toVisibleMatchFromRaw(event, new Date().toISOString(), "liveFeed"));
+  const trackedRows = await getTrackedMatches(200).catch(() => []);
+  const archivedRows = await getFinishedMatchesDataset(120).catch(() => []);
+  const trackedVisibleMatches = trackedRows.map((row) => toVisibleMatchFromStored(row, row?.status || null, row?.source || "tracked-db"));
+  const archivedVisibleMatches = archivedRows.map((row) => toVisibleMatchFromStored(row, "finished", row?.source || "archive-db"));
+  const visibleMatches = dedupeVisibleMatches([...liveVisibleMatches, ...trackedVisibleMatches, ...archivedVisibleMatches]);
+
   return {
     fetchedAt: new Date().toISOString(),
     totalFromApi: events.length,
     totalSport85: sportEvents.length,
     totalPenalty: penaltyOnly.length,
     totalRegular: nonPenalty.length,
-    filterMode: "full-sport-85",
-    matches: sportEvents.map(simplifyEvent),
+    totalVisible: visibleMatches.length,
+    totalTracked: trackedVisibleMatches.length,
+    totalArchived: archivedVisibleMatches.length,
+    sourceBreakdown: {
+      live: liveVisibleMatches.length,
+      tracked: trackedVisibleMatches.length,
+      archived: archivedVisibleMatches.length,
+    },
+    filterMode: "expanded-catalog",
+    matches: visibleMatches,
   };
 }
 
@@ -1062,16 +1188,46 @@ async function getMatchPredictionDetails(matchId) {
   const payload = await fetchLiveFeedRaw();
   const events = extractLiveFeedEvents(payload);
   const found = events.find((event) => String(event?.I) === String(matchId));
-  if (!found) {
-    throw new Error("Match introuvable dans le flux actuel.");
+  if (found) {
+    const details = buildMatchPredictionDetails(found);
+    const pickedPari = details?.prediction?.maitre?.decision_finale?.pari_choisi || "";
+    const evalInput = buildExtraFilterInput(details, pickedPari);
+    const extraFilter = evaluateMatch(evalInput, { totalMatches: events.length }, { minMatches: 50 });
+    return {
+      ...details,
+      extraPowerFilter: extraFilter,
+    };
   }
-  const details = buildMatchPredictionDetails(found);
+
+  const trackedRows = await getTrackedMatches(200).catch(() => []);
+  const archivedRows = await getFinishedMatchesDataset(120).catch(() => []);
+  const storedMatch = [...trackedRows, ...archivedRows].find((row) => String(row?.matchId || row?.match_id || row?.id || "") === String(matchId));
+  if (storedMatch) {
+    const storedEvent = synthesizeLiveFeedEvent(storedMatch, storedMatch?.status || null);
+    const details = buildMatchPredictionDetails(storedEvent);
+    const pickedPari = details?.prediction?.maitre?.decision_finale?.pari_choisi || "";
+    const evalInput = buildExtraFilterInput(details, pickedPari);
+    const extraFilter = evaluateMatch(evalInput, { totalMatches: 1 }, { minMatches: 10 });
+    return {
+      ...details,
+      extraPowerFilter: extraFilter,
+      fallbackSource: storedMatch?.source || "stored-match",
+    };
+  }
+
+  throw new Error("Match introuvable dans le flux actuel.");
+}
+
+async function getMatchPredictionDetailsFromMatch(match = {}) {
+  const storedEvent = synthesizeLiveFeedEvent(match, match?.status || null);
+  const details = buildMatchPredictionDetails(storedEvent);
   const pickedPari = details?.prediction?.maitre?.decision_finale?.pari_choisi || "";
   const evalInput = buildExtraFilterInput(details, pickedPari);
-  const extraFilter = evaluateMatch(evalInput, { totalMatches: events.length }, { minMatches: 50 });
+  const extraFilter = evaluateMatch(evalInput, { totalMatches: 1 }, { minMatches: 10 });
   return {
     ...details,
     extraPowerFilter: extraFilter,
+    fallbackSource: match?.source || "stored-match",
   };
 }
 
@@ -1648,6 +1804,7 @@ module.exports = {
   getPenaltyMatches,
   getStructure,
   getMatchPredictionDetails,
+  getMatchPredictionDetailsFromMatch,
   getCouponSelection,
   validateCouponTicket,
   isStrictUpcomingEvent,

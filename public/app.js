@@ -2357,9 +2357,15 @@ async function loadMatches() {
       fetchedAt: lastFetchedAt,
     });
     const filterMode = payload.filterMode || data.filterMode || "unknown";
-    const mode = filterMode === "keyword-penalty" ? "filtre mot-cle" : "fallback groupe gr=285";
+    const mode =
+      filterMode === "keyword-penalty"
+        ? "filtre mot-cle"
+        : filterMode === "expanded-catalog"
+          ? "catalogue etendu"
+          : "fallback groupe gr=285";
     currentModeLabel = `mode: ${mode}`;
 
+    statsWrap.appendChild(createStat("Visibles", payload.totalVisible ?? data.totalVisible ?? rawMatches.length));
     statsWrap.appendChild(createStat("Total API", payload.totalFromApi ?? data.totalFromApi ?? "-"));
     statsWrap.appendChild(createStat("Sport 85", payload.totalSport85 ?? data.totalSport85 ?? "-"));
     statsWrap.appendChild(createStat("Penalty", payload.totalPenalty ?? data.totalPenalty ?? "-"));
