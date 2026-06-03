@@ -27,7 +27,7 @@ const liveScoreByMatch = new Map();
 const GOAL_ALERT_COOLDOWN_MS = 30 * 1000;
 const goalAlertLastShown = new Map();
 const MATCHES_CACHE_KEY = "fc25_matches_cache_v2";
-const MATCHES_CACHE_MAX_AGE_MS = 90 * 1000;
+const MATCHES_CACHE_MAX_AGE_MS = 0;
 
 function siteLog(level, message, meta) {
   if (!window.SiteLogger || typeof window.SiteLogger[level] !== "function") return;
@@ -101,17 +101,15 @@ function getMediaSourceLabel(item = {}) {
 
 function saveMatchesCache(payload = {}) {
   try {
-    const rows = Array.isArray(payload?.matches) ? payload.matches : [];
-    const safeRows = rows.slice(0, 120);
     localStorage.setItem(
       MATCHES_CACHE_KEY,
       JSON.stringify({
-        savedAt: Date.now(),
-        fetchedAt: payload?.fetchedAt || null,
-        rows: safeRows,
+        payload,
+        savedAt: new Date().toISOString(),
       })
     );
   } catch {}
+  return payload;
 }
 
 function loadMatchesCache() {
@@ -119,13 +117,14 @@ function loadMatchesCache() {
     const raw = localStorage.getItem(MATCHES_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    const ageMs = Date.now() - Number(parsed?.savedAt || 0);
-    if (!Array.isArray(parsed?.rows) || ageMs > MATCHES_CACHE_MAX_AGE_MS) return null;
-    return {
-      matches: parsed.rows,
-      fetchedAt: parsed?.fetchedAt || null,
-      ageMs,
-    };
+    const payload = parsed?.payload && typeof parsed.payload === "object" ? parsed.payload : null;
+    if (!payload) return null;
+    const savedAt = parsed?.savedAt ? Date.parse(parsed.savedAt) : NaN;
+    if (Number.isFinite(savedAt) && MATCHES_CACHE_MAX_AGE_MS > 0) {
+      const age = Date.now() - savedAt;
+      if (age > MATCHES_CACHE_MAX_AGE_MS) return null;
+    }
+    return payload;
   } catch {
     return null;
   }
@@ -1313,6 +1312,49 @@ function minutesToStart(match) {
   return start > nowSec ? (start - nowSec) / 60 : -1;
 }
 
+function formatShortDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getMatchTimelineLabel(match) {
+  const status = classifyMatch(match);
+  if (status === "finished") {
+    const finishedAt = formatShortDateTime(match?.finishedAt || match?.updatedAt || match?.fetchedAt);
+    if (finishedAt) return `Terminé le ${finishedAt}`;
+    return "Terminé";
+  }
+  if (status === "live") {
+    const minute = Number(match?.context?.minute || match?.minute || 0);
+    if (Number.isFinite(minute) && minute > 0) return `En cours · ${minute}'`;
+    return "En cours";
+  }
+  return `Coup d'envoi: ${formatTime(match?.startTimeUnix)}`;
+}
+
+function getMatchSortTimestamp(match) {
+  const status = classifyMatch(match);
+  if (status === "finished") {
+    return (
+      Date.parse(match?.finishedAt || match?.updatedAt || match?.fetchedAt || "") ||
+      Number(match?.startTimeUnix || 0) * 1000 ||
+      0
+    );
+  }
+  if (status === "live") {
+    const minute = Number(match?.context?.minute || match?.minute || 0) || 0;
+    return (Number(match?.startTimeUnix || 0) * 1000) + minute * 60 * 1000;
+  }
+  return Number(match?.startTimeUnix || 0) * 1000;
+}
+
 function maxImpliedFavoritePercent(match) {
   const h = Number(match?.odds1x2?.home);
   const d = Number(match?.odds1x2?.draw);
@@ -1710,18 +1752,46 @@ function normalizeText(v) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+function isPlaceholderTeamName(value) {
+  const normalized = normalizeText(value).replace(/[^a-z0-9]+/g, " ").trim();
+  if (!normalized) return true;
+  const compact = normalized.replace(/\s+/g, "");
+  return (
+    normalized === "equipe 1" ||
+    normalized === "equipe 2" ||
+    compact === "e1" ||
+    compact === "e2" ||
+    compact === "team1" ||
+    compact === "team2" ||
+    compact === "home" ||
+    compact === "away" ||
+    compact === "tbd" ||
+    compact === "unknown" ||
+    compact === "na"
+  );
+}
+
+function hasRealTeamNames(match = {}) {
+  return !isPlaceholderTeamName(match?.teamHome) && !isPlaceholderTeamName(match?.teamAway);
+}
+
 function classifyMatch(match) {
   const nowSec = Math.floor(Date.now() / 1000);
   const start = Number(match?.startTimeUnix || 0);
   const statusCode = Number(match?.statusCode || 0);
+  const explicitStatus = normalizeText(match?.status || "");
   const info = normalizeText(match?.infoText || "");
   const status = normalizeText(match?.statusText || "");
   const phase = normalizeText(match?.phase || "");
+  const finishedAt = String(match?.finishedAt || "").trim();
 
   const isFinishedByText =
+    explicitStatus === "finished" ||
+    statusCode === 3 ||
     status.includes("termine") ||
     phase.includes("termine") ||
-    info.includes("termine");
+    info.includes("termine") ||
+    Boolean(finishedAt);
 
   const isUpcomingBySignal =
     statusCode === 128 ||
@@ -1812,7 +1882,7 @@ function createMatchCard(match, index) {
       <div class="odd-box ${match.trend?.draw || ""}"><span>Nul</span><strong>${formatOdd(match.odds1x2?.draw)}</strong></div>
       <div class="odd-box ${match.trend?.away || ""}"><span>${match.teamAway}</span><strong>${formatOdd(match.odds1x2?.away)}</strong></div>
     </div>
-    <p class="kickoff">Coup d'envoi: ${formatTime(match.startTimeUnix)} | ${scoreText(match.score)}</p>
+    <p class="kickoff">${getMatchTimelineLabel(match)} | ${scoreText(match.score)}</p>
   `;
 
   card.appendChild(detailLink);
@@ -2281,6 +2351,14 @@ function renderMatches() {
     filtered = byLeague.filter((match) => classifyMatch(match) === currentMatchMode);
   }
 
+  if (currentMatchMode === "finished") {
+    filtered = filtered.filter(hasRealTeamNames);
+  }
+
+  if (currentMatchMode === "finished") {
+    filtered = [...filtered].sort((a, b) => getMatchSortTimestamp(b) - getMatchSortTimestamp(a));
+  }
+
   // UX fallback: when upcoming is empty, show live matches instead of a blank board.
   if (currentMatchMode === "upcoming" && filtered.length === 0) {
     const liveFallback = byLeague.filter((match) => classifyMatch(match) === "live");
@@ -2330,10 +2408,27 @@ async function loadMatches() {
   const statsWrap = document.getElementById("stats");
   const emptyState = document.getElementById("emptyState");
   const updatedAt = document.getElementById("updatedAt");
+  const cached = loadMatchesCache();
 
-  subTitle.textContent = "Chargement en cours...";
+  subTitle.textContent = cached?.matches?.length
+    ? "Chargement en cours... (cache local)"
+    : "Chargement en cours...";
   statsWrap.innerHTML = "";
   emptyState.classList.add("hidden");
+
+  if (cached?.matches?.length) {
+    const knownLogos = buildKnownTeamLogoMap(allMatches);
+    const cachedMatches = Array.isArray(cached.matches)
+      ? cached.matches.map((match) => sanitizeMatchLogos(match, knownLogos))
+      : [];
+    lastFetchedAt = cached.fetchedAt || null;
+    allMatches = enrichWithTrend(cachedMatches);
+    renderMatches();
+    updatedAt.textContent = lastFetchedAt
+      ? `Derniere mise a jour: ${new Date(lastFetchedAt).toLocaleString("fr-FR")} (cache local)`
+      : "Derniere mise a jour: cache local";
+    statsWrap.appendChild(createStat("Cache", cachedMatches.length));
+  }
 
   try {
     const res = await fetch("/api/matches", { cache: "no-store" });
@@ -2391,10 +2486,20 @@ async function loadMatches() {
     });
     siteLog("log", "home_matches_loaded", { count: allMatches.length, mode: filterMode });
   } catch (error) {
+    if (!allMatches.length && cached?.matches?.length) {
+      subTitle.textContent = "Affichage du cache local";
+      emptyState.classList.add("hidden");
+      updatedAt.textContent = lastFetchedAt
+        ? `Derniere mise a jour: ${new Date(lastFetchedAt).toLocaleString("fr-FR")} (cache local)`
+        : "Derniere mise a jour: cache local";
+      return;
+    }
     subTitle.textContent = "Erreur de chargement";
     emptyState.classList.remove("hidden");
     emptyState.textContent = `Erreur: ${error.message}`;
-    updatedAt.textContent = "";
+    updatedAt.textContent = cached?.savedAt
+      ? `Cache local disponible mais API en erreur: ${new Date(cached.savedAt).toLocaleString("fr-FR")}`
+      : "";
     siteLog("error", "home_matches_load_failed", { message: error.message });
   }
 }
@@ -2431,25 +2536,6 @@ document.querySelectorAll(".match-mode").forEach((btn) => {
     renderMatches();
   });
 });
-const cachedMatches = loadMatchesCache();
-if (cachedMatches?.matches?.length) {
-  const knownLogos = buildKnownTeamLogoMap(allMatches);
-  const restored = cachedMatches.matches.map((m) => sanitizeMatchLogos(m, knownLogos));
-  allMatches = enrichWithTrend(restored);
-  currentModeLabel = `mode: cache rapide (${Math.round(cachedMatches.ageMs / 1000)}s)`;
-  populateLeagueFilter(allMatches);
-  renderSiteCommandCenter(allMatches);
-  renderWatchlistPanel(allMatches);
-  renderLeagueHeatmap(allMatches);
-  renderMatchFinder(allMatches);
-  renderMatches();
-  const updatedAt = document.getElementById("updatedAt");
-  if (updatedAt) {
-    updatedAt.textContent = cachedMatches.fetchedAt
-      ? `Derniere mise a jour (cache): ${new Date(cachedMatches.fetchedAt).toLocaleString("fr-FR")}`
-      : "Derniere mise a jour (cache rapide)";
-  }
-}
 loadMatches();
 const ambientPulseIntervalId = setInterval(() => {
   const wrap = document.getElementById("matches");

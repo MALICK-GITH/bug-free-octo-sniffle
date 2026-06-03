@@ -3338,7 +3338,10 @@ app.get("/api/match/:id/history", async (req, res) => {
 
 app.get("/api/matches", async (_req, res) => {
   try {
-    const data = await getPenaltyMatches();
+    const data = await withTimeout(getPenaltyMatches(), 8000, null);
+    if (!data) {
+      throw new Error("LIVEFEED_TIMEOUT");
+    }
     res.json({
       success: true,
       data: {
@@ -3372,7 +3375,15 @@ app.get("/api/matches", async (_req, res) => {
             totalFromApi: Number(cachedCounts.total || cachedMatches.length) || cachedMatches.length,
             totalSport85: Number(cachedCounts.total || cachedMatches.length) || cachedMatches.length,
             totalPenalty: null,
-            filterMode: "snapshot-fallback"
+            filterMode: "snapshot-fallback",
+            totalVisible: cachedCounts.total || cachedMatches.length,
+            totalTracked: cachedCounts.total || cachedMatches.length,
+            totalArchived: 0,
+            sourceBreakdown: {
+              live: Number(cachedCounts.live || 0),
+              upcoming: Number(cachedCounts.upcoming || 0),
+              finished: Number(cachedCounts.finished || 0),
+            }
           },
           meta: {
             source: "match_tracking_snapshot",
