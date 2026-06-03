@@ -2989,6 +2989,247 @@ app.get("/api/structure", async (_req, res) => {
   }
 });
 
+function normalizeMlWeight(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function classifyMatchOutcome(match = {}) {
+  const home = Number(match.scoreHome || match.score1 || 0);
+  const away = Number(match.scoreAway || match.score2 || 0);
+  if (home > away) return "home";
+  if (away > home) return "away";
+  return "draw";
+}
+
+function classifyFavoriteOutcome(match = {}) {
+  const odds = match.odds || {};
+  const candidates = [
+    ["home", Number(odds.home)],
+    ["draw", Number(odds.draw)],
+    ["away", Number(odds.away)],
+  ].filter(([, odd]) => Number.isFinite(odd) && odd > 1);
+  if (!candidates.length) return null;
+  candidates.sort((left, right) => left[1] - right[1]);
+  return candidates[0][0];
+}
+
+function computeMatchHistoryEntry(match = {}) {
+  const actual = classifyMatchOutcome(match);
+  const favorite = classifyFavoriteOutcome(match);
+  const success = favorite ? favorite === actual : actual !== "draw";
+  const odd = favorite && match.odds ? Number(match.odds[favorite]) : null;
+
+  return {
+    timestamp: match.updatedAt || match.lastSeenAt || match.createdAt || match.finishedAt || new Date().toISOString(),
+    success,
+    league: String(match.league || "Unknown").trim() || "Unknown",
+    odds: Number.isFinite(odd) ? odd : null,
+    matchId: String(match.matchId || match.id || ""),
+    teamHome: String(match.teamHome || "").trim(),
+    teamAway: String(match.teamAway || "").trim(),
+    result: actual,
+    source: match.source || "local-history",
+  };
+}
+
+function accumulateAccuracyBucket(bucket, key, hit) {
+  if (!key) return;
+  const current = bucket.get(key) || { wins: 0, total: 0, draws: 0 };
+  current.total += 1;
+  if (hit === true) current.wins += 1;
+  if (hit === "draw") current.draws += 1;
+  bucket.set(key, current);
+}
+
+function finalizeAccuracyBucket(bucket) {
+  const output = {};
+  for (const [key, stats] of bucket.entries()) {
+    const accuracy = stats.total > 0 ? Number(((stats.wins / stats.total) * 100).toFixed(1)) : 0;
+    output[key] = {
+      accuracy,
+      sampleSize: stats.total,
+      wins: stats.wins,
+      draws: stats.draws,
+      losses: Math.max(0, stats.total - stats.wins - stats.draws),
+    };
+  }
+  return output;
+}
+
+function buildModelPreset(modelName, metrics = {}) {
+  const overall = Number(metrics.overallAccuracy || 50);
+  const confidenceShift = Math.max(-5, Math.min(5, (overall - 50) / 10));
+  const presets = {
+    confidence_v1: {
+      weights: { confidence: 0.35, timing: 0.25, stability: 0.2, correlation: 0.15, momentum: 0.05 },
+      bias: 50 + confidenceShift,
+    },
+    confidence_v2: {
+      weights: { confidence: 0.3, timing: 0.3, stability: 0.18, correlation: 0.12, momentum: 0.1 },
+      bias: 51 + confidenceShift,
+    },
+    confidence_v3: {
+      weights: { confidence: 0.28, timing: 0.22, stability: 0.22, correlation: 0.18, momentum: 0.1 },
+      bias: 49 + confidenceShift,
+    },
+    default: {
+      weights: { confidence: 0.33, timing: 0.27, stability: 0.2, correlation: 0.15, momentum: 0.05 },
+      bias: 50 + confidenceShift,
+    },
+  };
+  return presets[modelName] || presets.default;
+}
+
+async function buildHistoricalPerformanceFeed(limit = 200) {
+  const trackedMatches = await authDb.getTrackedMatches(1000).catch(() => []);
+  const finishedMatches = trackedMatches
+    .filter((match) => String(match.status || "").toLowerCase() === "finished" || Number(match.scoreHome) + Number(match.scoreAway) > 0)
+    .sort((left, right) => String(right.updatedAt || right.lastSeenAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.lastSeenAt || left.createdAt || "")))
+    .slice(0, Math.max(1, Math.min(200, Number(limit) || 200)));
+
+  return finishedMatches.map(computeMatchHistoryEntry);
+}
+
+async function buildHistoricalAccuracySnapshot() {
+  const trackedMatches = await authDb.getTrackedMatches(1000).catch(() => []);
+  const finishedMatches = trackedMatches.filter((match) => String(match.status || "").toLowerCase() === "finished" || Number(match.scoreHome) + Number(match.scoreAway) > 0);
+  const leagueBuckets = new Map();
+  const teamBuckets = new Map();
+  let overallWins = 0;
+  let overallTotal = 0;
+
+  for (const match of finishedMatches) {
+    const actual = classifyMatchOutcome(match);
+    const favorite = classifyFavoriteOutcome(match);
+    const favoriteHit = favorite ? favorite === actual : actual !== "draw";
+    const leagueKey = `league_${String(match.league || "Unknown").trim() || "Unknown"}`;
+    accumulateAccuracyBucket(leagueBuckets, leagueKey, favoriteHit);
+
+    const homeKey = `team_${String(match.teamHome || "").trim()}`;
+    const awayKey = `team_${String(match.teamAway || "").trim()}`;
+    accumulateAccuracyBucket(teamBuckets, homeKey, actual === "home");
+    accumulateAccuracyBucket(teamBuckets, awayKey, actual === "away");
+
+    overallTotal += 1;
+    if (favoriteHit) overallWins += 1;
+  }
+
+  const overallAccuracy = overallTotal > 0 ? Number(((overallWins / overallTotal) * 100).toFixed(1)) : 0;
+  const accuracy = {
+    overall: {
+      accuracy: overallAccuracy,
+      sampleSize: overallTotal,
+      wins: overallWins,
+      draws: 0,
+      losses: Math.max(0, overallTotal - overallWins),
+    },
+    ...finalizeAccuracyBucket(leagueBuckets),
+    ...finalizeAccuracyBucket(teamBuckets),
+  };
+
+  return {
+    accuracy,
+    overallAccuracy,
+    sampleSize: overallTotal,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+app.get("/api/ml/model-weights", async (_req, res) => {
+  try {
+    const performanceFeed = await buildHistoricalPerformanceFeed(100);
+    const accuracySnapshot = await buildHistoricalAccuracySnapshot();
+    const preset = buildModelPreset("confidence_v1", accuracySnapshot);
+    res.json({
+      success: true,
+      model: "confidence_v1",
+      version: "local-history-v1",
+      source: "sqlite-history",
+      updatedAt: new Date().toISOString(),
+      sampleSize: accuracySnapshot.sampleSize,
+      metrics: {
+        overallAccuracy: accuracySnapshot.overallAccuracy,
+        performanceSamples: performanceFeed.length,
+      },
+      weights: preset.weights,
+      bias: preset.bias,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "ML_MODEL_WEIGHTS_ERROR",
+        message: "Impossible de charger les poids du modele.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/ml/models/:modelName", async (req, res) => {
+  try {
+    const modelName = String(req.params.modelName || "confidence_v1").trim() || "confidence_v1";
+    const accuracySnapshot = await buildHistoricalAccuracySnapshot();
+    const preset = buildModelPreset(modelName, accuracySnapshot);
+    res.json({
+      success: true,
+      model: modelName,
+      version: "local-history-v1",
+      source: "sqlite-history",
+      updatedAt: new Date().toISOString(),
+      sampleSize: accuracySnapshot.sampleSize,
+      metrics: {
+        overallAccuracy: accuracySnapshot.overallAccuracy,
+      },
+      weights: preset.weights,
+      bias: preset.bias,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "ML_MODEL_ERROR",
+        message: "Impossible de charger le modele IA.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/history/performance", async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 200));
+    const history = await buildHistoricalPerformanceFeed(limit);
+    res.json(history);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "HISTORY_PERFORMANCE_ERROR",
+        message: "Impossible de charger l'historique de performance.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/history/accuracy", async (_req, res) => {
+  try {
+    const accuracySnapshot = await buildHistoricalAccuracySnapshot();
+    res.json(accuracySnapshot.accuracy);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "HISTORY_ACCURACY_ERROR",
+        message: "Impossible de charger l'historique de precision.",
+        details: error.message,
+      },
+    });
+  }
+});
+
 app.get("/api/db/status", async (_req, res) => {
   try {
     const status = await getDbStatus();

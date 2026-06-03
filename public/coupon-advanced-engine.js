@@ -47,7 +47,8 @@ class AdvancedCouponEngine {
       // Load pre-trained model weights
       const modelResponse = await fetch('/api/ml/model-weights');
       if (modelResponse.ok) {
-        this.mlModel = await modelResponse.json();
+        const payload = await modelResponse.json();
+        this.mlModel = this.createRemoteModel(payload) || this.createFallbackModel();
         console.log('🧠 ML Model loaded successfully');
       }
     } catch (error) {
@@ -74,6 +75,43 @@ class AdvancedCouponEngine {
         const momentum = features.momentum * 0.05;
         
         return Math.min(99, confidence + timing + stability + correlation + momentum);
+      }
+    };
+  }
+
+  createRemoteModel(payload = {}) {
+    const weights = payload && typeof payload === "object" && payload.weights && typeof payload.weights === "object"
+      ? payload.weights
+      : null;
+    if (!weights) return null;
+
+    const normalizedWeights = {
+      confidence: Number(weights.confidence) || 0.35,
+      timing: Number(weights.timing) || 0.25,
+      stability: Number(weights.stability) || 0.20,
+      correlation: Number(weights.correlation) || 0.15,
+      momentum: Number(weights.momentum) || 0.05
+    };
+    const bias = Number(payload.bias);
+    const safeBias = Number.isFinite(bias) ? bias : 50;
+
+    return {
+      ...payload,
+      weights: normalizedWeights,
+      predict: (features = {}) => {
+        const confidence = Number(features.confidence) || 50;
+        const timing = Number(features.timing) || 50;
+        const stability = Number(features.stability) || 50;
+        const correlation = Number(features.correlation) || 50;
+        const momentum = Number(features.momentum) || 50;
+        const score =
+          confidence * normalizedWeights.confidence +
+          timing * normalizedWeights.timing +
+          stability * normalizedWeights.stability +
+          (100 - correlation) * normalizedWeights.correlation +
+          momentum * normalizedWeights.momentum +
+          safeBias - 50;
+        return Math.max(0, Math.min(99, Number(score.toFixed(1))));
       }
     };
   }

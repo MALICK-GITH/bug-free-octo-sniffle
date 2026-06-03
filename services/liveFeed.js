@@ -126,6 +126,12 @@ function isPenaltyEvent(event) {
   return PENALTY_KEYWORDS.some((word) => text.includes(normalizeText(word)));
 }
 
+function isVisiblePenaltyMatch(match = {}) {
+  if (isPenaltyEvent(match)) return true;
+  const leagueText = normalizeText(match.league || match.LE || match.L || match.infoText || match.statusText || "");
+  return PENALTY_KEYWORDS.some((word) => leagueText.includes(normalizeText(word)));
+}
+
 function extractOneXTwo(event) {
   const source = Array.isArray(event.E) ? event.E : [];
   const oneXTwo = source.filter((item) => Number(item.G) === 1);
@@ -733,6 +739,9 @@ function compareVisibleMatches(a = {}, b = {}) {
   const bStatus = normalizeVisibleStatus(b?.statusText || b?.status) || "live";
   const orderDiff = (statusOrder[aStatus] ?? 9) - (statusOrder[bStatus] ?? 9);
   if (orderDiff !== 0) return orderDiff;
+  const aPenalty = isVisiblePenaltyMatch(a) ? 1 : 0;
+  const bPenalty = isVisiblePenaltyMatch(b) ? 1 : 0;
+  if (aPenalty !== bPenalty) return aPenalty - bPenalty;
   const aStart = Number(a?.startTimeUnix || 0) || Number.MAX_SAFE_INTEGER;
   const bStart = Number(b?.startTimeUnix || 0) || Number.MAX_SAFE_INTEGER;
   if (aStart !== bStart) return aStart - bStart;

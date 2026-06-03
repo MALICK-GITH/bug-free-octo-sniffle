@@ -50,7 +50,10 @@ class AIConfidenceCalculator {
           const response = await fetch(`/api/ml/models/${modelName}`);
           if (response.ok) {
             const model = await response.json();
-            this.mlPredictions.set(modelName, model);
+            const hydratedModel = this.createRemoteModel(modelName, model) || null;
+            if (hydratedModel) {
+              this.mlPredictions.set(modelName, hydratedModel);
+            }
             console.log(`📊 ML Model ${modelName} loaded`);
           }
         } catch (error) {
@@ -60,6 +63,49 @@ class AIConfidenceCalculator {
     } catch (error) {
       console.warn('⚠️ ML models not available, using fallback');
     }
+  }
+
+  createRemoteModel(modelName, payload = {}) {
+    const weights = payload && typeof payload === "object" && payload.weights && typeof payload.weights === "object"
+      ? payload.weights
+      : null;
+    if (!weights) return null;
+
+    const normalizedWeights = {
+      confidence: Number(weights.confidence) || 0.35,
+      timing: Number(weights.timing) || 0.25,
+      stability: Number(weights.stability) || 0.20,
+      correlation: Number(weights.correlation) || 0.15,
+      momentum: Number(weights.momentum) || 0.05,
+    };
+    const bias = Number(payload.bias);
+    const safeBias = Number.isFinite(bias) ? bias : 50;
+
+    return {
+      name: modelName,
+      version: payload.version || "local-history-v1",
+      weights: normalizedWeights,
+      predict: (features = {}) => {
+        const confidence = Number(features.confidence) || 50;
+        const timing = Number(features.timing) || 50;
+        const stability = Number(features.stability) || 50;
+        const volatility = Number(features.volatility) || 50;
+        const momentum = Number(features.momentum) || 50;
+        const raw =
+          confidence * normalizedWeights.confidence +
+          timing * normalizedWeights.timing +
+          stability * normalizedWeights.stability +
+          (100 - volatility) * normalizedWeights.correlation +
+          momentum * normalizedWeights.momentum +
+          safeBias - 50;
+        const normalized = Math.max(0, Math.min(99, Number(raw.toFixed(1))));
+        return {
+          confidence: normalized,
+          prediction: normalized,
+          model: modelName,
+        };
+      }
+    };
   }
 
   async loadHistoricalAccuracy() {
