@@ -6,6 +6,10 @@ const API_URL_FALLBACKS = [
   "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=100&lng=fr&gr=285&mode=4&country=96&virtualSports=true",
   "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip?sports=85&count=40&lng=fr&gr=285&mode=4&country=96&getEmpty=true&virtualSports=true&noFilterBlockEvent=true",
 ];
+const fs = require("fs");
+const path = require("path");
+const puppeteer = require("puppeteer");
+let browserInstance = null;
 const { genererPredictionUnifiee, detectBetType } = require("./unifiedPrediction");
 const { evaluateMatch } = require("./extraPowerFilter");
 const { getLeagueProfile, getLeagueProfileSummary, scoreMarketAgainstProfile, weightExactScoreProbability } = require("./leagueProfiles");
@@ -16,9 +20,63 @@ const { analyserMatchMultiBots } = require("./bots");
 const { getHistoricalRecommendation } = require("./historical");
 const { getPenaltyTournaments } = require("./tournaments");
 const { predictFromTrainedModel } = require("./trainedModelPredictor");
+const LIVEFEED_CACHE_FILE = path.resolve(
+  process.cwd(),
+  path.dirname(process.env.DB_FILE || "data/app.sqlite"),
+  "livefeed-cache.json"
+);
+const USE_PUPPETEER = (() => {
+  const explicit = String(process.env.LIVEFEED_USE_PUPPETEER || "").trim();
+  if (explicit === "1") return true;
+  if (explicit === "0") return false;
+  return !String(process.env.RENDER || "").trim() && !String(process.env.VERCEL || "").trim() && !String(process.env.HEROKU || "").trim();
+})();
 let lastGoodLiveFeedPayload = null;
 let lastGoodLiveFeedMeta = null;
 let oneXbetSessionCookie = "";
+
+function loadPersistedLiveFeedCache() {
+  try {
+    if (!fs.existsSync(LIVEFEED_CACHE_FILE)) return null;
+    const raw = fs.readFileSync(LIVEFEED_CACHE_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed.payload) return null;
+    return {
+      payload: parsed.payload,
+      meta: parsed.meta || null,
+      updatedAt: parsed.updatedAt || null,
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function persistLiveFeedCache(payload, meta) {
+  try {
+    const dir = path.dirname(LIVEFEED_CACHE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      LIVEFEED_CACHE_FILE,
+      JSON.stringify(
+        {
+          payload,
+          meta: meta || null,
+          updatedAt: new Date().toISOString(),
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+  } catch (_error) {}
+}
+
+const persistedLiveFeedCache = loadPersistedLiveFeedCache();
+if (persistedLiveFeedCache?.payload) {
+  lastGoodLiveFeedPayload = persistedLiveFeedCache.payload;
+  lastGoodLiveFeedMeta = persistedLiveFeedCache.meta || null;
+}
 
 const PENALTY_KEYWORDS = [
   "penalty",
@@ -435,15 +493,15 @@ function buildExactScoreProjection(match, bettingMarkets = [], prediction = null
     .slice(0, 4);
   const convergenceTopScores = convergence?.ranked?.length
     ? convergence.ranked.map((item) => ({
-        score: item.score,
-        probability: Number(item.probability || 0),
-        votes_pour: item.votes_pour,
-        votes_contre: item.votes_contre,
-        ecart: item.ecart,
-        score_pondere: item.score_pondere,
-        detail: item.detail,
-        aligned: item.aligned,
-      }))
+      score: item.score,
+      probability: Number(item.probability || 0),
+      votes_pour: item.votes_pour,
+      votes_contre: item.votes_contre,
+      ecart: item.ecart,
+      score_pondere: item.score_pondere,
+      detail: item.detail,
+      aligned: item.aligned,
+    }))
     : null;
   const sourceScores = convergenceTopScores || fallbackTopScores;
   const sourceTotal = sourceScores.reduce((sum, item) => sum + Math.max(Number(item.probability) || 0, 0), 0) || 1;
@@ -460,19 +518,19 @@ function buildExactScoreProjection(match, bettingMarkets = [], prediction = null
   const marketSupport = convergence?.marketSupport != null
     ? convergence.marketSupport
     : clamp(
-        Math.min(100, (projection?.signals?.overLines?.length || 0) * 18 + (projection?.signals?.bttsProb != null ? 18 : 0) + 36) +
-          Math.max(-12, Math.min(12, scoreMarketAgainstProfile(leagueProfile, "score exact"))),
-        0,
-        100
-      );
+      Math.min(100, (projection?.signals?.overLines?.length || 0) * 18 + (projection?.signals?.bttsProb != null ? 18 : 0) + 36) +
+      Math.max(-12, Math.min(12, scoreMarketAgainstProfile(leagueProfile, "score exact"))),
+      0,
+      100
+    );
   const fitScore = convergence?.fitScore != null ? convergence.fitScore : clamp(Math.round(100 - (projection?.loss || 0) * 260), 18, 96);
   const reliability = convergence?.reliability != null
     ? convergence.reliability
     : clamp(
-        Math.round(fitScore * 0.44 + confidenceBase * 0.34 + marketSupport * 0.22 + Number(leagueProfile?.reliabilityBoost || 0)),
-        20,
-        95
-      );
+      Math.round(fitScore * 0.44 + confidenceBase * 0.34 + marketSupport * 0.22 + Number(leagueProfile?.reliabilityBoost || 0)),
+      20,
+      95
+    );
   const totalGoals = convergence?.totalGoals != null ? convergence.totalGoals : homeLambda + awayLambda;
   const intensity =
     totalGoals >= 4.2 ? "match tres ouvert" : totalGoals >= 3 ? "match ouvert" : totalGoals >= 2.2 ? "match equilibre" : "match ferme";
@@ -720,20 +778,21 @@ function toPlainObject(value) {
 function buildBrowserLikeHeaders() {
   const headers = {
     "user-agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-    accept: "application/json, text/plain, */*",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    accept: "*/*",
     "accept-language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "accept-encoding": "gzip, deflate, br",
     referer: "https://1xbet.com/fr/live/football",
     origin: "https://1xbet.com",
-    pragma: "no-cache",
-    "cache-control": "no-cache",
-    "sec-ch-ua": "\"Google Chrome\";v=\"137\", \"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
+    "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": "\"Windows\"",
     "sec-fetch-dest": "empty",
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-origin",
-    priority: "u=1, i",
+    "sec-fetch-user": "?1",
+    "sec-gpc": "1",
+    "upgrade-insecure-requests": "1",
   };
   if (oneXbetSessionCookie) {
     headers.cookie = oneXbetSessionCookie;
@@ -771,7 +830,7 @@ async function warmOneXbetSession(signal) {
         .filter(Boolean)
         .join("; ");
     }
-  } catch (_error) {}
+  } catch (_error) { }
 }
 
 function looksLikeLiveFeedEvent(value) {
@@ -876,6 +935,56 @@ function extractLiveFeedEvents(payload) {
 
 async function fetchLiveFeedRaw() {
   const errors = [];
+
+  // Try Puppeteer first (bypasses TLS fingerprinting)
+  if (USE_PUPPETEER) {
+    try {
+      if (!browserInstance) {
+        browserInstance = await puppeteer.launch({
+          headless: "new",
+          args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        });
+      }
+
+      const page = await browserInstance.newPage();
+      await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+      await page.setExtraHTTPHeaders({
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+      });
+
+      // First visit the page to establish session
+      await page.goto("https://1xbet.com/fr/live/football", { waitUntil: "domcontentloaded" });
+
+      // Then make the API request
+      const url = API_URL;
+      const response = await page.goto(url);
+
+      if (response && response.ok()) {
+        const text = await response.text();
+        const payload = JSON.parse(text);
+        const events = extractLiveFeedEvents(payload);
+
+        if (events.length) {
+          lastGoodLiveFeedPayload = payload;
+          lastGoodLiveFeedMeta = {
+            fetchedAt: new Date().toISOString(),
+            sourceUrl: url,
+            totalFromApi: events.length,
+          };
+          persistLiveFeedCache(payload, lastGoodLiveFeedMeta);
+          await page.close();
+          console.log("[LIVEFEED] Puppeteer success:", events.length, "events");
+          return payload;
+        }
+      }
+      await page.close();
+    } catch (puppeteerError) {
+      errors.push(`Puppeteer -> ${puppeteerError.message}`);
+      console.error("[LIVEFEED] Puppeteer failed:", puppeteerError.message);
+    }
+  }
+
+  // Fallback to regular fetch with headers
   for (const url of [...new Set(API_URL_FALLBACKS)]) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20000);
@@ -910,6 +1019,7 @@ async function fetchLiveFeedRaw() {
         sourceUrl: url,
         totalFromApi: events.length,
       };
+      persistLiveFeedCache(payload, lastGoodLiveFeedMeta);
       return payload;
     } catch (error) {
       errors.push(`${url} -> ${error.message}`);
@@ -919,6 +1029,7 @@ async function fetchLiveFeedRaw() {
   }
   if (lastGoodLiveFeedPayload) {
     console.warn("[LIVEFEED] Fallback to last good payload", lastGoodLiveFeedMeta || {});
+    persistLiveFeedCache(lastGoodLiveFeedPayload, lastGoodLiveFeedMeta);
     return lastGoodLiveFeedPayload;
   }
   throw new Error(`LiveFeed unavailable: ${errors.join(" | ")}`);
@@ -1090,11 +1201,11 @@ function pickCouponOption(details, profile = "balanced") {
   const exactScoreSignal = Number.isFinite(Number(exactScore?.signal))
     ? Number(exactScore.signal)
     : normalizeExactScoreSignal(exactScore, {
-        bias: buildExactScoreBias(details?.prediction || {}),
-        hasConvergence: Boolean(exactScore?.provenance?.usedConvergence),
-        hasBias: Boolean(exactScore?.provenance?.hasBias),
-        aligned: exactScore?.provenance?.aligned,
-      }).signal;
+      bias: buildExactScoreBias(details?.prediction || {}),
+      hasConvergence: Boolean(exactScore?.provenance?.usedConvergence),
+      hasBias: Boolean(exactScore?.provenance?.hasBias),
+      aligned: exactScore?.provenance?.aligned,
+    }).signal;
 
   const consensusMarket = consensusPrimary ? marketByName.get(consensusPrimary.pari) : null;
   if (
@@ -1109,8 +1220,8 @@ function pickCouponOption(details, profile = "balanced") {
       cote: consensusMarket.cote,
       confiance: clamp(
         Number(consensusPrimary.confidence) +
-          scoreMarketAgainstProfile(leagueProfile, consensusMarket.nom) * 0.28 +
-          exactScoreSignal,
+        scoreMarketAgainstProfile(leagueProfile, consensusMarket.nom) * 0.28 +
+        exactScoreSignal,
         0,
         100
       ),
@@ -1134,8 +1245,8 @@ function pickCouponOption(details, profile = "balanced") {
       cote: masterMarket.cote,
       confiance: clamp(
         master.confiance_numerique +
-          scoreMarketAgainstProfile(leagueProfile, masterMarket.nom) * 0.35 +
-          exactScoreSignal,
+        scoreMarketAgainstProfile(leagueProfile, masterMarket.nom) * 0.35 +
+        exactScoreSignal,
         0,
         100
       ),
@@ -1286,12 +1397,12 @@ function computeSelectionConfidence(details, selectionPari) {
   const exactSignal = Number.isFinite(Number(exactScore?.signal))
     ? Number(exactScore.signal)
     : normalizeExactScoreSignal(exactScore, {
-        bias: exactBias,
-        hasConvergence: Boolean(exactScore?.provenance?.usedConvergence),
-        hasBias: Boolean(exactBias),
-        aligned:
-          exactScore?.provenance?.aligned ?? (exactScore?.primary?.score ? exactScoreMatchesBias(exactScore.primary.score, exactBias) : null),
-      }).signal;
+      bias: exactBias,
+      hasConvergence: Boolean(exactScore?.provenance?.usedConvergence),
+      hasBias: Boolean(exactBias),
+      aligned:
+        exactScore?.provenance?.aligned ?? (exactScore?.primary?.score ? exactScoreMatchesBias(exactScore.primary.score, exactBias) : null),
+    }).signal;
   if (master.pari_choisi === target) {
     return clamp(Number(master.confiance_numerique || 0) + scoreMarketAgainstProfile(leagueProfile, target) * 0.4 + exactSignal, 0, 100);
   }
@@ -1397,12 +1508,12 @@ async function validateCouponTicket(ticket, options = {}) {
       reasonCodes,
       recommendation: recommended
         ? {
-            pari: recommended.pari,
-            odd: recommended.cote,
-            confidence: Number(recommended.confiance?.toFixed ? recommended.confiance.toFixed(1) : recommended.confiance),
-            source: recommended.source,
-            exactScore: recommended.exactScore || exactScoreAttachment,
-          }
+          pari: recommended.pari,
+          odd: recommended.cote,
+          confidence: Number(recommended.confiance?.toFixed ? recommended.confiance.toFixed(1) : recommended.confiance),
+          source: recommended.source,
+          exactScore: recommended.exactScore || exactScoreAttachment,
+        }
         : null,
       exactScore: exactScoreAttachment,
       exactScoreAvailable: Boolean(details.exactScoreAvailable),
@@ -1466,14 +1577,14 @@ async function getAdvancedPrediction(matchId) {
   const payload = await fetchLiveFeedRaw();
   const events = Array.isArray(payload?.Value) ? payload.Value : [];
   const found = events.find((event) => String(event?.I) === String(matchId));
-  
+
   if (!found) {
     throw new Error("Match introuvable dans le flux actuel.");
   }
 
   const match = simplifyEvent(found);
   const bets = extractAllBets(found);
-  
+
   // Utiliser le nouveau moteur de prÃ©diction avancÃ©
   const advancedPrediction = predictionEngine.calculatePrediction({
     id: match.id,

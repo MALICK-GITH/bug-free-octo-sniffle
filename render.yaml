@@ -17,6 +17,8 @@ services:
         value: 10000
       - key: DB_FILE
         value: /opt/render/project/data/app.sqlite
+      - key: LIVEFEED_USE_PUPPETEER
+        value: "0"
         
     # Configuration du build
     buildFilter:

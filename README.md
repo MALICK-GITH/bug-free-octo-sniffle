@@ -116,6 +116,7 @@ Les endpoints suivants doivent conserver leur enveloppe JSON actuelle sauf versi
 
 - URL de production cible: `https://fifaxpred.onrender.com`
 - Si `/api/mobile/bootstrap` ou `/api/mobile/openapi` renvoient `404`, le deploiement Render n'est pas encore aligne sur la derniere version backend locale et doit etre redeploye avant handoff mobile.
+- Sur Render, `LIVEFEED_USE_PUPPETEER=0` est recommande pour eviter les echecs headless; le serveur conserve alors le dernier payload valide sur disque.
 
 ## Deploiement automatique
 
