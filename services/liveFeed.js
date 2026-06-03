@@ -31,6 +31,10 @@ const LIVEFEED_CACHE_MAX_AGE_MS = Math.max(
   5 * 60 * 1000,
   Number(process.env.LIVEFEED_CACHE_MAX_AGE_MINUTES) || 30
 );
+const LIVEFEED_REQUEST_CACHE_MAX_AGE_MS = Math.max(
+  15 * 1000,
+  Number(process.env.LIVEFEED_REQUEST_CACHE_MAX_AGE_MS) || 60 * 1000
+);
 const USE_PUPPETEER = (() => {
   const explicit = String(process.env.LIVEFEED_USE_PUPPETEER || "").trim();
   if (explicit === "1") return true;
@@ -40,6 +44,7 @@ const USE_PUPPETEER = (() => {
 let lastGoodLiveFeedPayload = null;
 let lastGoodLiveFeedMeta = null;
 let liveFeedSessionCookie = "";
+let liveFeedRequestPromise = null;
 
 function getLiveFeedCacheAgeMs(entry = {}) {
   const sourceDate = entry?.updatedAt || entry?.meta?.fetchedAt || entry?.meta?.updatedAt || null;
@@ -1073,6 +1078,23 @@ function extractLiveFeedEvents(payload) {
 }
 
 async function fetchLiveFeedRaw() {
+  const cachedEnvelope = lastGoodLiveFeedPayload
+    ? {
+        payload: lastGoodLiveFeedPayload,
+        meta: lastGoodLiveFeedMeta || null,
+        updatedAt: lastGoodLiveFeedMeta?.fetchedAt || lastGoodLiveFeedMeta?.updatedAt || null,
+      }
+    : null;
+
+  if (cachedEnvelope && isFreshLiveFeedCache(cachedEnvelope)) {
+    return cachedEnvelope.payload;
+  }
+
+  if (liveFeedRequestPromise) {
+    return liveFeedRequestPromise;
+  }
+
+  liveFeedRequestPromise = (async () => {
   const errors = [];
 
   // Try Puppeteer first (bypasses TLS fingerprinting)
@@ -1180,6 +1202,13 @@ async function fetchLiveFeedRaw() {
     return lastGoodLiveFeedPayload;
   }
   throw new Error(`LiveFeed unavailable: ${errors.join(" | ")}`);
+  })();
+
+  try {
+    return await liveFeedRequestPromise;
+  } finally {
+    liveFeedRequestPromise = null;
+  }
 }
 
 async function getPenaltyMatches() {
