@@ -8,7 +8,12 @@ const API_URL_FALLBACKS = [
 ];
 const fs = require("fs");
 const path = require("path");
-const puppeteer = require("puppeteer");
+let puppeteer = null;
+try {
+  puppeteer = require("puppeteer");
+} catch (_error) {
+  puppeteer = null;
+}
 let browserInstance = null;
 const { genererPredictionUnifiee, detectBetType } = require("./unifiedPrediction");
 const { evaluateMatch } = require("./extraPowerFilter");
@@ -29,7 +34,7 @@ const USE_PUPPETEER = (() => {
   const explicit = String(process.env.LIVEFEED_USE_PUPPETEER || "").trim();
   if (explicit === "1") return true;
   if (explicit === "0") return false;
-  return !String(process.env.RENDER || "").trim() && !String(process.env.VERCEL || "").trim() && !String(process.env.HEROKU || "").trim();
+  return Boolean(puppeteer) && !String(process.env.RENDER || "").trim() && !String(process.env.VERCEL || "").trim() && !String(process.env.HEROKU || "").trim();
 })();
 let lastGoodLiveFeedPayload = null;
 let lastGoodLiveFeedMeta = null;
