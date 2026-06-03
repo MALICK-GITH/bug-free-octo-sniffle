@@ -117,6 +117,14 @@ Les endpoints suivants doivent conserver leur enveloppe JSON actuelle sauf versi
 - URL de production cible: `https://fifaxpred.onrender.com`
 - Si `/api/mobile/bootstrap` ou `/api/mobile/openapi` renvoient `404`, le deploiement Render n'est pas encore aligne sur la derniere version backend locale et doit etre redeploye avant handoff mobile.
 - Sur Render, `LIVEFEED_USE_PUPPETEER=0` est recommande pour eviter les echecs headless; le serveur conserve alors le dernier payload valide sur disque.
+- Le systeme cron Render est declare dans `render.yaml` avec un secret partage genere automatiquement par Blueprint.
+- Les taches planifiees principales sont:
+  - `*/2 * * * *` pour la capture snapshot
+  - `0 * * * *` pour l'apprentissage
+  - `*/30 * * * *` pour l'envoi push instantane
+  - `15 3 * * *` pour le dedoublonnage des matchs termines
+- Les cron jobs Render appellent le web service via `CRON_BASE_URL` et `CRON_SECRET`, donc il faut redeployer le Blueprint complet apres toute modification de ce bloc.
+- Pour tester localement un cron, utilise `npm run cron:learn` ou `npm run cron:capture` apres avoir defini `CRON_BASE_URL` et `CRON_SECRET` dans ton environnement.
 
 ## Deploiement automatique
 

@@ -1,5 +1,5 @@
 const { getPenaltyMatches, getMatchPredictionDetails, fetchLiveFeedRaw } = require("./liveFeed");
-const { saveGeneratedAsset, upsertFinishedMatchDataset } = require("./db");
+const { saveGeneratedAsset, upsertFinishedMatchDataset, getTrackedMatches, getFinishedMatchesDataset } = require("./db");
 
 function normalizeText(value = "") {
   return String(value)
@@ -11,16 +11,48 @@ function normalizeText(value = "") {
     .trim();
 }
 
+function isFinishedStatusText(value = "") {
+  const text = normalizeText(value);
+  if (!text) return false;
+
+  return (
+    text.includes("termine") ||
+    text.includes("finished") ||
+    text.includes("final") ||
+    text.includes("ended") ||
+    text.includes("terminated") ||
+    text.includes("done") ||
+    text.includes("complete")
+  );
+}
+
 function isFinishedMatch(match = {}) {
   const statusCode = Number(match?.statusCode || 0);
-  const statusText = normalizeText(match?.statusText || match?.status || "");
-  const phase = normalizeText(match?.phase || "");
-  const infoText = normalizeText(match?.infoText || "");
+  const statusText = match?.statusText || match?.status || "";
+  const phase = match?.phase || "";
+  const infoText = match?.infoText || "";
   if (statusCode === 3) return true;
-  if (statusText.includes("termine")) return true;
-  if (phase.includes("termine")) return true;
-  if (infoText.includes("termine")) return true;
+  if (isFinishedStatusText(statusText)) return true;
+  if (isFinishedStatusText(phase)) return true;
+  if (isFinishedStatusText(infoText)) return true;
   return false;
+}
+
+function buildFinishedDatasetEntry(matchId, resolvedMatch = {}, prediction = {}, source = "cron-learning") {
+  return {
+    matchId: String(resolvedMatch?.id || matchId || "").trim(),
+    teamHome: String(resolvedMatch?.teamHome || resolvedMatch?.team1 || resolvedMatch?.homeTeam || "Equipe 1"),
+    teamAway: String(resolvedMatch?.teamAway || resolvedMatch?.team2 || resolvedMatch?.awayTeam || "Equipe 2"),
+    league: String(resolvedMatch?.league || "unknown"),
+    scoreHome: Number(resolvedMatch?.scoreHome ?? resolvedMatch?.context?.score1 ?? 0) || 0,
+    scoreAway: Number(resolvedMatch?.scoreAway ?? resolvedMatch?.context?.score2 ?? 0) || 0,
+    finishedAt: new Date().toISOString(),
+    source,
+    raw: {
+      match: resolvedMatch,
+      prediction,
+    },
+  };
 }
 
 function classifyOutcome({ selected, scoreHome, scoreAway }) {
@@ -68,17 +100,36 @@ function summarizeBy(rows = [], keySelector = () => "unknown") {
 }
 
 async function buildLearningRows(limit = 300) {
-  const payload = await getPenaltyMatches();
+  let payload = null;
+  try {
+    payload = await getPenaltyMatches();
+  } catch (_error) {
+    payload = null;
+  }
   const matches = Array.isArray(payload?.matches) ? payload.matches : [];
-  const rawPayload = await fetchLiveFeedRaw();
-  const rawEvents = Array.isArray(rawPayload?.Value) ? rawPayload.Value : [];
+  const trackedRows = await getTrackedMatches(500).catch(() => []);
+  const archivedRows = await getFinishedMatchesDataset(20000).catch(() => []);
+  const matchesById = new Map(
+    [...matches, ...trackedRows, ...archivedRows]
+      .map((match) => [String(match?.id || "").trim(), match])
+      .filter(([matchId]) => Boolean(matchId))
+  );
+  let rawEvents = [];
+  try {
+    const rawPayload = await fetchLiveFeedRaw();
+    rawEvents = Array.isArray(rawPayload?.Value) ? rawPayload.Value : [];
+  } catch (_error) {
+    rawEvents = [];
+  }
   const rawFinishedIds = rawEvents
     .filter((event) => {
       const gs = Number(event?.SC?.GS || 0);
-      const sls = normalizeText(event?.SC?.SLS || "");
-      const cps = normalizeText(event?.SC?.CPS || "");
-      const info = normalizeText(event?.SC?.I || "");
-      return gs === 3 || sls.includes("termine") || cps.includes("termine") || info.includes("termine");
+      return (
+        gs === 3 ||
+        isFinishedStatusText(event?.SC?.SLS || "") ||
+        isFinishedStatusText(event?.SC?.CPS || "") ||
+        isFinishedStatusText(event?.SC?.I || "")
+      );
     })
     .map((event) => String(event?.I || ""))
     .filter(Boolean);
@@ -89,7 +140,7 @@ async function buildLearningRows(limit = 300) {
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
-  const finishedMixed = matches.filter((match) => isFinishedMatch(match)).slice(0, limit);
+  const finishedMixed = [...matches, ...trackedRows, ...archivedRows].filter((match) => isFinishedMatch(match)).slice(0, limit);
   const finishedIds = new Set([
     ...finishedMixed.map((m) => String(m?.id || "")).filter(Boolean),
     ...rawFinishedIds.slice(0, limit),
@@ -98,9 +149,10 @@ async function buildLearningRows(limit = 300) {
   const rows = [];
   const finishedDatasetRows = [];
   for (const matchId of finishedIds) {
+    const fallbackMatch = matchesById.get(matchId) || { id: matchId };
     try {
       const details = await getMatchPredictionDetails(matchId);
-      const resolved = details?.match || { id: matchId };
+      const resolved = details?.match || fallbackMatch;
       const prediction = details?.prediction || {};
       const selected =
         prediction?.maitre?.decision_finale?.pari_choisi ||
@@ -112,17 +164,7 @@ async function buildLearningRows(limit = 300) {
       const teamHome = String(resolved?.teamHome || resolved?.team1 || "Equipe 1");
       const teamAway = String(resolved?.teamAway || resolved?.team2 || "Equipe 2");
       const league = String(resolved?.league || "unknown");
-      finishedDatasetRows.push({
-        matchId: String(resolved?.id || matchId || ""),
-        teamHome,
-        teamAway,
-        league,
-        scoreHome,
-        scoreAway,
-        finishedAt: new Date().toISOString(),
-        source: "cron-learning",
-        raw: { match: resolved, prediction },
-      });
+      finishedDatasetRows.push(buildFinishedDatasetEntry(matchId, resolved, prediction, "cron-learning"));
       rows.push({
         matchId: String(resolved?.id || matchId || ""),
         league,
@@ -136,6 +178,20 @@ async function buildLearningRows(limit = 300) {
         outcome: classifyOutcome({ selected, scoreHome, scoreAway }),
       });
     } catch (_error) {
+      const resolved = fallbackMatch;
+      const scoreHome = Number(resolved?.scoreHome ?? resolved?.context?.score1 ?? 0) || 0;
+      const scoreAway = Number(resolved?.scoreAway ?? resolved?.context?.score2 ?? 0) || 0;
+      const teamHome = String(resolved?.teamHome || resolved?.team1 || "Equipe 1");
+      const teamAway = String(resolved?.teamAway || resolved?.team2 || "Equipe 2");
+      const league = String(resolved?.league || "unknown");
+      finishedDatasetRows.push(buildFinishedDatasetEntry(matchId, resolved, {}, "cron-learning-fallback"));
+      rows.push({
+        matchId: String(resolved?.id || matchId || ""),
+        league,
+        market: null,
+        confidence: 0,
+        outcome: classifyOutcome({ selected: "", scoreHome, scoreAway }),
+      });
       continue;
     }
   }

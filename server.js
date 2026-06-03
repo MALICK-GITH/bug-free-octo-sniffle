@@ -4035,6 +4035,17 @@ app.get("/api/cron/learn", async (req, res) => {
   }
 });
 
+app.get("/api/cron/links", (req, res) => {
+  return res.json({
+    success: true,
+    source: "live-links",
+    data: buildCronLinkPayload(req),
+    meta: {
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
 app.get("/api/cron/snapshots/capture", async (req, res) => {
   const auth = isAuthorizedCronRequest(req);
   if (!auth.ok) {
@@ -4110,6 +4121,61 @@ app.get("/api/cron/snapshots/capture", async (req, res) => {
       error: {
         code: "SNAPSHOT_CAPTURE_ERROR",
         message: "Impossible d'executer la capture snapshot.",
+        details: error.message,
+      },
+    });
+  }
+});
+
+app.get("/api/cron/all", async (req, res) => {
+  const auth = isAuthorizedCronRequest(req);
+  if (!auth.ok) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: "CRON_FORBIDDEN",
+        message: auth.reason === "missing_server_secret"
+          ? "CRON_SECRET n'est pas configure sur le serveur."
+          : "Cle cron invalide.",
+      },
+    });
+  }
+
+  try {
+    const capture = await runMatchTrackingCycle("cron-link-all");
+    const learn = await runLearningCron({ dryRun: false, debug: false });
+    const dedupe = await dedupeFinishedMatchesDataset({ execute: true });
+    const push = await sendBackgroundPushToAll({
+      title: "ONE-DELUX",
+      body: `Synchronisation cron completee${capture?.counts?.finished ? ` - ${capture.counts.finished} termines` : ""}.`,
+      url: "/suivre.html",
+      type: "cron_all",
+      at: new Date().toISOString(),
+    }, {
+      topic: "cron_all",
+      force: false,
+      cooldownMin: Number(process.env.PUSH_DEFAULT_COOLDOWN_MINUTES) || 10,
+    });
+
+    return res.json({
+      success: true,
+      source: "cron-link-all",
+      data: {
+        capture: capture || null,
+        learn: learn?.report || null,
+        dedupe,
+        push,
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "CRON_ALL_ERROR",
+        message: "Impossible d'executer la synchronisation cron complete.",
         details: error.message,
       },
     });
@@ -6226,6 +6292,49 @@ function getLocalApiBaseUrl() {
   return `http://127.0.0.1:${port}`;
 }
 
+function getPublicBaseUrl(req) {
+  const forwardedProto = String(req.get("x-forwarded-proto") || "").split(",")[0].trim();
+  const forwardedHost = String(req.get("x-forwarded-host") || "").split(",")[0].trim();
+  const host = forwardedHost || String(req.get("host") || "").trim();
+  const proto = forwardedProto || (req.secure ? "https" : "http") || "https";
+  if (!host) return "";
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
+function buildCronLinkPayload(req) {
+  const baseUrl = getPublicBaseUrl(req) || getLocalApiBaseUrl();
+  const cronSecret = String(CRON_SECRET || "").trim();
+  const buildCronUrl = (pathname, query = {}) => {
+    const url = new URL(pathname, `${baseUrl}/`);
+    for (const [key, value] of Object.entries(query)) {
+      if (value == null || value === "") continue;
+      url.searchParams.set(key, String(value));
+    }
+    if (cronSecret) {
+      url.searchParams.set("key", cronSecret);
+    }
+    return url.toString();
+  };
+
+  return {
+    baseUrl,
+    links: {
+      capture: buildCronUrl("/api/cron/snapshots/capture"),
+      learn: buildCronUrl("/api/cron/learn", { dryRun: "0", debug: "0" }),
+      push: buildCronUrl("/api/cron/push/instant"),
+      dedupe: buildCronUrl("/api/cron/finished-matches/dedupe", { execute: "1" }),
+      all: buildCronUrl("/api/cron/all"),
+    },
+    auth: {
+      queryParam: "key",
+      header: "x-cron-secret",
+      note: cronSecret
+        ? "Les liens incluent deja le secret cron pour les schedulers internes."
+        : "Les liens doivent etre appeles avec le secret cron cote scheduler.",
+    },
+  };
+}
+
 async function callLocalApi(path, { method = "GET", body = null, headers = {}, timeoutMs = 12000 } = {}) {
   const url = `${getLocalApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
   const controller = new AbortController();
@@ -6625,6 +6734,26 @@ async function runMatchTrackingCycle(reason = "scheduled") {
       const finishedAt = new Date().toISOString();
       const fetchedAt = data?.fetchedAt || startedAt;
       const transition = buildSnapshotTransition(previousMatches, trackedMatches, finishedAt);
+
+      const finishedCurrentMatches = trackedMatches.filter((match) => classifyMatchStatus(match) === "finished");
+      for (const finishedMatch of finishedCurrentMatches) {
+        await upsertFinishedMatchDataset({
+          matchId: finishedMatch.matchId,
+          teamHome: finishedMatch.teamHome,
+          teamAway: finishedMatch.teamAway,
+          league: finishedMatch.league,
+          scoreHome: finishedMatch.scoreHome,
+          scoreAway: finishedMatch.scoreAway,
+          finishedAt,
+          source: "snapshot-finished-status",
+          raw: {
+            ...finishedMatch,
+            detectedFinished: true,
+            detectionReason: "status-finished-during-capture",
+            capturedAt: fetchedAt,
+          },
+        }).catch(() => null);
+      }
 
       for (const finishedEntry of transition.finishedDetected) {
         const previousMatch = transition.previousIndex.get(finishedEntry.matchId) || {};
