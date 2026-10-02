@@ -35,14 +35,21 @@
 
   function buildPageSnapshot() {
     const page = window.location.pathname || "/";
-    const title = compactText(document.querySelector("h1")?.textContent || "");
+    const title = compactText(document.querySelector("h1")?.textContent || document.title || "");
+    const path = page.toLowerCase();
+    const hasCouponControls = Boolean(document.getElementById("sizeInput"));
+    const sections = Array.from(document.querySelectorAll("main h2, main h3, .page h2, .page h3"))
+      .filter((heading) => heading.getClientRects().length)
+      .map((heading) => compactText(heading.textContent, 50))
+      .filter(Boolean)
+      .slice(0, 8);
     const enabledButtons = Array.from(document.querySelectorAll("button"))
-      .filter((button) => !button.disabled)
+      .filter((button) => !button.disabled && button.getClientRects().length)
       .map((button) => compactText(button.textContent, 40))
       .filter(Boolean)
       .slice(0, 16);
 
-    if (page.includes("coupon")) {
+    if (hasCouponControls) {
       const selections = Array.from(document.querySelectorAll("#result ol li"))
         .slice(0, 8)
         .map((line) => compactText(line.textContent, 120));
@@ -60,7 +67,7 @@
       };
     }
 
-    if (page.includes("match")) {
+    if (path.includes("match")) {
       return {
         pageType: "match",
         title,
@@ -70,9 +77,30 @@
       };
     }
 
+    const pageType = path.includes("coupon")
+      ? "coupon_studio"
+      : path === "/" || path.endsWith("/index.html")
+        ? "home"
+        : path.includes("unified")
+          ? "unified_tools"
+          : path.includes("gallery")
+            ? "gallery"
+            : path.includes("suivre")
+              ? "follow_matches"
+              : path.includes("updates")
+                ? "updates"
+                : path.includes("mode-emploi")
+                  ? "guide"
+                  : path.includes("about")
+                    ? "about"
+                    : path.includes("developpeur")
+                      ? "support"
+                      : "other";
+
     return {
-      pageType: "other",
+      pageType,
       title,
+      sections,
       enabledButtons,
     };
   }
@@ -107,7 +135,7 @@
       pageSnapshot: buildPageSnapshot(),
     };
 
-    if ((window.location.pathname || "").includes("coupon")) {
+    if (document.getElementById("sizeInput")) {
       context.couponParams = collectCouponParams();
     }
 

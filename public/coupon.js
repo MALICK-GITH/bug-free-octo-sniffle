@@ -792,13 +792,42 @@ function payoutFromStake(stake, odd) {
   return { payout, net: Number((payout - stake).toFixed(2)) };
 }
 
+function getRiskProfileLabel(profile) {
+  const labels = {
+    ultra_safe: "tres prudent",
+    safe: "prudent",
+    balanced: "equilibre",
+    aggressive: "agressif",
+  };
+  return labels[String(profile || "balanced").toLowerCase()] || "equilibre";
+}
+
+function getConfidenceLabel(value) {
+  const confidence = Number(value);
+  if (!Number.isFinite(confidence)) return "indisponible";
+  if (confidence >= 75) return "indice eleve";
+  if (confidence >= 60) return "indice modere";
+  return "indice faible";
+}
+
+function getPickRiskLabel(pick) {
+  const confidence = Number(pick?.confiance);
+  const odd = Number(pick?.cote);
+  if (!Number.isFinite(confidence) || !Number.isFinite(odd) || odd <= 1) return "indetermine";
+  if (confidence >= 75 && odd < 1.7) return "plutot faible";
+  if (confidence < 60 || odd >= 2.3) return "eleve";
+  return "modere";
+}
+
 function explainPickSimple(pick, riskProfile = "balanced") {
   const conf = Number(pick?.confiance || 0);
   const odd = Number(pick?.cote || 0);
-  const startMin = Math.max(0, Math.floor((Number(pick?.startTimeUnix || 0) - Math.floor(Date.now() / 1000)) / 60));
-  const riskText = conf >= 75 ? "profil stable" : conf >= 60 ? "profil moyen" : "profil volatil";
-  const oddText = odd >= 2.3 ? "cote agressive" : odd >= 1.7 ? "cote equilibree" : "cote prudente";
-  return `Coach IA: ${riskText}, ${oddText}, depart ${startMin} min, mode ${riskProfile}.`;
+  const startUnix = Number(pick?.startTimeUnix || 0);
+  const startText = startUnix > 0
+    ? `debut dans ${Math.max(0, Math.floor((startUnix - Math.floor(Date.now() / 1000)) / 60))} min`
+    : "heure de debut indisponible";
+  const oddsText = odd >= 2.3 ? "cote elevee" : odd >= 1.7 ? "cote moyenne" : "cote basse";
+  return `Lecture IA: ${getConfidenceLabel(conf)} (${Number.isFinite(conf) ? `${conf.toFixed(0)}/100` : "-"}), ${oddsText}, ${startText}; profil ${getRiskProfileLabel(riskProfile)}.`;
 }
 
 function buildReplayLines(pick, riskProfile = "balanced") {
@@ -2641,15 +2670,16 @@ function renderCoupon(data) {
       )}">T- ${formatCountdownLabel(p.startTimeUnix)}</strong></span>
         <span class="${timeBadgeClass}">T-${startMin} min ${tooClose ? "(trop proche)" : ""}</span>
         <span>${p.pari}</span>
-        <span>Cote ${formatOdd(p.cote)} | Confiance ${p.confiance}%</span>
+        <span class="pick-risk-level">Risque indicatif: ${getPickRiskLabel(p)}</span>
+        <span>Cote ${formatOdd(p.cote)} | Indice IA ${Number.isFinite(Number(p.confiance)) ? `${Number(p.confiance).toFixed(0)}/100 (${getConfidenceLabel(p.confiance)})` : "indisponible"}</span>
         ${(() => {
           const exactPreview = getCouponExactScorePreview(p.exactScore);
           return `<span>Score exact: ${exactPreview?.score || "-"}${exactPreview?.badgeLabel ? ` | ${exactPreview.badgeLabel}` : ""}</span>`;
         })()}
         <span>EV ${computePickEV(p) >= 0 ? "+" : ""}${computePickEV(p).toFixed(3)}</span>
-        <div class="confidence-track"><i style="width:${Math.max(4, Math.min(100, Number(p.confiance) || 0))}%"></i><em>${Number(
+        <div class="confidence-track" role="meter" aria-label="Indice IA indicatif" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.max(0, Math.min(100, Number(p.confiance) || 0))}" title="Indice IA indicatif, ce n'est pas une probabilite de gain"><i style="width:${Math.max(4, Math.min(100, Number(p.confiance) || 0))}%"></i><em>${Number(
         p.confiance || 0
-      ).toFixed(0)}%</em></div>
+      ).toFixed(0)}/100</em></div>
         <span class="stability-badge" id="stability-${String(p.matchId)}">Stabilite: calcul...</span>
         <span class="quality-badge" id="quality-${String(p.matchId)}">Qualite donnees: ${q.score}/100</span>
         <span class="pick-stability-badge tone-${stability.tone}">${stability.icon} ${stability.label}</span>
@@ -2692,8 +2722,8 @@ function renderCoupon(data) {
     <div class="meta">
       <span>Selections: ${data.summary?.totalSelections ?? 0}</span>
       <span>Cote combinee: ${formatOdd(data.summary?.combinedOdd)}</span>
-      <span>Confiance moyenne: ${data.summary?.averageConfidence ?? 0}%</span>
-      <span>Profil: ${data.riskProfile || "balanced"}</span>
+      <span>Indice IA moyen: ${data.summary?.averageConfidence ?? 0}/100</span>
+      <span>Profil de risque: ${getRiskProfileLabel(data.riskProfile)}</span>
       <span>Ticket Shield: ACTIF</span>
       <span>Qualite: ${insights.qualityScore}/100</span>
       <span>Fiabilite ticket: ${insights.reliabilityIndex}/100</span>
@@ -2704,6 +2734,7 @@ function renderCoupon(data) {
       <span>Score exact leader: ${leadExactScore?.score || "-"}${leadExactScore?.badgeLabel ? ` | ${leadExactScore.badgeLabel}` : ""}</span>
       <span>Freeze ticket: ${freeze ? "ACTIF" : "OFF"} (${getFreezeMinutes()} min)</span>
     </div>
+    <p class="confidence-disclaimer">Les niveaux de risque sont des repères calculés à partir de l'indice IA et de la cote. Ils ne sont ni des probabilités de gain ni des garanties.</p>
     <ol>${items}</ol>
     <div class="coupon-why-block">
       <h4>Pourquoi ce coupon</h4>

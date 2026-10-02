@@ -17,6 +17,26 @@
   margin-top: 0.85rem;
 }
 
+body.coupon-portal .confidence-disclaimer {
+  margin: 0 0 0.55rem;
+  color: #a9bfd8;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+body.coupon-portal #result .coach-pick-line {
+  border-left: 2px solid rgba(104, 214, 238, 0.42);
+  padding-left: 0.45rem;
+  color: #c8e7f5;
+}
+
+body.coupon-portal #result .pick-risk-level {
+  border: 1px solid rgba(255, 193, 77, 0.24);
+  border-radius: var(--coupon-radius-sm);
+  background: rgba(255, 193, 77, 0.08);
+  color: #ffe1a0;
+}
+
 :root {
   --coupon-page-max: 1180px;
   --coupon-gap: 0.58rem;
@@ -419,7 +439,7 @@ body.coupon-portal .validation-list li {
 }
 
 body.coupon-portal .sticky-ticket-bar {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.42rem;
   padding:
     0.44rem max(0.58rem, env(safe-area-inset-left))

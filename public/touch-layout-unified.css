@@ -80,3 +80,19 @@ button,
     text-align: center;
   }
 }
+
+@media (max-width: 760px) {
+  body.coupon-portal .chat-fab {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(78px + env(safe-area-inset-bottom));
+    z-index: 10019;
+  }
+
+  body.coupon-portal .chat-panel {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    width: min(420px, calc(100vw - 16px));
+    height: min(62dvh, calc(100dvh - 148px - env(safe-area-inset-bottom)));
+    z-index: 10019;
+  }
+}

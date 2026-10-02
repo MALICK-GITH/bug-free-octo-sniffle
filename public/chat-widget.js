@@ -126,7 +126,7 @@
           <button type="button" class="chat-close">X</button>
         </div>
       </div>
-      <div class="chat-context-banner">Historique partage entre accueil, details et coupon.</div>
+      <div class="chat-context-banner">Historique partage sur tout le site. L'assistant tient compte de la page ouverte.</div>
       <div class="chat-log" id="chatLog"></div>
       <form class="chat-form" id="chatForm">
         <textarea class="chat-input" id="chatInput" placeholder="Demande une action, une analyse ou une question generale..." enterkeyhint="send"></textarea>
@@ -177,7 +177,7 @@
     if (!history.length) {
       push(
         "assistant",
-        "Je te suis sur tout le site. Tu peux demander une action, une analyse match, un coupon, une recherche rapide ou une question generale."
+        "Je suis disponible sur tout le site et je prends en compte la page ouverte. Tu peux demander une action, une analyse, un coupon ou une recherche rapide."
       );
     } else {
       render();

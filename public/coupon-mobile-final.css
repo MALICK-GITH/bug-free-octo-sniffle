@@ -47,7 +47,15 @@
   /* Keep fixed bottom actions usable and above visual layers. */
   body.coupon-portal .sticky-ticket-bar {
     z-index: 10020 !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 0.3rem !important;
+  }
+
+  body.coupon-portal .sticky-ticket-bar button {
+    min-width: 0 !important;
+    padding: 0.38rem 0.22rem !important;
+    font-size: 0.82rem !important;
+    white-space: nowrap;
   }
 
   /* Disable extra floating/overlay controls on mobile coupon.

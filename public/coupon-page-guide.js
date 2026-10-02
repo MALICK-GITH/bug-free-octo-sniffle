@@ -19,6 +19,11 @@
   ];
 
   const ADVANCED_BUTTON_IDS = [
+    "coachAiBtn",
+    "replaceWeakBtn",
+    "replaceTooCloseBtn",
+    "downloadImageBtn",
+    "downloadPdfBtn",
     "generateLadderBtn",
     "generateMultiBtn",
     "simulateBankrollBtn",
@@ -40,6 +45,12 @@
       const button = document.getElementById(id);
       if (button) button.classList.add("coupon-advanced-action");
     });
+
+    const premiumExports = document.querySelector(".coupon-premium-actions");
+    if (premiumExports) premiumExports.classList.add("coupon-advanced-action");
+
+    const competitiveToolbar = document.querySelector(".competitive-topbar");
+    if (competitiveToolbar) competitiveToolbar.classList.add("coupon-advanced-action");
   }
 
   function setSimpleMode(enabled) {
