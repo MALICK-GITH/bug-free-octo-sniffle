@@ -1,0 +1,114 @@
+/* Mobile Install Banner Styles */
+.install-banner {
+  position: fixed;
+  bottom: calc(94px + env(safe-area-inset-bottom, 0px));
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, rgba(15, 25, 48, 0.98), rgba(8, 14, 26, 0.99));
+  border-top: 1px solid rgba(66, 245, 108, 0.3);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 9999;
+  padding: env(safe-area-inset-bottom, 0) 0 0;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.install-banner.show {
+  transform: translateY(0);
+}
+
+.install-banner-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.2rem;
+  gap: 1rem;
+  max-width: 100%;
+}
+
+.install-banner-content span {
+  color: #e8f4ff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.install-banner button {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 25px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+#installBtn {
+  background: linear-gradient(135deg, #42f56c, #24d7ff);
+  color: #071320;
+  box-shadow: 0 4px 12px rgba(66, 245, 108, 0.3);
+}
+
+#installBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(66, 245, 108, 0.4);
+}
+
+#installBtn:active {
+  transform: translateY(0);
+}
+
+#dismissBtn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #b8d4ff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+#dismissBtn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 480px) {
+  .install-banner-content {
+    padding: 0.8rem 1rem;
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .install-banner-content span {
+    margin-bottom: 0.5rem;
+  }
+  
+  .install-banner button {
+    width: 100%;
+    max-width: 200px;
+  }
+}
+
+/* iOS specific styling */
+@supports (-webkit-touch-callout: none) {
+  .install-banner {
+    padding-bottom: max(env(safe-area-inset-bottom), 1rem);
+  }
+}
+
+/* Animation for banner appearance */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.install-banner.show {
+  animation: slideUp 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}

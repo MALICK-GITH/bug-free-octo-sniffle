@@ -1,0 +1,646 @@
+/* Cache Management Animations */
+
+/* Slide animations */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutLeft {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutUp {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+@keyframes slideInDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutDown {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+/* Fade animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeOutScale {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+/* Bounce animations */
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bounceOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.1);
+  }
+   60% {
+    opacity: 1;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+
+/* Pulse animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(59, 231, 255, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(59, 231, 255, 0.8);
+  }
+}
+
+/* Rotate animations */
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rotateInfinite {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Shake animations */
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-5px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(5px);
+  }
+}
+
+@keyframes shakeVertical {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateY(-3px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateY(3px);
+  }
+}
+
+/* Loading animations */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spinReverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes loadingDots {
+  0%, 80%, 100% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@keyframes loadingBar {
+  0% {
+    width: 0%;
+  }
+  50% {
+    width: 70%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes wave {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-10px);
+  }
+  75% {
+    transform: translateY(10px);
+  }
+}
+
+/* Progress animations */
+@keyframes progressPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes progressShimmer {
+  0% {
+    right: -30px;
+  }
+  100% {
+    right: 100%;
+  }
+}
+
+/* Notification animations */
+@keyframes notificationSlideIn {
+  0% {
+    transform: translateX(100%) translateY(-50%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) translateY(-50%);
+    opacity: 1;
+  }
+}
+
+@keyframes notificationSlideOut {
+  0% {
+    transform: translateX(0) translateY(-50%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%) translateY(-50%);
+    opacity: 0;
+  }
+}
+
+@keyframes notificationBounce {
+  0% {
+    transform: translateX(100%) translateY(-50%) scale(0.3);
+  }
+  50% {
+    transform: translateX(0) translateY(-50%) scale(1.05);
+  }
+  70% {
+    transform: translateX(0) translateY(-50%) scale(0.9);
+  }
+  100% {
+    transform: translateX(0) translateY(-50%) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Cache-specific animations */
+@keyframes cacheScan {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+@keyframes cachePulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes cacheRotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cacheBounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-10px);
+  }
+  60% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes cacheShimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes cacheWave {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-5px);
+  }
+  75% {
+    transform: translateY(5px);
+  }
+}
+
+/* Utility animation classes */
+.slide-in-right {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.slide-out-right {
+  animation: slideOutRight 0.3s ease-in;
+}
+
+.slide-in-left {
+  animation: slideInLeft 0.3s ease-out;
+}
+
+.slide-out-left {
+  animation: slideOutLeft 0.3s ease-in;
+}
+
+.slide-in-up {
+  animation: slideInUp 0.3s ease-out;
+}
+
+.slide-out-up {
+  animation: slideOutUp 0.3s ease-in;
+}
+
+.slide-in-down {
+  animation: slideInDown 0.3s ease-out;
+}
+
+.slide-out-down {
+  animation: slideOutDown 0.3s ease-in;
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+.fade-out {
+  animation: fadeOut 0.3s ease-out;
+}
+
+.fade-in-scale {
+  animation: fadeInScale 0.4s ease-out;
+}
+
+.fade-out-scale {
+  animation: fadeOutScale 0.4s ease-in;
+}
+
+.bounce-in {
+  animation: bounceIn 0.6s ease-out;
+}
+
+.bounce-out {
+  animation: bounceOut 0.6s ease-in;
+}
+
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.pulse-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.rotate {
+  animation: rotate 1s linear infinite;
+}
+
+.shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+.shake-vertical {
+  animation: shakeVertical 0.5s ease-in-out;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.loading-dots span:nth-child(1) {
+  animation: loadingDots 1.4s infinite 0s;
+}
+
+.loading-dots span:nth-child(2) {
+  animation: loadingDots 1.4s infinite 0.2s;
+}
+
+.loading-dots span:nth-child(3) {
+  animation: loadingDots 1.4s infinite 0.4s;
+}
+
+/* Cache-specific animation classes */
+.cache-scan {
+  animation: cacheScan 3s linear infinite;
+}
+
+.cache-pulse {
+  animation: cachePulse 2s ease-in-out infinite;
+}
+
+.cache-rotate {
+  animation: cacheRotate 2s linear infinite;
+}
+
+.cache-bounce {
+  animation: cacheBounce 2s ease-in-out infinite;
+}
+
+.cache-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(59, 231, 255, 0.2), transparent);
+  background-size: 1000px 100%;
+  animation: cacheShimmer 3s linear infinite;
+}
+
+.cache-wave {
+  animation: cacheWave 3s ease-in-out infinite;
+}
+
+/* Progress animation classes */
+.progress-pulse {
+  animation: progressPulse 2s ease-in-out infinite;
+}
+
+.progress-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -30px;
+  width: 30px;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4));
+  animation: progressShimmer 2s linear infinite;
+}
+
+/* Notification animation classes */
+.notification-slide-in {
+  animation: notificationSlideIn 0.4s ease-out;
+}
+
+.notification-slide-out {
+  animation: notificationSlideOut 0.4s ease-in;
+}
+
+.notification-bounce {
+  animation: notificationBounce 0.6s ease-out;
+}
+
+/* Responsive animations */
+@media (max-width: 768px) {
+  .slide-in-right,
+  .slide-out-right,
+  .slide-in-left,
+  .slide-out-left,
+  .slide-in-up,
+  .slide-out-up,
+  .slide-in-down,
+  .slide-out-down {
+    animation-duration: 0.2s;
+  }
+  
+  .fade-in,
+  .fade-out,
+  .fade-in-scale,
+  .fade-out-scale {
+    animation-duration: 0.2s;
+  }
+  
+  .bounce-in,
+  .bounce-out {
+    animation-duration: 0.4s;
+  }
+  
+  .pulse,
+  .pulse-glow,
+  .rotate,
+  .shake,
+  .shake-vertical {
+    animation-duration: 1.5s;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .slide-in-right,
+  .slide-out-right,
+  .slide-in-left,
+  .slide-out-left,
+  .slide-in-up,
+  .slide-out-up,
+  .slide-in-down,
+  .slide-out-down,
+  .fade-in,
+  .fade-out,
+  .fade-in-scale,
+  .fade-out-scale,
+  .bounce-in,
+  .bounce-out,
+  .pulse,
+  .pulse-glow,
+  .rotate,
+  .shake,
+  .shake-vertical,
+  .spin,
+  .cache-scan,
+  .cache-pulse,
+  .cache-rotate,
+  .cache-bounce,
+  .cache-shimmer,
+  .cache-wave,
+  .progress-pulse,
+  .notification-slide-in,
+  .notification-slide-out,
+  .notification-bounce {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .cache-shimmer {
+    background: linear-gradient(90deg, transparent, rgba(59, 231, 255, 0.1), transparent);
+  }
+  
+  .progress-shimmer::after {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2));
+  }
+}

@@ -1,0 +1,78 @@
+envVarGroups:
+  - name: cron-shared-settings
+    envVars:
+      - key: CRON_BASE_URL
+        value: https://one-delux.onrender.com
+      - key: CRON_SECRET
+        generateValue: true
+
+services:
+  # Service web principal
+  - type: web
+    name: fifa-virtual-predictions
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run start:direct
+    healthCheckPath: /health
+    autoDeploy: true
+    
+    # Variables d'environnement
+    envVars:
+      - fromGroup: cron-shared-settings
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DB_FILE
+        value: /opt/render/project/data/app.sqlite
+      - key: LIVEFEED_USE_PUPPETEER
+        value: "0"
+    disk:
+      name: fifa-data
+      mountPath: /opt/render/project/data
+      sizeGB: 1
+
+  - type: cron
+    name: fifa-virtual-cron-capture
+    runtime: node
+    plan: starter
+    schedule: "*/2 * * * *"
+    buildCommand: npm install
+    startCommand: node scripts/render-cron-runner.js capture
+    autoDeploy: true
+    envVars:
+      - fromGroup: cron-shared-settings
+
+  - type: cron
+    name: fifa-virtual-cron-learn
+    runtime: node
+    plan: starter
+    schedule: "0 * * * *"
+    buildCommand: npm install
+    startCommand: node scripts/render-cron-runner.js learn
+    autoDeploy: true
+    envVars:
+      - fromGroup: cron-shared-settings
+
+  - type: cron
+    name: fifa-virtual-cron-push
+    runtime: node
+    plan: starter
+    schedule: "*/30 * * * *"
+    buildCommand: npm install
+    startCommand: node scripts/render-cron-runner.js push
+    autoDeploy: true
+    envVars:
+      - fromGroup: cron-shared-settings
+
+  - type: cron
+    name: fifa-virtual-cron-dedupe
+    runtime: node
+    plan: starter
+    schedule: "15 3 * * *"
+    buildCommand: npm install
+    startCommand: node scripts/render-cron-runner.js dedupe
+    autoDeploy: true
+    envVars:
+      - fromGroup: cron-shared-settings

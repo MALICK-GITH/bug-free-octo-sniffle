@@ -1,0 +1,104 @@
+/* Power UI: premium coherence, priority actions, subtle wow */
+
+:root {
+  --lux-glow: 0 0 0 1px rgba(59, 231, 255, 0.16), 0 12px 34px rgba(0, 0, 0, 0.36);
+  --lux-neon: linear-gradient(120deg, #42f56c, #24d7ff);
+  --lux-danger: linear-gradient(120deg, #ff7a9e, #ff5f79);
+}
+
+/* Signature badge style for key quality chips */
+.reliability-pill,
+.status-pill,
+.finder-badge {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Premium micro-interactions kept subtle */
+.match-card,
+.panel,
+.hero,
+.controls {
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.match-card:hover,
+.panel:hover {
+  border-color: rgba(59, 231, 255, 0.34);
+  box-shadow: var(--lux-glow);
+}
+
+/* Strong and coherent CTA hierarchy */
+#generateBtn,
+#validateBtn,
+#refreshBtn,
+.denicheur-cta {
+  box-shadow: 0 10px 26px rgba(36, 215, 255, 0.24), 0 1px 0 rgba(255, 255, 255, 0.32) inset;
+}
+
+/* Input validation feedback */
+.field-invalid {
+  border-color: rgba(255, 95, 121, 0.86) !important;
+  box-shadow: 0 0 0 2px rgba(255, 95, 121, 0.2) !important;
+}
+
+.validation-hint {
+  margin: 0.3rem 0 0;
+  font-size: 0.74rem;
+  color: #ffb9c6;
+}
+
+/* Shared quick mobile action bar (home + coupon) */
+.quick-mobile-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9997;
+  display: none;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+  padding: 0.55rem max(0.52rem, env(safe-area-inset-left)) calc(0.55rem + env(safe-area-inset-bottom)) max(0.52rem, env(safe-area-inset-right));
+  border-top: 1px solid rgba(59, 231, 255, 0.2);
+  background: linear-gradient(180deg, rgba(8, 12, 24, 0.92), rgba(4, 6, 14, 0.98));
+  backdrop-filter: blur(14px) saturate(130%);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+}
+
+.quick-mobile-bar button,
+.quick-mobile-bar a {
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 0.55rem 0.4rem;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #071320;
+  background: var(--lux-neon);
+}
+
+.quick-mobile-bar .quick-secondary {
+  background: linear-gradient(130deg, #d8e8ff, #a8cbff);
+}
+
+.quick-mobile-bar .quick-danger {
+  background: var(--lux-danger);
+  color: #190710;
+}
+
+/* Keep content visible above mobile bars */
+@media (max-width: 760px) {
+  body.has-quick-mobile-bar {
+    padding-bottom: calc(5.4rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  .quick-mobile-bar {
+    display: grid;
+  }
+}

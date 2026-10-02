@@ -1,0 +1,222 @@
+/**
+ * SOLITFIFPRO225 - Skeleton Screens System
+ * Phase 1: Loading states visuels pour améliorer la perception de performance
+ * SOLITAIRE HACK SIGNATURE
+ */
+
+/* ============================================
+   BASE SKELETON STYLES
+   ============================================ */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: skeleton-shimmer 1.5s infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+
+/* ============================================
+   SKELETON COMPONENTS
+   ============================================ */
+
+/* Match card skeleton */
+.skeleton-match-card {
+  background: var(--panel, rgba(32, 32, 40, 0.52));
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.skeleton-match-card .skeleton-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.skeleton-match-card .skeleton-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.skeleton-match-card .skeleton-title {
+  height: 16px;
+  width: 60%;
+  border-radius: 4px;
+}
+
+.skeleton-match-card .skeleton-meta {
+  height: 12px;
+  width: 40%;
+  margin-top: 0.5rem;
+  border-radius: 4px;
+}
+
+.skeleton-match-card .skeleton-odds {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.skeleton-match-card .skeleton-odd {
+  height: 48px;
+  border-radius: 8px;
+}
+
+/* Hero skeleton */
+.skeleton-hero {
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.skeleton-hero .skeleton-tag {
+  height: 14px;
+  width: 120px;
+  margin: 0 auto 1rem;
+  border-radius: 100px;
+}
+
+.skeleton-hero .skeleton-title {
+  height: 32px;
+  width: 80%;
+  margin: 0 auto 1rem;
+  border-radius: 4px;
+}
+
+.skeleton-hero .skeleton-subtitle {
+  height: 16px;
+  width: 60%;
+  margin: 0 auto;
+  border-radius: 4px;
+}
+
+/* Metric card skeleton */
+.skeleton-metric-card {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  padding: 1rem;
+}
+
+.skeleton-metric-card .skeleton-label {
+  height: 10px;
+  width: 50%;
+  margin-bottom: 0.5rem;
+  border-radius: 2px;
+}
+
+.skeleton-metric-card .skeleton-value {
+  height: 20px;
+  width: 70%;
+  margin-bottom: 0.5rem;
+  border-radius: 4px;
+}
+
+.skeleton-metric-card .skeleton-desc {
+  height: 12px;
+  width: 90%;
+  border-radius: 2px;
+}
+
+/* Text skeleton variants */
+.skeleton-text-sm { height: 12px; width: 100%; }
+.skeleton-text-md { height: 16px; width: 100%; }
+.skeleton-text-lg { height: 20px; width: 80%; }
+.skeleton-text-xl { height: 24px; width: 60%; }
+
+/* Width variants */
+.skeleton-w-25 { width: 25%; }
+.skeleton-w-50 { width: 50%; }
+.skeleton-w-75 { width: 75%; }
+.skeleton-w-100 { width: 100%; }
+
+/* ============================================
+   LOADING STATES
+   ============================================ */
+
+/* Button loading */
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  top: 50%;
+  left: 50%;
+  margin: -10px 0 0 -10px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: btn-spin 0.8s linear infinite;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Content loading overlay */
+.content-loading {
+  position: relative;
+  min-height: 200px;
+}
+
+.content-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--bg-1, #08080f);
+  z-index: 10;
+}
+
+/* Pulse loading for live elements */
+.pulse-loading {
+  animation: pulse-opacity 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* ============================================
+   UTILITIES
+   ============================================ */
+.skeleton-circle {
+  border-radius: 50%;
+}
+
+.skeleton-rounded {
+  border-radius: 8px;
+}
+
+.skeleton-pill {
+  border-radius: 100px;
+}
+
+/* Hide content while skeleton is visible */
+[data-skeleton="true"] > *:not(.skeleton):not(.skeleton-match-card):not(.skeleton-hero) {
+  visibility: hidden;
+}

@@ -1,0 +1,14 @@
+node_modules/
+*.log
+.env
+.DS_Store
+Thumbs.db
+*.tmp
+*.cache
+android-mobile-app/
+*.sqlite-shm
+*.sqlite-wal
+/data/*.sqlite
+/data/livefeed-cache.json
+playwright-report/
+test-results/

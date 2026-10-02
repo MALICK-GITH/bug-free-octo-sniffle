@@ -1,0 +1,25 @@
+:root {
+  --shell-max-width: 1200px;
+  --shell-page-gutter: clamp(16px, 3vw, 32px);
+}
+
+main,
+.page,
+.hero,
+footer {
+  box-sizing: border-box;
+}
+
+main,
+.page {
+  width: min(100%, var(--shell-max-width));
+  margin-inline: auto;
+  padding-inline: var(--shell-page-gutter);
+}
+
+.hero,
+footer {
+  width: min(100%, calc(var(--shell-max-width) + (var(--shell-page-gutter) * 2)));
+  margin-inline: auto;
+  padding-inline: var(--shell-page-gutter);
+}

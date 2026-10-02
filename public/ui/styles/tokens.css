@@ -1,0 +1,243 @@
+/**
+ * SOLITFIFPRO225 - Design Tokens
+ * Système de design unifié - Variables CSS globales
+ * SOLITAIRE HACK SIGNATURE
+ */
+
+/* ============================================
+   ROOT TOKENS - DARK MODE (Default)
+   ============================================ */
+:root {
+  color-scheme: dark;
+  
+  /* Brand Colors */
+  --color-primary: #42f56c;
+  --color-primary-dark: #16a34a;
+  --color-primary-light: #86efac;
+  --color-primary-alpha: rgba(66, 245, 108, 0.2);
+  
+  --color-secondary: #24d7ff;
+  --color-secondary-dark: #0891b2;
+  --color-secondary-alpha: rgba(36, 215, 255, 0.2);
+  
+  --color-accent: #ffd166;
+  --color-accent-dark: #d97706;
+  --color-accent-alpha: rgba(255, 209, 102, 0.2);
+  
+  /* Semantic Colors */
+  --color-success: #42f56c;
+  --color-warning: #ffd166;
+  --color-danger: #ff5f79;
+  --color-info: #24d7ff;
+  
+  --color-success-alpha: rgba(66, 245, 108, 0.15);
+  --color-warning-alpha: rgba(255, 209, 102, 0.15);
+  --color-danger-alpha: rgba(255, 95, 121, 0.15);
+  --color-info-alpha: rgba(36, 215, 255, 0.15);
+  
+  /* Background Colors */
+  --bg-base: #000000;
+  --bg-0: #050508;
+  --bg-1: #08080f;
+  --bg-2: #10101a;
+  --bg-3: #181825;
+  --bg-4: #202030;
+  
+  /* Surface Colors */
+  --surface-default: rgba(32, 32, 40, 0.52);
+  --surface-raised: rgba(22, 22, 30, 0.78);
+  --surface-sunken: rgba(8, 8, 15, 0.9);
+  --surface-overlay: rgba(10, 10, 18, 0.95);
+  
+  /* Text Colors */
+  --text-primary: #f2f2f7;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  --text-muted: #52525b;
+  --text-inverse: #09090b;
+  --text-link: #24d7ff;
+  
+  /* Border Colors */
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --border-focus: rgba(36, 215, 255, 0.5);
+  
+  /* Spacing Scale (4px base) */
+  --space-0: 0;
+  --space-1: 0.25rem;   /* 4px */
+  --space-2: 0.5rem;    /* 8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+  --space-16: 4rem;     /* 64px */
+  
+  /* Border Radius */
+  --radius-none: 0;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-full: 9999px;
+  
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, "Segoe UI", sans-serif;
+  --font-display: "Chakra Petch", "SF Pro Display", system-ui, sans-serif;
+  --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", monospace;
+  
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  
+  --font-light: 300;
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  
+  /* Line Height */
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+  
+  /* Shadows */
+  --shadow-none: none;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-default: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 6px 12px -2px rgba(0, 0, 0, 0.4), 0 4px 8px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.5), 0 8px 16px -4px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 40px -6px rgba(0, 0, 0, 0.55), 0 12px 24px -6px rgba(0, 0, 0, 0.4);
+  --shadow-glow-primary: 0 0 20px rgba(66, 245, 108, 0.3);
+  --shadow-glow-secondary: 0 0 20px rgba(36, 215, 255, 0.3);
+  
+  /* Effects */
+  --blur-sm: blur(4px);
+  --blur-md: blur(12px);
+  --blur-lg: blur(24px);
+  --blur-xl: blur(42px);
+  
+  /* Transitions */
+  --transition-none: none;
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  
+  /* Z-Index Scale */
+  --z-hide: -1;
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-fixed: 300;
+  --z-modal-backdrop: 400;
+  --z-modal: 410;
+  --z-popover: 500;
+  --z-tooltip: 600;
+  --z-toast: 700;
+  
+  /* Safe Area */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+/* ============================================
+   LIGHT MODE
+   ============================================ */
+[data-theme="light"] {
+  color-scheme: light;
+  
+  /* Brand Colors */
+  --color-primary: #16a34a;
+  --color-primary-dark: #15803d;
+  --color-primary-light: #22c55e;
+  --color-primary-alpha: rgba(22, 163, 74, 0.15);
+  
+  --color-secondary: #0891b2;
+  --color-secondary-dark: #0e7490;
+  --color-secondary-alpha: rgba(8, 145, 178, 0.15);
+  
+  --color-accent: #d97706;
+  --color-accent-dark: #b45309;
+  --color-accent-alpha: rgba(217, 119, 6, 0.15);
+  
+  /* Semantic Colors */
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-info: #0891b2;
+  
+  /* Background Colors */
+  --bg-base: #ffffff;
+  --bg-0: #fafafa;
+  --bg-1: #f4f4f5;
+  --bg-2: #e4e4e7;
+  --bg-3: #d4d4d8;
+  --bg-4: #a1a1aa;
+  
+  /* Surface Colors */
+  --surface-default: rgba(255, 255, 255, 0.8);
+  --surface-raised: rgba(255, 255, 255, 0.95);
+  --surface-sunken: #f4f4f5;
+  --surface-overlay: rgba(255, 255, 255, 0.98);
+  
+  /* Text Colors */
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-tertiary: #71717a;
+  --text-muted: #a1a1aa;
+  --text-inverse: #ffffff;
+  --text-link: #0891b2;
+  
+  /* Border Colors */
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  --border-default: rgba(0, 0, 0, 0.1);
+  --border-strong: rgba(0, 0, 0, 0.2);
+  --border-focus: rgba(8, 145, 178, 0.5);
+  
+  /* Shadows (softer in light mode) */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.08);
+  --shadow-default: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 6px 12px -2px rgba(0, 0, 0, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.15), 0 8px 16px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 40px -6px rgba(0, 0, 0, 0.2), 0 12px 24px -6px rgba(0, 0, 0, 0.12);
+}
+
+/* ============================================
+   SYSTEM PREFERENCES
+   ============================================ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    
+    --bg-base: #fafafa;
+    --bg-1: #f4f4f5;
+    --bg-2: #e4e4e7;
+    
+    --text-primary: #18181b;
+    --text-secondary: #52525b;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0ms;
+    --transition-base: 0ms;
+    --transition-slow: 0ms;
+    --transition-spring: 0ms;
+  }
+}

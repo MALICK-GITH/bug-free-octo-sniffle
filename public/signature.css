@@ -1,0 +1,32 @@
+.site-signature {
+  margin-top: 1rem;
+  text-align: center;
+  color: #b7c9e7;
+  font-size: 0.82rem;
+  opacity: 0.95;
+}
+
+.site-signature strong {
+  color: #ffffff;
+  font-family: "Chakra Petch", sans-serif;
+  letter-spacing: 0.04em;
+}
+
+/* Emoji styling for signature */
+.site-signature::before {
+  content: "";
+  display: block;
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+  animation: devil-pulse 2s ease-in-out infinite;
+}
+
+@keyframes devil-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+

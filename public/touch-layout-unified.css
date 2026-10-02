@@ -1,0 +1,82 @@
+/* Unified touch layout for mobile + desktop */
+
+:root {
+  --touch-min-h: 44px;
+  --touch-radius: 10px;
+  --touch-gap: 8px;
+}
+
+button,
+.btn,
+.coupon-page-link,
+.back,
+.match-aux-link {
+  min-height: var(--touch-min-h);
+  border-radius: var(--touch-radius);
+}
+
+.controls,
+.actions,
+.page-link-cloud,
+.match-detail-aux,
+.hero-tools {
+  gap: var(--touch-gap);
+}
+
+.controls {
+  align-items: end;
+}
+
+.controls .league-filter,
+.hero-tools .mini-control,
+.hero-tools .mini-toggle {
+  min-height: var(--touch-min-h);
+}
+
+.controls input,
+.controls select,
+.hero-tools input,
+.hero-tools select {
+  min-height: var(--touch-min-h);
+}
+
+@media (max-width: 900px) {
+  .controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hero-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: grid;
+  }
+
+  .page-link-cloud,
+  .match-detail-aux {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .controls,
+  .actions,
+  .hero-tools,
+  .page-link-cloud,
+  .match-detail-aux {
+    grid-template-columns: 1fr !important;
+  }
+
+  .coupon-page-link,
+  .back,
+  .match-aux-link,
+  .controls button,
+  .actions button {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+}

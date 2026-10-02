@@ -1,0 +1,302 @@
+/**
+ * SOLITFIFPRO225 - Global Enhancements CSS
+ * Améliorations visuelles globales pour tout le site
+ * SOLITAIRE HACK SIGNATURE
+ */
+
+/* ============================================
+   SMOOTH SCROLL & FOCUS
+   ============================================ */
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================
+   FOCUS VISIBLE STYLES
+   ============================================ */
+:focus-visible {
+  outline: 3px solid rgba(66, 245, 108, 0.8);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ============================================
+   SKIP LINK
+   ============================================ */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-primary, #42f56c);
+  color: var(--bg-0, #000);
+  padding: 12px 24px;
+  border-radius: 0 0 12px 12px;
+  font-weight: 600;
+  text-decoration: none;
+  z-index: 10000;
+  transition: top 0.3s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* ============================================
+   SCREEN READER ONLY
+   ============================================ */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* ============================================
+   SCROLL ANIMATIONS
+   ============================================ */
+.animate-on-scroll {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.animate-on-scroll.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Stagger children animations */
+.stagger-children > * {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeInUp 0.5s ease forwards;
+}
+
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+
+@keyframes fadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+   LOADING STATES
+   ============================================ */
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ============================================
+   NETWORK STATUS INDICATORS
+   ============================================ */
+.slow-network .match-card img,
+.slow-network .team-logo-img {
+  opacity: 0.5;
+  filter: blur(2px);
+  transition: opacity 0.3s, filter 0.3s;
+}
+
+.fast-network .match-card img,
+.fast-network .team-logo-img {
+  opacity: 1;
+  filter: none;
+}
+
+/* ============================================
+   ACCESSIBILITY HELP PANEL
+   ============================================ */
+.a11y-help-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.a11y-help-content {
+  background: var(--bg-2, #10101a);
+  border: 1px solid var(--border-default, rgba(255,255,255,0.1));
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 500px;
+  width: 100%;
+}
+
+.a11y-help-content h2 {
+  margin-top: 0;
+  color: var(--color-primary, #42f56c);
+}
+
+.a11y-help-content kbd {
+  background: var(--bg-3, #181825);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: monospace;
+  border: 1px solid var(--border-default, rgba(255,255,255,0.1));
+}
+
+.a11y-help-content .close-help {
+  margin-top: 20px;
+  padding: 12px 24px;
+  background: var(--color-primary, #42f56c);
+  color: var(--bg-0, #000);
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ============================================
+   LAZY LOADING TRANSITIONS
+   ============================================ */
+img[data-src] {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+img[data-src].loaded {
+  opacity: 1;
+}
+
+/* ============================================
+   BUTTON & INTERACTIVE ELEMENTS
+   ============================================ */
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.3s, height 0.3s;
+}
+
+.btn-primary:active::after {
+  width: 200px;
+  height: 200px;
+}
+
+/* ============================================
+   SELECTION STYLES
+   ============================================ */
+::selection {
+  background: var(--color-primary-alpha, rgba(66, 245, 108, 0.3));
+  color: var(--text-primary, #f2f2f7);
+}
+
+/* ============================================
+   SCROLLBAR STYLING
+   ============================================ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-1, #08080f);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong, rgba(255,255,255,0.2));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary, #42f56c);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong, rgba(255,255,255,0.2)) var(--bg-1, #08080f);
+}
+
+/* ============================================
+   REDUCE MOTION
+   ============================================ */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+@media print {
+  .bg-grid,
+  .chat-fab,
+  .global-bottom-nav,
+  .skip-link {
+    display: none !important;
+  }
+  
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  .panel {
+    break-inside: avoid;
+    border: 1px solid #ccc;
+  }
+}

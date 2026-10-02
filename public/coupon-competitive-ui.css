@@ -1,0 +1,126 @@
+body.coupon-portal .competitive-topbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 0.36rem;
+  margin-bottom: 0.48rem;
+}
+
+body.coupon-portal .competitive-topbar button {
+  min-height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(104, 214, 238, 0.3);
+  background: rgba(8, 18, 34, 0.82);
+  color: #e9f5ff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+body.coupon-portal .competitive-topbar button.is-active {
+  border-color: rgba(130, 255, 189, 0.6);
+  background: rgba(21, 54, 35, 0.78);
+  color: #dfffe9;
+}
+
+body.coupon-portal .competitive-clock {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid rgba(104, 214, 238, 0.22);
+  background: rgba(6, 12, 23, 0.8);
+  color: #bcd4ef;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0 0.55rem;
+}
+
+body.coupon-portal .competitive-stats-panel {
+  order: -1;
+}
+
+body.coupon-portal .competitive-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.44rem;
+}
+
+body.coupon-portal .competitive-stats-grid article {
+  border: 1px solid rgba(104, 214, 238, 0.2);
+  border-radius: 8px;
+  background: rgba(8, 15, 28, 0.78);
+  padding: 0.42rem 0.5rem;
+}
+
+body.coupon-portal .competitive-stats-grid span {
+  display: block;
+  color: #9db5d4;
+  font-size: 0.66rem;
+}
+
+body.coupon-portal .competitive-stats-grid strong {
+  display: block;
+  color: #ecf6ff;
+  font-size: 0.92rem;
+  margin-top: 0.12rem;
+}
+
+body.coupon-portal.competitive-focus .hero,
+body.coupon-portal.competitive-focus .coupon-quickstart-panel,
+body.coupon-portal.competitive-focus .advanced-coupon-tools {
+  display: none !important;
+}
+
+body.coupon-portal.competitive-focus .primary-grid {
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+}
+
+body.coupon-portal.competitive-dense .actions button {
+  min-height: 34px !important;
+  font-size: 0.7rem !important;
+  padding: 0.34rem 0.4rem !important;
+}
+
+body.coupon-portal.competitive-dense .controls input,
+body.coupon-portal.competitive-dense .controls select {
+  min-height: 32px !important;
+  font-size: 0.8rem !important;
+}
+
+body.coupon-portal.competitive-pulse .panel,
+body.coupon-portal.competitive-pulse .controls {
+  box-shadow: 0 0 0 1px rgba(0, 240, 255, 0.1) inset, 0 0 22px rgba(0, 240, 255, 0.08);
+}
+
+@media (max-width: 900px) {
+  body.coupon-portal .competitive-topbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.coupon-portal .competitive-clock {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  body.coupon-portal .competitive-stats-panel {
+    order: 0;
+  }
+
+  body.coupon-portal .competitive-stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  body.coupon-portal .competitive-stats-grid article {
+    padding: 0.36rem;
+  }
+
+  body.coupon-portal .competitive-stats-grid span {
+    font-size: 0.58rem;
+  }
+
+  body.coupon-portal .competitive-stats-grid strong {
+    font-size: 0.76rem;
+  }
+}
