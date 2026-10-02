@@ -20,93 +20,26 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/pages-luxe.css" />
   <link rel="stylesheet" href="/coupon.css" />
-  <link rel="stylesheet" href="/coupon-mobile.css" />
-  <link rel="stylesheet" href="/coupon-mobile-ui.css" />
-  <link rel="stylesheet" href="/coupon-mobile-performance.css" />
   <link rel="stylesheet" href="/coupon-ai-ui.css" />
   <link rel="stylesheet" href="/coupon-ai-progress.css" />
-  <link rel="stylesheet" href="/mobile-responsive-fixes.css" />
   <link rel="stylesheet" href="/coupon-enhanced.css" />
-  <link rel="stylesheet" href="/unified-system.css" />
-  <link rel="stylesheet" href="/mobile-optimizations.css" />
-  <link rel="stylesheet" href="/mobile-install-banner.css" />
-  <link rel="stylesheet" href="/coupon-super-ai-chat.css" />
-  <link rel="stylesheet" href="/mobile-ultra-premium.css" />
-  <link rel="stylesheet" href="/pwa-optimizations.css" />
   <link rel="stylesheet" href="/signature.css" />
   <link rel="stylesheet" href="/chat-widget.css" />
-  <link rel="stylesheet" href="/mobile-hard-fix.css" />
-  <link rel="stylesheet" href="/power-ui.css" />
-  <link rel="stylesheet" href="/coupon-mobile-final.css" />
-  <link rel="stylesheet" href="/mobile-layout-fix.css" />
-  <link rel="stylesheet" href="/site-embellishment.css" />
   <link rel="stylesheet" href="/coupon-compact-layout.css" />
-  <link rel="stylesheet" href="/coupon-competitive-ui.css" />
-  <link rel="stylesheet" href="/touch-layout-unified.css" />
 </head>
 
 <body class="coupon-portal">
   <main class="page">
-    <nav class="page-link-cloud" aria-label="Navigation coupon">
-      <a class="back" href="/">Retour aux matchs</a>
+    <nav class="coupon-top-nav" aria-label="Navigation coupon">
+      <a class="back" href="/">Accueil</a>
       <a class="back" href="/suivre.html">Suivi des matchs</a>
-      <a class="back" href="/mode-emploi.html">Mode d'emploi</a>
-      <a class="back" href="/updates.html">Mises a jour</a>
-      <a class="back" href="/about.html">A propos du createur</a>
-      <a class="back" href="/developpeur.html">Page Developpeur</a>
-      <a class="back sublime-link" href="/coupon-sublime.html">COUP SUBLIME</a>
     </nav>
-    <header class="hero">
+    <header class="hero coupon-header">
       <p class="tag">ONE-DELUX</p>
-      <h1>Coupon Optimise</h1>
-      <p>ONE-DELUX - Le signal avant le coup d'envoi. Version simplifiee pour demarrer vite, avec options avancees toujours disponibles et assistant IA unifie.</p>
-      <div class="coupon-hero-badges">
-        <span class="coupon-chip">Meme API IA que details</span>
-        <span class="coupon-chip">Questions libres + recherche</span>
-        <span class="coupon-chip">Mode simple ou avance</span>
-      </div>
-      <div class="hero-metric-strip" aria-hidden="true">
-        <article class="hero-metric-card">
-          <span>Vitesse</span>
-          <strong>Generation instant</strong>
-          <em>Creer, valider et exporter dans le meme espace.</em>
-        </article>
-        <article class="hero-metric-card">
-          <span>Controle</span>
-          <strong>Risk Engine</strong>
-          <em>Drift, bankroll, correlation et auto-heal sous une meme surface.</em>
-        </article>
-        <article class="hero-metric-card">
-          <span>Format</span>
-          <strong>Story Ready</strong>
-          <em>PNG, JPG, PDF et Telegram avec rendu plus editorial.</em>
-        </article>
-        <article class="hero-metric-card">
-          <span>Mobile</span>
-          <strong>Thumb First</strong>
-          <em>Barre sticky et zones tactiles plus premium sur smartphone.</em>
-        </article>
-      </div>
+      <h1>Créer un coupon</h1>
+      <p>Choisis les matchs, génère ton ticket, puis vérifie-le avant de le partager.</p>
     </header>
-
-    <section class="panel coupon-quickstart-panel">
-      <div class="coupon-quickstart-grid">
-        <article class="coupon-quick-card">
-          <strong>1. Configure</strong>
-          <p>Choisis juste le nombre de matchs, la ligue, le profil de risque et la mise.</p>
-        </article>
-        <article class="coupon-quick-card">
-          <strong>2. Genere puis valide</strong>
-          <p>Lance le coupon, puis verifie le ticket avant tout envoi ou export.</p>
-        </article>
-        <article class="coupon-quick-card">
-          <strong>3. Partage</strong>
-          <p>Une fois le ticket propre, exporte-le sans devoir traverser une page surchargee.</p>
-        </article>
-      </div>
-    </section>
 
     <section class="controls coupon-core-controls">
       <label>
@@ -149,42 +82,17 @@
       </label>
     </section>
 
-    <section class="panel coupon-main-actions-panel">
-      <div class="competitive-topbar" aria-label="Barre competitive">
-        <button id="competitiveFocusBtn" type="button">Mode Focus</button>
-        <button id="competitiveDensityBtn" type="button">Ultra Compact</button>
-        <button id="competitivePulseBtn" type="button">Live Pulse</button>
-        <span id="competitiveClock" class="competitive-clock">--:--:--</span>
-      </div>
-      <div class="coupon-simple-toggle-row">
-        <button id="toggleCouponSimpleBtn" type="button">Afficher les options avancees</button>
-        <span id="couponSimpleModeLabel">Vue simple active</span>
-      </div>
-      <p class="coupon-action-hint">Genere et valide ton ticket ici. Les reglages, exports et analyses sont dans « Outils avances ».</p>
+    <section class="panel coupon-main-actions-panel" aria-label="Actions principales du coupon">
       <div class="actions coupon-main-actions">
         <button id="generateBtn" type="button">Generer Coupon</button>
         <button id="readyToSendBtn" type="button" disabled>Pret a envoyer</button>
         <button id="validateBtn" type="button">Valider Ticket Pro</button>
-        <button id="coachAiBtn" type="button" disabled>Coach IA 1-Clic</button>
-        <button id="replaceWeakBtn" type="button" disabled>Remplacer Pick Faible</button>
-        <button id="replaceTooCloseBtn" type="button" disabled>Remplacer matchs trop proches</button>
         <button id="sendTelegramBtn" type="button" disabled>Envoyer Telegram</button>
-        <button id="downloadImageBtn" type="button" disabled>Image Coupon</button>
-        <button id="downloadPdfBtn" type="button" disabled>PDF Resume</button>
-      </div>
-      <div class="actions coupon-premium-actions">
-        <button id="downloadPremiumImageBtnQuick" type="button" disabled>Image premium</button>
-        <button id="downloadStoryBtnQuick" type="button" disabled>Image story</button>
-        <button id="sendTelegramImageBtnQuick" type="button" disabled>Telegram Image</button>
-        <button id="downloadImageDuoBtnQuick" type="button" disabled title="Standard : les deux fichiers">Duo PNG +
-          JPG</button>
-        <button id="copyCouponTextBtnQuick" type="button" disabled>Copier le coupon</button>
-        <button id="resetCouponWorkspaceBtnQuick" class="btn-reset-workspace" type="button">Reinitialiser</button>
       </div>
     </section>
 
     <details class="panel advanced-coupon-tools">
-      <summary>Outils avances, exports et analyses</summary>
+      <summary>Options avancées et outils</summary>
       <h3 class="coupon-tools-heading">Reglages experts</h3>
       <div class="advanced-coupon-tools-grid">
         <label>
@@ -269,6 +177,15 @@
         </label>
       </div>
 
+      <h3 class="coupon-tools-heading coupon-tools-heading-actions">Actions supplémentaires</h3>
+      <div class="actions coupon-secondary-actions coupon-extra-actions">
+        <button id="coachAiBtn" type="button" disabled>Coach IA</button>
+        <button id="replaceWeakBtn" type="button" disabled>Remplacer un choix faible</button>
+        <button id="replaceTooCloseBtn" type="button" disabled>Remplacer les matchs proches</button>
+        <button id="downloadImageBtn" type="button" disabled>Image coupon</button>
+        <button id="downloadPdfBtn" type="button" disabled>PDF résumé</button>
+      </div>
+
       <section class="panel export-luxe-panel" aria-labelledby="exportLuxeTitle">
         <h3 id="exportLuxeTitle">Exports image — PNG &amp; JPG</h3>
         <p class="export-luxe-tagline">
@@ -296,7 +213,7 @@
         <p class="export-luxe-sign">Signe <strong>SOLITAIRE HACK 🇨🇮</strong></p>
       </section>
 
-      <h3 class="coupon-tools-heading coupon-tools-heading-actions">Analyses et partage</h3>
+      <h3 class="coupon-tools-heading coupon-tools-heading-actions">Exports et analyses</h3>
       <div class="actions coupon-secondary-actions">
         <button id="generateLadderBtn" type="button">Coupon Ladder IA</button>
         <button id="generateMultiBtn" type="button">3 Strategies</button>
@@ -320,27 +237,31 @@
       <section class="panel panel-main" id="result">
         <p>En attente de generation.</p>
       </section>
-      <section class="panel competitive-stats-panel" id="competitiveStatsPanel">
-        <h3>Vue Competitive</h3>
-        <div class="competitive-stats-grid">
-          <article><span>Selections</span><strong id="compTotalSel">0</strong></article>
-          <article><span>Cote totale</span><strong id="compTotalOdd">-</strong></article>
-          <article><span>Confiance moy.</span><strong id="compAvgConf">0%</strong></article>
-          <article><span>Ligues</span><strong id="compLeagueCount">0</strong></article>
-        </div>
-      </section>
       <section class="panel panel-main" id="validation">
         <p>Validation ticket en attente.</p>
       </section>
+    </section>
+
+    <details class="panel coupon-insights-tools">
+      <summary>Statistiques, santé du coupon et alertes</summary>
+      <section class="panel competitive-stats-panel" id="competitiveStatsPanel">
+        <h3>Statistiques</h3>
+        <div class="competitive-stats-grid">
+          <article><span>Sélections</span><strong id="compTotalSel">0</strong></article>
+          <article><span>Cote totale</span><strong id="compTotalOdd">-</strong></article>
+          <article><span>Indice IA moyen</span><strong id="compAvgConf">0</strong></article>
+          <article><span>Ligues</span><strong id="compLeagueCount">0</strong></article>
+        </div>
+      </section>
       <section class="panel" id="healthPanel">
-        <h3>Dashboard Sante du Coupon</h3>
-        <p>Genere un coupon pour calculer la sante globale.</p>
+        <h3>Santé du coupon</h3>
+        <p>Génère un coupon pour afficher son état général.</p>
       </section>
       <section class="panel" id="alertsPanel">
-        <h3>Centre d'Alertes</h3>
+        <h3>Alertes</h3>
         <p>Aucune alerte pour le moment.</p>
       </section>
-    </section>
+    </details>
 
     <section class="secondary-grid utility-vault hidden" aria-hidden="true">
       <section class="panel" id="multiResult">
@@ -392,28 +313,21 @@
     <footer class="site-signature">😈 Signé par <strong>SOLITAIRE HACK 🇨🇮</strong></footer>
   </main>
 
-  <nav class="sticky-ticket-bar" aria-label="Actions rapides ticket">
-    <button id="generateBtnSticky" type="button">Generer</button>
-    <button id="readyToSendBtnSticky" type="button" disabled>Pret</button>
+  <nav class="sticky-ticket-bar" aria-label="Actions rapides du ticket">
+    <button id="generateBtnSticky" type="button">Générer</button>
     <button id="validateBtnSticky" type="button">Valider</button>
-    <button id="downloadPdfBtnSticky" type="button" disabled>PDF</button>
+    <button id="sendTelegramBtnSticky" type="button" disabled>Partager</button>
   </nav>
   <script src="/mobile-viewport-fix.js"></script>
-  <script src="/mobile-enhancements.js"></script>
-  <script src="/mobile-complete-js.js"></script>
   <script src="/solitaire-ai-client.js"></script>
-  <script src="/mobile-ultra-interactions.js"></script>
   <script src="/global-ui-shell.js" defer></script>
-  <script src="/coupon-mobile-tools.js"></script>
   <script src="/coupon-advanced-engine.js"></script>
   <script src="/coupon-ai-confidence.js"></script>
   <script src="/coupon-ai-integration.js"></script>
   <script src="/coupon-advanced-features.js"></script>
   <script src="/unified-system.js"></script>
-  <script src="/coupon-super-ai-chat.js"></script>
   <script src="/statistic-analysis.js"></script>
   <script src="/livefeed-alternative-integration.js"></script>
-  <script src="/coupon-page-guide.js"></script>
   <script src="/exactScoreSignal.js" defer></script>
   <script src="/site-api.js"></script>
   <script src="/coupon.js" defer></script>
@@ -422,7 +336,6 @@
   <script src="/browser-sync.js" defer></script>
   <script src="/pwa-register.js" defer></script>
   <script src="/push-background.js" defer></script>
-  <script src="/coupon-competitive-ui.js" defer></script>
 </body>
 
 </html>
