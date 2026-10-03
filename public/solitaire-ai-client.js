@@ -48,6 +48,33 @@
       .map((button) => compactText(button.textContent, 40))
       .filter(Boolean)
       .slice(0, 16);
+    const visibleCards = Array.from(document.querySelectorAll(
+      "main article, main .match-card, main .match-item, main .match-row, main [data-match-id], main .panel"
+    ))
+      .filter((card) => card.getClientRects().length && !card.closest("[hidden], .hidden, .chat-panel"))
+      .map((card) => compactText(card.textContent, 150))
+      .filter(Boolean)
+      .slice(0, 8);
+    const activeFilters = Array.from(document.querySelectorAll("main select, main input:not([type='password']):not([type='email'])"))
+      .filter((control) => control.getClientRects().length && !control.closest("[hidden], .hidden"))
+      .map((control) => {
+        const label = control.labels?.[0]?.textContent || control.getAttribute("aria-label") || control.name || control.id;
+        const value = control.type === "checkbox" || control.type === "radio"
+          ? (control.checked ? "activé" : "désactivé")
+          : control.tagName === "SELECT"
+            ? control.selectedOptions?.[0]?.textContent || control.value
+            : control.type === "number"
+              ? control.value
+              : "";
+        return value ? `${compactText(label, 35)}: ${compactText(value, 45)}` : "";
+      })
+      .filter(Boolean)
+      .slice(0, 10);
+    const visibleStatus = Array.from(document.querySelectorAll("main [role='status'], main .status, main .empty-state, main .subtitle, main #sub"))
+      .filter((element) => element.getClientRects().length && !element.closest("[hidden], .hidden"))
+      .map((element) => compactText(element.textContent, 120))
+      .filter(Boolean)
+      .slice(0, 6);
 
     if (hasCouponControls) {
       const selections = Array.from(document.querySelectorAll("#result ol li"))
@@ -63,6 +90,9 @@
         validation: validationText,
         couponState: selections.length ? "loaded" : "empty",
         quickGenerateVisible,
+        visibleCards,
+        activeFilters,
+        visibleStatus,
         enabledButtons,
       };
     }
@@ -73,6 +103,9 @@
         title,
         subtitle: compactText(document.getElementById("sub")?.textContent || "", 180),
         master: compactText(document.getElementById("master")?.textContent || "", 220),
+        visibleCards,
+        activeFilters,
+        visibleStatus,
         enabledButtons,
       };
     }
@@ -101,6 +134,9 @@
       pageType,
       title,
       sections,
+      visibleCards,
+      activeFilters,
+      visibleStatus,
       enabledButtons,
     };
   }

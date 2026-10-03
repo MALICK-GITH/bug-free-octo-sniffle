@@ -37,6 +37,7 @@ const { API_URL, getPenaltyMatches, getStructure, getMatchPredictionDetails, get
 const { getLeagueProfiles } = require("./services/leagueProfiles");
 const { toFeatures, deduplicate, extractRules, buildDecisionEngine, toTrainReadyCSV } = require("./services/patternEngineV2");
 const { runLearningCron } = require("./services/cronLearning");
+const { getProviderCouncilQuality } = require("./services/providerCouncilMetrics");
 const {
   saveCouponGeneration,
   saveCouponValidation,
@@ -3722,6 +3723,18 @@ app.get("/api/odds/:matchId(\\d+)", async (req, res) => {
         message: "Impossible de recuperer les cotes du match.",
         details: error.message
       }
+    });
+  }
+});
+
+app.get("/api/ai/provider-council/quality", async (_req, res) => {
+  try {
+    return res.json({ success: true, data: await getProviderCouncilQuality() });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Impossible de lire le suivi qualité des API.",
+      error: String(error?.message || "PROVIDER_COUNCIL_QUALITY_ERROR"),
     });
   }
 });

@@ -1,5 +1,6 @@
-const { getPenaltyMatches, getMatchPredictionDetails, fetchLiveFeedRaw } = require("./liveFeed");
+const { getPenaltyMatches, getMatchPredictionDetails, fetchLiveFeedRaw, captureUpcomingProviderCouncilForecasts } = require("./liveFeed");
 const { saveGeneratedAsset, upsertFinishedMatchDataset, getTrackedMatches, getFinishedMatchesDataset } = require("./db");
+const { resolveProviderCouncilForecasts } = require("./providerCouncilMetrics");
 
 function normalizeText(value = "") {
   return String(value)
@@ -239,8 +240,19 @@ function buildReport(rows = []) {
 }
 
 async function runLearningCron({ dryRun = false, debug = false } = {}) {
+  const providerCouncilCapture = dryRun
+    ? { attempted: 0, recorded: 0, providersAvailable: 0 }
+    : await captureUpcomingProviderCouncilForecasts(8).catch((error) => ({
+      attempted: 0,
+      recorded: 0,
+      providersAvailable: 0,
+      error: String(error?.message || "FORECAST_CAPTURE_ERROR"),
+    }));
   const { rows, diagnostics, finishedDatasetRows } = await buildLearningRows(300);
   const report = buildReport(rows);
+  const providerCouncilLearning = dryRun
+    ? { resolved: 0 }
+    : await resolveProviderCouncilForecasts(finishedDatasetRows).catch(() => ({ resolved: 0 }));
 
   if (!dryRun) {
     for (const entry of finishedDatasetRows) {
@@ -273,6 +285,8 @@ async function runLearningCron({ dryRun = false, debug = false } = {}) {
       ...report,
       scope: "mixed-penalty-regular",
       savedFinishedMatches: dryRun ? 0 : finishedDatasetRows.length,
+      providerCouncilCapture,
+      providerCouncilLearning,
       diagnostics: debug ? diagnostics : undefined,
     },
   };

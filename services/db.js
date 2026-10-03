@@ -545,6 +545,14 @@ const sqliteSelectGeneratedAssetsStmt = sqliteDb.prepare(`
   LIMIT ?
 `);
 
+const sqliteSelectGeneratedAssetsByKindStmt = sqliteDb.prepare(`
+  SELECT id, created_at, kind, page, action, label, file_name, format, mime_type, source, related_id, asset_json
+  FROM generated_assets
+  WHERE kind = ?
+  ORDER BY id DESC
+  LIMIT ?
+`);
+
 const sqliteUpsertWatchlistStmt = sqliteDb.prepare(`
   INSERT INTO watchlists (user_id, match_ids_json, snapshot_json)
   VALUES (?, ?, ?)
@@ -2824,16 +2832,18 @@ async function saveGeneratedAsset(entry = {}) {
   return result.lastInsertRowid;
 }
 
-async function getGeneratedAssets(limit = 20) {
-  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 20));
+async function getGeneratedAssets(limit = 20, kind = null) {
+  const safeLimit = Math.max(1, Math.min(2000, Number(limit) || 20));
+  const safeKind = String(kind || "").trim() || null;
 
   if (await canUsePostgres()) {
     const result = await postgresPool.query(
       `SELECT id, created_at, kind, page, action, label, file_name, format, mime_type, source, related_id, asset_json
        FROM generated_assets
+       ${safeKind ? "WHERE kind = $1" : ""}
        ORDER BY id DESC
-       LIMIT $1`,
-      [safeLimit]
+       LIMIT $${safeKind ? 2 : 1}`,
+      safeKind ? [safeKind, safeLimit] : [safeLimit]
     );
     return result.rows.map((row) => ({
       id: row.id,
@@ -2854,9 +2864,10 @@ async function getGeneratedAssets(limit = 20) {
     const [rows] = await mysqlPool.execute(
       `SELECT id, created_at, kind, page, action, label, file_name, format, mime_type, source, related_id, asset_json
        FROM generated_assets
+       ${safeKind ? "WHERE kind = ?" : ""}
        ORDER BY id DESC
        LIMIT ?`,
-      [safeLimit]
+      safeKind ? [safeKind, safeLimit] : [safeLimit]
     );
     return rows.map((row) => ({
       id: row.id,
@@ -2874,7 +2885,10 @@ async function getGeneratedAssets(limit = 20) {
     }));
   }
 
-  return sqliteSelectGeneratedAssetsStmt.all(safeLimit).map((row) => ({
+  const sqliteRows = safeKind
+    ? sqliteSelectGeneratedAssetsByKindStmt.all(safeKind, safeLimit)
+    : sqliteSelectGeneratedAssetsStmt.all(safeLimit);
+  return sqliteRows.map((row) => ({
     id: row.id,
     createdAt: row.created_at || null,
     kind: row.kind,

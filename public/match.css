@@ -1002,6 +1002,42 @@ li {
   text-align: left;
 }
 
+.provider-pick-reason {
+  display: block;
+  max-width: 24rem;
+  margin-top: 0.28rem;
+  color: var(--muted, #aebbd0);
+  line-height: 1.4;
+}
+
+.provider-quality {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.provider-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.6rem;
+}
+
+.provider-quality-card {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid rgba(108, 154, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(11, 20, 39, 0.62);
+}
+
+.provider-quality-card small,
+.provider-quality > p {
+  color: var(--muted, #aebbd0);
+  line-height: 1.4;
+}
+
 @media (max-width: 640px) {
   .provider-market-heading { flex-direction: column; }
 }

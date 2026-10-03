@@ -21,6 +21,7 @@ const { getHistoricalRecommendation } = require("./historical");
 const { getPenaltyTournaments } = require("./tournaments");
 const { getTrackedMatches, getFinishedMatchesDataset } = require("./db");
 const { predictWithProviderCouncil } = require("./predictionProviderCouncil");
+const { recordProviderCouncilForecast } = require("./providerCouncilMetrics");
 const { MIN_RECOMMENDED_ODDS } = require("./predictionPolicy");
 const LIVEFEED_CACHE_FILE = path.resolve(
   process.cwd(),
@@ -1280,6 +1281,7 @@ async function getMatchPredictionDetails(matchId) {
   if (found) {
     const details = buildMatchPredictionDetails(found);
     const providerCouncil = await predictWithProviderCouncil(details.match, found, details.bettingMarkets);
+    await recordProviderCouncilForecast(details.match, providerCouncil).catch(() => false);
     applyProviderCouncilConsensus(details, providerCouncil);
     const pickedPari = details?.prediction?.maitre?.decision_finale?.pari_choisi || "";
     const evalInput = buildExtraFilterInput(details, pickedPari);
@@ -1300,6 +1302,7 @@ async function getMatchPredictionDetails(matchId) {
     const storedEvent = synthesizeLiveFeedEvent(storedMatch, storedMatch?.status || null);
     const details = buildMatchPredictionDetails(storedEvent);
     const providerCouncil = await predictWithProviderCouncil(details.match, storedEvent, details.bettingMarkets);
+    await recordProviderCouncilForecast(details.match, providerCouncil).catch(() => false);
     applyProviderCouncilConsensus(details, providerCouncil);
     const pickedPari = details?.prediction?.maitre?.decision_finale?.pari_choisi || "";
     const evalInput = buildExtraFilterInput(details, pickedPari);
@@ -1322,6 +1325,7 @@ async function getMatchPredictionDetailsFromMatch(match = {}) {
   const storedEvent = synthesizeLiveFeedEvent(match, match?.status || null);
   const details = buildMatchPredictionDetails(storedEvent);
   const providerCouncil = await predictWithProviderCouncil(details.match, storedEvent, details.bettingMarkets);
+  await recordProviderCouncilForecast(details.match, providerCouncil).catch(() => false);
   applyProviderCouncilConsensus(details, providerCouncil);
   const pickedPari = details?.prediction?.maitre?.decision_finale?.pari_choisi || "";
   const evalInput = buildExtraFilterInput(details, pickedPari);
@@ -1331,6 +1335,38 @@ async function getMatchPredictionDetailsFromMatch(match = {}) {
     providerCouncil,
     extraPowerFilter: extraFilter,
     fallbackSource: match?.source || "stored-match",
+  };
+}
+
+async function captureUpcomingProviderCouncilForecasts(limit = 8) {
+  const listing = await getPenaltyMatches();
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const upcoming = (Array.isArray(listing?.matches) ? listing.matches : [])
+    .filter((match) => {
+      const start = Number(match?.startTimeUnix || 0);
+      return start > nowSeconds + 60 && start <= nowSeconds + 24 * 60 * 60;
+    })
+    .sort((a, b) => Number(a.startTimeUnix) - Number(b.startTimeUnix))
+    .slice(0, Math.max(1, Math.min(16, Number(limit) || 8)));
+
+  const results = await Promise.all(upcoming.map(async (match) => {
+    try {
+      const details = await getMatchPredictionDetailsFromMatch(match);
+      return {
+        matchId: String(match.id || ""),
+        providersAvailable: Number(details?.providerCouncil?.summary?.providersAvailable || 0),
+        recorded: true,
+      };
+    } catch (error) {
+      return { matchId: String(match.id || ""), recorded: false, error: String(error?.message || "FORECAST_ERROR") };
+    }
+  }));
+
+  return {
+    attempted: upcoming.length,
+    recorded: results.filter((item) => item.recorded).length,
+    providersAvailable: results.reduce((sum, item) => sum + Number(item.providersAvailable || 0), 0),
+    errors: results.filter((item) => !item.recorded).slice(0, 8),
   };
 }
 
@@ -1361,6 +1397,10 @@ function buildMatchPredictionDetails(event) {
 }
 
 function applyProviderCouncilConsensus(details = {}, providerCouncil = {}) {
+  const generatedAt = Date.parse(providerCouncil?.generatedAt || "");
+  const ageMs = Date.now() - generatedAt;
+  const maxAgeMs = Math.max(1000, Number(providerCouncil?.maxAgeMs) || 60_000);
+  if (!Number.isFinite(generatedAt) || ageMs < -30_000 || ageMs > maxAgeMs) return;
   const picks = Array.isArray(providerCouncil?.playablePicks) ? providerCouncil.playablePicks : [];
   if (!picks.length || !details?.prediction?.maitre) return;
 
@@ -1880,6 +1920,7 @@ module.exports = {
   getStructure,
   getMatchPredictionDetails,
   getMatchPredictionDetailsFromMatch,
+  captureUpcomingProviderCouncilForecasts,
   getCouponSelection,
   validateCouponTicket,
   isStrictUpcomingEvent,

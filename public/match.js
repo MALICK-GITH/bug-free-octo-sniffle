@@ -22,6 +22,8 @@ let coachModeEnabled = true;
 let lowDataEnabled = false;
 let previousMasterConfidence = null;
 let liveSilentRefreshIntervalId = null;
+let providerQualityCache = null;
+let providerQualityFetchedAt = 0;
 
 function qs(name) {
   return new URLSearchParams(window.location.search).get(name);
@@ -490,16 +492,23 @@ function renderProviderCouncil(council = {}) {
   const host = document.getElementById("providerCouncilContent");
   if (!host) return;
   const providers = Array.isArray(council.providers) ? council.providers : [];
-  const markets = Array.isArray(council.marketConsensus) ? council.marketConsensus : [];
+  const generatedAt = Date.parse(council.generatedAt || "");
+  const ageMs = Number.isFinite(generatedAt) ? Math.max(0, Date.now() - generatedAt) : Infinity;
+  const maxAgeMs = Math.max(1000, Number(council.maxAgeMs) || 60_000);
+  const stale = ageMs > maxAgeMs;
+  const markets = !stale && Array.isArray(council.marketConsensus) ? council.marketConsensus : [];
   const recommendations = (Array.isArray(council.bookmakerMarkets) ? council.bookmakerMarkets : [])
-    .filter((item) => item.eligibleOdds)
+    .filter((item) => !stale)
     .slice(0, 30);
   const providerCards = providers.map((provider) => {
     const model = provider.model || {};
     const samples = Number(model.trainingSamples || model.trainedMatches || model.trainMatches || model.matches || 0);
     const modelName = model.id || model.profile || model.version || "Modèle actif";
       const status = provider.status === "ok" ? "Connecté" : provider.status === "unavailable" ? `Indisponible (${provider.error || "erreur"})` : provider.status === "not_configured" ? "Clé serveur à configurer" : "Aucune sortie exploitable";
-    return `<article class="provider-model-card"><strong>${escapeHtml(provider.name)}</strong><span class="provider-status ${provider.status === "ok" ? "is-online" : "is-offline"}">${escapeHtml(status)}</span><small>${escapeHtml(modelName)}${samples ? ` · ${samples.toLocaleString("fr-FR")} matchs` : ""}</small><small>${Number(provider.predictionCount || 0)} probabilités · ${Number(provider.latencyMs || 0)} ms</small></article>`;
+    const observed = provider.observedAt && Number.isFinite(Date.parse(provider.observedAt))
+      ? new Date(provider.observedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      : "heure inconnue";
+    return `<article class="provider-model-card"><strong>${escapeHtml(provider.name)}</strong><span class="provider-status ${provider.status === "ok" ? "is-online" : "is-offline"}">${escapeHtml(status)}</span><small>${escapeHtml(modelName)}${samples ? ` · ${samples.toLocaleString("fr-FR")} matchs` : ""}</small><small>${Number(provider.predictionCount || 0)} probabilités · ${Number(provider.latencyMs || 0)} ms · reçu à ${observed}</small>${provider.error ? `<small>Erreur : ${escapeHtml(provider.error)}</small>` : ""}</article>`;
   }).join("");
   const marketCards = markets.map((market) => {
     const outcomes = (market.outcomes || []).map((outcome) => {
@@ -508,16 +517,63 @@ function renderProviderCouncil(council = {}) {
     }).join("");
     return `<article class="provider-market-card"><div class="provider-market-heading"><strong>${escapeHtml(providerMarketLabel(market))}</strong><span>${Number(market.providersCount || 0)} modèles · accord ${Number(market.agreementPct || 0)}%</span></div><div class="provider-outcomes">${outcomes || "Aucun résultat"}</div></article>`;
   }).join("");
-  const recommendationRows = recommendations.map((item) => `<tr><td>${escapeHtml(item.market)}</td><td>${formatOdd(item.offeredOdds)}</td><td>${(Number(item.probability || 0) * 100).toFixed(1)}%</td><td>${formatOdd(item.fairOdds)}</td><td>${(Number(item.edge || 0) * 100).toFixed(1)}%</td><td>${item.recommendation === "value" ? "Valeur · consensus" : item.consensusAligned ? "Consensus" : "À écarter"}</td></tr>`).join("");
+  const recommendationRows = recommendations.map((item) => {
+    const status = item.recommendation === "value" ? "Valeur retenue" : "Écartée";
+    const reasons = Array.isArray(item.reasons) ? item.reasons.join(" ") : "";
+    const probability = item.probability != null && Number.isFinite(Number(item.probability)) ? `${(Number(item.probability) * 100).toFixed(1)}%` : "—";
+    const edge = item.edge != null && Number.isFinite(Number(item.edge)) ? `${(Number(item.edge) * 100).toFixed(1)}%` : "—";
+    return `<tr><td>${escapeHtml(item.market)}</td><td>${formatOdd(item.offeredOdds)}</td><td>${probability}</td><td>${formatOdd(item.fairOdds)}</td><td>${edge}</td><td><strong>${status}</strong><small class="provider-pick-reason">${escapeHtml(reasons)}</small></td></tr>`;
+  }).join("");
   const summary = council.summary || {};
+  const freshness = Number.isFinite(ageMs)
+    ? `Données reçues il y a ${Math.floor(ageMs / 1000)} s`
+    : "Date de réponse indisponible";
   host.innerHTML = `
-    <p class="provider-council-summary">${Number(summary.providersAvailable || 0)}/${Number(summary.providersConfigured || 4)} fournisseurs disponibles · ${Number(summary.marketsPredicted || 0)} marchés rapprochés · cote minimale ${formatOdd(council.minOfferedOdds || 1.5)} sans plafond</p>
+    <p class="provider-council-summary">${Number(summary.providersAvailable || 0)}/${Number(summary.providersConfigured || 4)} fournisseurs disponibles · ${Number(summary.marketsPredicted || 0)} marchés rapprochés · ${freshness}${stale ? " · données périmées ignorées" : ""}</p>
     <div class="provider-model-grid">${providerCards || "<p>Aucun fournisseur répondu.</p>"}</div>
     <h3>Consensus par marché</h3>
-    <div class="provider-market-grid">${marketCards || "<p>Aucun marché commun exploitable pour ce match.</p>"}</div>
-    <h3>Marchés du bookmaker à partir de 1,50</h3>
-    <div class="provider-table-wrap"><table class="provider-picks-table"><thead><tr><th>Marché</th><th>Cote</th><th>Probabilité commune</th><th>Cote juste</th><th>Edge</th><th>Décision</th></tr></thead><tbody>${recommendationRows || "<tr><td colspan=\"6\">Aucune cote alignée sur le consensus avec un edge positif supérieur à 2%.</td></tr>"}</tbody></table></div>
+    <div class="provider-market-grid">${stale ? "<p>Consensus masqué, car les données ont dépassé leur durée de validité.</p>" : marketCards || "<p>Aucun marché commun exploitable pour ce match.</p>"}</div>
+    <h3>Marchés analysés et motifs de décision</h3>
+    <div class="provider-table-wrap"><table class="provider-picks-table"><thead><tr><th>Marché</th><th>Cote</th><th>Probabilité commune</th><th>Cote juste</th><th>Avantage estimé</th><th>Décision et motif</th></tr></thead><tbody>${recommendationRows || `<tr><td colspan="6">${stale ? "Les anciens choix ont été ignorés." : "Aucun marché exploitable disponible."}</td></tr>`}</tbody></table></div>
+    <p class="provider-council-summary">Probabilités et avantages = estimations statistiques, jamais une garantie de gain.</p>
+    <section class="provider-quality" id="providerCouncilQuality"><p>Chargement de la précision historique des API…</p></section>
   `;
+  loadProviderCouncilQuality();
+}
+
+function renderProviderCouncilQuality(data = {}) {
+  const host = document.getElementById("providerCouncilQuality");
+  if (!host) return;
+  const rows = Array.isArray(data.providers) ? data.providers : [];
+  if (!rows.length || !Number(data.sampleMatches || 0)) {
+    host.innerHTML = `<h3>Précision suivie dans le temps</h3><p>${escapeHtml(data.note || "Le suivi commence avec les prochains matchs à venir.")}</p>`;
+    return;
+  }
+  const cards = rows.map((provider) => {
+    const accuracy = provider.accuracyPct == null ? "En attente de résultats" : `${provider.accuracyPct}% (${provider.wins} sur ${provider.resolvedCount})`;
+    const availability = provider.availabilityPct == null ? "—" : `${provider.availabilityPct}%`;
+    const latency = provider.averageLatencyMs == null ? "—" : `${provider.averageLatencyMs} ms`;
+    return `<article class="provider-quality-card"><strong>${escapeHtml(provider.name)}</strong><span>Précision 1X2 : ${escapeHtml(accuracy)}</span><small>${provider.forecastCount} prévisions · disponibilité ${availability} · délai moyen ${latency} · ${provider.errorCount || 0} erreurs</small></article>`;
+  }).join("");
+  host.innerHTML = `<h3>Précision suivie dans le temps</h3><p>${escapeHtml(data.note || "")}</p><div class="provider-quality-grid">${cards}</div>`;
+}
+
+async function loadProviderCouncilQuality() {
+  if (providerQualityCache && Date.now() - providerQualityFetchedAt < 180_000) {
+    renderProviderCouncilQuality(providerQualityCache);
+    return;
+  }
+  try {
+    const response = await fetch("/api/ai/provider-council/quality", { headers: { Accept: "application/json" } });
+    const payload = await response.json();
+    if (!response.ok || !payload?.success) throw new Error(payload?.message || "Suivi qualité indisponible.");
+    providerQualityCache = payload.data || {};
+    providerQualityFetchedAt = Date.now();
+    renderProviderCouncilQuality(providerQualityCache);
+  } catch (_error) {
+    const host = document.getElementById("providerCouncilQuality");
+    if (host) host.innerHTML = "<h3>Précision suivie dans le temps</h3><p>Suivi historique indisponible pour le moment.</p>";
+  }
 }
 
 function buildCoachLines(data) {

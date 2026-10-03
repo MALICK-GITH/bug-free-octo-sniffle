@@ -6,12 +6,7 @@
 const { genererPredictionUnifiee } = require('./unifiedPrediction');
 const { buildExactScoreConvergence } = require('./exactScoreConvergence');
 const { predictionEngine } = require('./prediction');
-const config = require('../server/config');
 const { predictWithProviderCouncil } = require('./predictionProviderCouncil');
-
-// Configuration de l'API IA depuis les variables d'environnement
-const AI_API_URL = config.aiApiUrl || '';
-const AI_API_KEY = config.aiApiKey || '';
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -24,298 +19,37 @@ function normalizeText(value) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-/**
- * Génère une prédiction IA via API réelle
- * Fait un appel à l'API configurée dans .ENV
- */
-async function generateAIPredictionViaAPI(matchData) {
-  const { team1, team2, league, markets, context } = matchData;
-  const score1 = context?.score1 || 0;
-  const score2 = context?.score2 || 0;
-  const minute = context?.minute || 0;
-  
-  // Si aucune URL API n'est configurée, utiliser l'algorithme local
-  if (!AI_API_URL) {
-    console.log('[AI Prediction] Aucune URL API configurée, utilisation de l\'algorithme local');
-    return generateLocalAIPrediction(matchData);
-  }
-  
-  try {
-    // Appel à l'API réelle
-    const response = await fetch(AI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(AI_API_KEY && { 'Authorization': `Bearer ${AI_API_KEY}` })
-      },
-      body: JSON.stringify({
-        team1,
-        team2,
-        league,
-        score1,
-        score2,
-        minute,
-        markets,
-        timestamp: new Date().toISOString()
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`API IA returned ${response.status}: ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    
-    // Transformer la réponse de l'API au format attendu
-    return {
-      timestamp: new Date().toISOString(),
-      source: "AI_API_REAL",
-      confidence: result.confidence || 0,
-      prediction: result.prediction || null,
-      reasoning: result.reasoning || [],
-      exactScore: result.exactScore || null,
-      marketRecommendation: result.marketRecommendation || null
-    };
-  } catch (error) {
-    console.error('[AI Prediction] Erreur lors de l\'appel API, fallback sur algorithme local:', error.message);
-    // Fallback sur l'algorithme local si l'API échoue
-    return generateLocalAIPrediction(matchData);
-  }
-}
-
-/**
- * Algorithme IA local (fallback)
- * Utilisé si aucune API n'est configurée ou si l'API échoue
- */
-async function generateLocalAIPrediction(matchData) {
-  const { team1, team2, league, markets, context } = matchData;
-  const score1 = context?.score1 || 0;
-  const score2 = context?.score2 || 0;
-  const minute = context?.minute || 0;
-  
-  // Simulation d'un appel API avec délai
-  await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
-  
-  // Algorithme IA avancé pour générer une prédiction
-  const aiAnalysis = {
-    timestamp: new Date().toISOString(),
-    source: "AI_API_V2",
-    confidence: 0,
-    prediction: null,
-    reasoning: [],
+function buildProviderCouncilPrediction(providerCouncil = {}) {
+  const bestValuePick = providerCouncil.playablePicks?.[0] || null;
+  const providersAvailable = Number(providerCouncil.summary?.providersAvailable || 0);
+  return {
+    timestamp: providerCouncil.generatedAt || new Date().toISOString(),
+    source: "FOUR_API_CONSENSUS",
+    confidence: bestValuePick ? Number((bestValuePick.probability * 100).toFixed(1)) : 0,
+    prediction: bestValuePick?.market || null,
+    reasoning: bestValuePick
+      ? [`Choix retenu par ${bestValuePick.providersCount} API, accord ${bestValuePick.agreementPct}%, avantage estimé ${(bestValuePick.edge * 100).toFixed(1)}%.`]
+      : [`Aucun choix de valeur n'a passé les seuils. ${providersAvailable}/4 API ont répondu.`],
     exactScore: null,
-    marketRecommendation: null
-  };
-  
-  // Analyse contextuelle IA
-  const totalGoals = score1 + score2;
-  const goalDifference = score1 - score2;
-  const timeRemaining = 90 - minute;
-  
-  // Facteurs IA
-  let aiScore = 50;
-  const aiReasons = [];
-  
-  // Facteur 1: Momentum du match
-  if (totalGoals > 0 && minute < 30) {
-    aiScore += 15;
-    aiReasons.push("Début offensif détecté par l'IA");
-  }
-  
-  // Facteur 2: Stabilité défensive
-  if (totalGoals === 0 && minute > 60) {
-    aiScore += 12;
-    aiReasons.push("Défense solide en fin de match");
-  }
-  
-  // Facteur 3: Analyse de l'écart
-  if (Math.abs(goalDifference) >= 2) {
-    aiScore += 10;
-    aiReasons.push("Écart significatif détecté");
-  }
-  
-  // Facteur 4: Temps restant
-  if (timeRemaining < 15 && totalGoals <= 1) {
-    aiScore += 8;
-    aiReasons.push("Peu de temps pour changement majeur");
-  }
-  
-  // Facteur 5: Analyse des marchés disponibles
-  if (markets && markets.length > 0) {
-    const avgOdds = markets.reduce((sum, m) => sum + (m.cote || 2), 0) / markets.length;
-    if (avgOdds > 2.5) {
-      aiScore += 5;
-      aiReasons.push("Cotes élevées indiquent opportunité");
-    }
-  }
-  
-  // Facteur 6: Spécificité ligue
-  const leagueNorm = normalizeText(league);
-  if (leagueNorm.includes("penalty") || leagueNorm.includes("tir au but")) {
-    aiScore += 7;
-    aiReasons.push("Mode Penalty - IA spécialisée activée");
-  }
-  
-  // Normalisation du score IA
-  aiAnalysis.confidence = clamp(aiScore, 25, 95);
-  
-  // Génération de la prédiction IA
-  if (aiAnalysis.confidence >= 70) {
-    aiAnalysis.prediction = "FORT";
-    aiReasons.push("Signal IA très fort - Recommandation prioritaire");
-  } else if (aiAnalysis.confidence >= 55) {
-    aiAnalysis.prediction = "MODÉRÉ";
-    aiReasons.push("Signal IA modéré - Analyse continue");
-  } else {
-    aiAnalysis.prediction = "FAIBLE";
-    aiReasons.push("Signal IA faible - Prudence recommandée");
-  }
-  
-  // Prédiction de score exact IA
-  const exactScorePrediction = generateAIExactScore(score1, score2, minute, totalGoals);
-  aiAnalysis.exactScore = exactScorePrediction;
-  aiReasons.push(`Score exact IA prédit: ${exactScorePrediction.score} (confiance: ${(exactScorePrediction.probability * 100).toFixed(1)}%)`);
-  
-  // Recommandation de marché IA
-  const marketRec = generateAIMarketRecommendation(markets, score1, score2, minute);
-  aiAnalysis.marketRecommendation = marketRec;
-  aiReasons.push(`Recommandation marché IA: ${marketRec.type} @ ${marketRec.odds}`);
-  
-  aiAnalysis.reasoning = aiReasons;
-  
-  return aiAnalysis;
-}
-
-/**
- * Génère une prédiction de score exact via IA
- */
-function generateAIExactScore(currentScore1, currentScore2, minute, totalGoals) {
-  const timeRemaining = 90 - minute;
-  const scores = [
-    { score: "0-0", g1: 0, g2: 0 },
-    { score: "1-0", g1: 1, g2: 0 },
-    { score: "0-1", g1: 0, g2: 1 },
-    { score: "1-1", g1: 1, g2: 1 },
-    { score: "2-0", g1: 2, g2: 0 },
-    { score: "0-2", g1: 0, g2: 2 },
-    { score: "2-1", g1: 2, g2: 1 },
-    { score: "1-2", g1: 1, g2: 2 },
-    { score: "2-2", g1: 2, g2: 2 },
-    { score: "3-0", g1: 3, g2: 0 },
-    { score: "0-3", g1: 0, g2: 3 },
-    { score: "3-1", g1: 3, g2: 1 },
-    { score: "1-3", g1: 1, g2: 3 },
-    { score: "3-2", g1: 3, g2: 2 },
-    { score: "2-3", g1: 2, g2: 3 },
-  ];
-  
-  let bestScore = scores[0];
-  let maxProbability = 0;
-  
-  for (const score of scores) {
-    let probability = 50;
-    
-    // Ajustement basé sur le score actuel
-    if (score.g1 >= currentScore1 && score.g2 >= currentScore2) {
-      probability += 20;
-    }
-    
-    // Ajustement basé sur le temps restant
-    if (timeRemaining < 15) {
-      // En fin de match, favoriser les scores proches du score actuel
-      const diff1 = Math.abs(score.g1 - currentScore1);
-      const diff2 = Math.abs(score.g2 - currentScore2);
-      probability -= (diff1 + diff2) * 5;
-    } else if (timeRemaining > 60) {
-      // En début de match, favoriser les scores bas
-      probability += (4 - (score.g1 + score.g2)) * 3;
-    }
-    
-    // Ajustement basé sur le total actuel
-    if (totalGoals === 0 && score.total === 0) {
-      probability += 25;
-    }
-    
-    probability = clamp(probability, 10, 90);
-    
-    if (probability > maxProbability) {
-      maxProbability = probability;
-      bestScore = score;
-    }
-  }
-  
-  return {
-    score: bestScore.score,
-    probability: maxProbability / 100
+    marketRecommendation: bestValuePick ? {
+      type: bestValuePick.market,
+      odds: bestValuePick.offeredOdds,
+      fairOdds: bestValuePick.fairOdds,
+      edge: bestValuePick.edge,
+    } : null,
+    providerCouncil,
   };
 }
 
-/**
- * Génère une recommandation de marché via IA
- */
-function generateAIMarketRecommendation(markets, score1, score2, minute) {
-  const totalGoals = score1 + score2;
-  const timeRemaining = 90 - minute;
-  
-  // Analyse des marchés disponibles
-  if (!markets || markets.length === 0) {
-    return {
-      type: "ATTENDRE",
-      odds: "-",
-      reason: "Aucun marché disponible"
-    };
-  }
-  
-  let bestMarket = null;
-  let bestScore = -Infinity;
-  
-  for (const market of markets) {
-    let marketScore = 50;
-    const marketNorm = normalizeText(market.nom || "");
-    const odds = market.cote || 2;
-    
-    // Ajustement basé sur le contexte
-    if (marketNorm.includes("plus") && totalGoals >= 2 && minute < 60) {
-      marketScore += 20;
-    }
-    
-    if (marketNorm.includes("moins") && totalGoals <= 1 && minute > 60) {
-      marketScore += 18;
-    }
-    
-    if (marketNorm.includes("victoire") && Math.abs(score1 - score2) >= 1) {
-      marketScore += 15;
-    }
-    
-    // Ajustement basé sur la cote
-    if (odds >= 1.8 && odds <= 2.5) {
-      marketScore += 10;
-    }
-    
-    if (marketScore > bestScore) {
-      bestScore = marketScore;
-      bestMarket = {
-        type: market.nom || "Inconnu",
-        odds: odds
-      };
-    }
-  }
-  
-  if (bestMarket && bestScore >= 60) {
-    return {
-      type: bestMarket.type,
-      odds: bestMarket.odds,
-      reason: "Recommandation IA basée sur l'analyse contextuelle"
-    };
-  }
-  
-  return {
-    type: "ATTENDRE",
-    odds: "-",
-    reason: "Aucune opportunité IA détectée"
-  };
+async function generateAIPredictionViaAPI(matchData = {}) {
+  const { id, team1, team2, league, markets } = matchData;
+  const providerCouncil = await predictWithProviderCouncil(
+    { id, teamHome: team1, teamAway: team2, league },
+    { I: id, SI: 85, L: league, O1: team1, O2: team2 },
+    Array.isArray(markets) ? markets : []
+  );
+  return buildProviderCouncilPrediction(providerCouncil);
 }
-
 /**
  * Intègre tous les systèmes de prédiction en parfaite communion
  */
@@ -351,15 +85,14 @@ async function integrateAllPredictionSystems(matchData) {
     awayTeam: team2
   });
   
-  // 4. Exécuter la prédiction IA via API
-  const aiPrediction = await generateAIPredictionViaAPI(matchData);
-
-  // 5. Faire contribuer les quatre providers documentés à un consensus marché par marché.
+  // 4. Les quatre API alimentent un seul conseil de consensus partagé.
   const providerCouncil = await predictWithProviderCouncil(
     { id: matchData.id, teamHome: team1, teamAway: team2, league },
     { I: matchData.id, SI: 85, L: league, O1: team1, O2: team2 },
     markets || []
   );
+
+  const aiPrediction = buildProviderCouncilPrediction(providerCouncil);
   
   // 6. Fusionner tous les résultats
   const integratedResult = {
@@ -390,7 +123,7 @@ async function integrateAllPredictionSystems(matchData) {
     
     // Consensus final
     consensus: {
-      ...calculateFinalConsensus(unifiedPrediction, mainPrediction, exactScoreConvergence, aiPrediction),
+      ...calculateFinalConsensus(unifiedPrediction, mainPrediction, exactScoreConvergence, providerCouncil),
       externalProvidersAvailable: providerCouncil.summary.providersAvailable,
       externalProvidersConfigured: providerCouncil.summary.providersConfigured,
       marketConsensus: providerCouncil.marketConsensus,
@@ -425,7 +158,7 @@ function extractOddsFromMarkets(markets) {
 /**
  * Calcule le consensus final de tous les systèmes
  */
-function calculateFinalConsensus(unified, main, exactScore, ai) {
+function calculateFinalConsensus(unified, main, exactScore, providerCouncil = {}) {
   const consensus = {
     action: "ANALYSE",
     confidence: 0,
@@ -433,54 +166,43 @@ function calculateFinalConsensus(unified, main, exactScore, ai) {
     sources: []
   };
   
-  let totalConfidence = 0;
-  let sourceCount = 0;
+  const confidenceContributions = [];
+  const addSource = (name, confidence, weight, recommendation) => {
+    const score = Number(confidence);
+    if (!Number.isFinite(score) || score <= 0) return;
+    confidenceContributions.push({ score: Math.max(0, Math.min(100, score)), weight });
+    consensus.sources.push({ name, confidence: score, recommendation: recommendation || "N/A" });
+  };
   
   // Contribution du système unifié
-  if (unified?.maitre?.decision_finale?.confiance_numerique) {
-    totalConfidence += unified.maitre.decision_finale.confiance_numerique * 0.3;
-    sourceCount++;
-    consensus.sources.push({
-      name: "Système Unifié",
-      confidence: unified.maitre.decision_finale.confiance_numerique,
-      recommendation: unified.maitre.decision_finale.recommandation
-    });
-  }
+  addSource("Système Unifié", unified?.maitre?.decision_finale?.confiance_numerique, 0.25, unified?.maitre?.decision_finale?.recommandation);
   
   // Contribution du moteur principal
-  if (main?.confidence) {
-    totalConfidence += main.confidence * 0.25;
-    sourceCount++;
-    consensus.sources.push({
-      name: "Moteur Principal",
-      confidence: main.confidence,
-      recommendation: main.recommendedBet?.description || "N/A"
-    });
-  }
+  addSource("Moteur Principal", main?.confidence, 0.2, main?.recommendedBet?.description);
   
   // Contribution de la convergence des scores exacts
-  if (exactScore?.reliability) {
-    totalConfidence += exactScore.reliability * 0.2;
-    sourceCount++;
-    consensus.sources.push({
-      name: "Convergence Scores Exacts",
-      confidence: exactScore.reliability,
-      recommendation: exactScore.primary?.score || "N/A"
-    });
-  }
+  addSource("Convergence Scores Exacts", exactScore?.reliability, 0.15, exactScore?.primary?.score);
   
   // Contribution de l'IA
-  if (ai?.confidence) {
-    totalConfidence += ai.confidence * 0.25;
-    sourceCount++;
-    consensus.sources.push({
-      name: "IA via API",
-      confidence: ai.confidence,
-      recommendation: ai.prediction || "N/A"
-    });
-  }
-  
-  consensus.confidence = clamp(totalConfidence, 0, 100);
+  const valuePick = providerCouncil?.playablePicks?.[0] || null;
+  const consensusMarket = (providerCouncil?.marketConsensus || [])
+    .filter((market) => Number(market.providersCount || 0) >= 2 && market.recommendationProbability != null)
+    .sort((a, b) => Number(b.agreementPct || 0) - Number(a.agreementPct || 0))[0];
+  const apiProbability = Number(valuePick?.probability ?? consensusMarket?.recommendationProbability ?? 0);
+  const apiAgreement = Number(valuePick?.agreementPct ?? consensusMarket?.agreementPct ?? 0);
+  const apiConfidence = apiProbability > 0
+    ? apiProbability * 100 * 0.7 + apiAgreement * 0.3
+    : 0;
+  addSource(
+    "Consensus des quatre API",
+    apiConfidence,
+    0.4,
+    valuePick?.market || consensusMarket?.recommendedSelection || "Aucun consensus de valeur"
+  );
+
+  const totalWeight = confidenceContributions.reduce((sum, item) => sum + item.weight, 0);
+  const weightedConfidence = confidenceContributions.reduce((sum, item) => sum + item.score * item.weight, 0);
+  consensus.confidence = totalWeight ? clamp(weightedConfidence / totalWeight, 0, 100) : 0;
   
   // Déterminer l'action finale
   if (consensus.confidence >= 75) {

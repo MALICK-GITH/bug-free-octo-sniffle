@@ -15,6 +15,9 @@
   }
 
   function buildBottomNav() {
+    // Coupon already has a dedicated sticky action bar; a second fixed nav
+    // would cover the controls and assistant on narrow screens.
+    if (document.body.classList.contains("coupon-portal")) return;
     if (document.querySelector(".global-bottom-nav")) return;
     const page = currentPageKey();
     const items = [

@@ -4,6 +4,7 @@ const PARITY_AI_URL = "https://fifa-ai-trainer.lovable.app/api/public/predict";
 const FURY_X1_URL = "https://fury-insight-api.lovable.app/api/public/v1/predict";
 const CACHE_TTL_MS = 30 * 1000;
 const REQUEST_TIMEOUT_MS = 8000;
+const MAX_COUNCIL_AGE_MS = 60 * 1000;
 const MIN_PROVIDERS_FOR_CONSENSUS = 2;
 const cache = new Map();
 
@@ -240,6 +241,7 @@ async function requestProvider(name, request, normalize) {
     return {
       name,
       status: normalized.rows.length ? "ok" : "no_markets",
+      observedAt: new Date().toISOString(),
       latencyMs: Date.now() - startedAt,
       model: normalized.model || null,
       expectedGoals: normalized.expectedGoals || null,
@@ -251,6 +253,7 @@ async function requestProvider(name, request, normalize) {
     return {
       name,
       status: "unavailable",
+      observedAt: new Date().toISOString(),
       latencyMs: Date.now() - startedAt,
       error: reason,
       predictionCount: 0,
@@ -389,32 +392,60 @@ function buildBookmakerRecommendations(markets, marketConsensus) {
   for (const market of markets) {
     const selection = bookmakerSelection(market);
     if (!selection) continue;
-    const consensus = consensusByKey.get(marketKeyFromSelection(selection));
-    if (!consensus || consensus.providersCount < MIN_PROVIDERS_FOR_CONSENSUS) continue;
-    const outcome = consensus.outcomes.find((item) => item.selection === selection.selection);
-    if (!outcome) continue;
     const offeredOdds = numberOrNull(market.cote);
     if (offeredOdds == null) continue;
-    const edge = offeredOdds * outcome.probability - 1;
+    const consensus = consensusByKey.get(marketKeyFromSelection(selection));
+    const outcome = consensus?.outcomes.find((item) => item.selection === selection.selection) || null;
+    const enoughProviders = Number(consensus?.providersCount || 0) >= MIN_PROVIDERS_FOR_CONSENSUS;
+    const edge = outcome ? offeredOdds * outcome.probability - 1 : null;
+    const eligibleOdds = offeredOdds >= 1.5;
+    const consensusAligned = Boolean(consensus && consensus.recommendedSelection === selection.selection);
+    const reasons = [];
+    if (!enoughProviders) reasons.push(`Consensus insuffisant : ${Number(consensus?.providersCount || 0)}/${MIN_PROVIDERS_FOR_CONSENSUS} API minimum.`);
+    if (!outcome) reasons.push("Aucune probabilité commune pour cette sélection.");
+    if (enoughProviders && outcome && !consensusAligned) reasons.push("Les API ne retiennent pas cette sélection comme choix commun.");
+    if (!eligibleOdds) reasons.push("Cote proposée sous le minimum de 1,50.");
+    if (edge != null && edge <= 0.02) reasons.push("Avantage estimé inférieur au seuil de 2%.");
+    const isValue = enoughProviders && outcome && consensusAligned && eligibleOdds && edge > 0.02;
     picks.push({
       market: market.nom,
       family: selection.family,
       selection: selection.selection,
       line: selection.line ?? null,
       offeredOdds,
-      probability: outcome.probability,
-      fairOdds: outcome.fairOdds,
-      edge: Number(edge.toFixed(4)),
-      providersCount: outcome.providerCount,
-      agreementPct: consensus.agreementPct,
-      consensusAligned: consensus.recommendedSelection === selection.selection,
-      eligibleOdds: offeredOdds >= 1.5,
-      recommendation: offeredOdds >= 1.5 && edge > 0.02 && consensus.recommendedSelection === selection.selection
-        ? "value"
-        : "no-value",
+      probability: outcome?.probability ?? null,
+      fairOdds: outcome?.fairOdds ?? null,
+      edge: edge == null ? null : Number(edge.toFixed(4)),
+      providersCount: outcome?.providerCount || 0,
+      agreementPct: consensus?.agreementPct ?? 0,
+      consensusAligned,
+      eligibleOdds,
+      recommendation: isValue ? "value" : "no-value",
+      reasons: isValue ? ["Consensus aligné, cote suffisante et avantage estimé supérieur à 2%."] : reasons,
     });
   }
-  return picks.sort((a, b) => b.edge - a.edge || b.agreementPct - a.agreementPct);
+  return picks.sort((a, b) => Number(b.edge || -Infinity) - Number(a.edge || -Infinity) || b.agreementPct - a.agreementPct);
+}
+
+function pickProviderWinner(markets = []) {
+  const best = markets
+    .filter((market) => market.family === "winner")
+    .sort((a, b) => b.probability - a.probability)[0];
+  return best ? { selection: best.selection, probability: best.probability } : null;
+}
+
+function summarizeProvider(provider) {
+  return {
+    name: provider.name,
+    status: provider.status,
+    observedAt: provider.observedAt || null,
+    latencyMs: provider.latencyMs,
+    model: provider.model || null,
+    expectedGoals: provider.expectedGoals || null,
+    predictionCount: provider.predictionCount,
+    error: provider.error || null,
+    winnerPick: pickProviderWinner(provider.markets || []),
+  };
 }
 
 function makeCacheKey(match, event, markets) {
@@ -429,12 +460,13 @@ function makeCacheKey(match, event, markets) {
 
 async function calculateCouncil(match, event, markets) {
   const providerResults = await Promise.all(providerRequests(match, event, markets));
-  const providers = providerResults.map(({ markets: _markets, ...provider }) => provider);
+  const providers = providerResults.map(summarizeProvider);
   const marketConsensus = buildMarketConsensus(providerResults);
   const bookmakerMarkets = buildBookmakerRecommendations(markets, marketConsensus);
   const playablePicks = bookmakerMarkets.filter((pick) => pick.recommendation === "value");
   return {
     generatedAt: new Date().toISOString(),
+    maxAgeMs: MAX_COUNCIL_AGE_MS,
     minOfferedOdds: 1.5,
     minProvidersForConsensus: MIN_PROVIDERS_FOR_CONSENSUS,
     providers,
@@ -458,6 +490,7 @@ async function predictWithProviderCouncil(match = {}, event = {}, markets = []) 
 
   const promise = calculateCouncil(match, event, markets).catch((error) => ({
     generatedAt: new Date().toISOString(),
+    maxAgeMs: MAX_COUNCIL_AGE_MS,
     minOfferedOdds: 1.5,
     minProvidersForConsensus: MIN_PROVIDERS_FOR_CONSENSUS,
     providers: [],

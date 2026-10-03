@@ -4172,7 +4172,10 @@ if (downloadPdfBtnSticky) {
 
 function applyStoredCouponFormValues() {
   const sizeInput = document.getElementById("sizeInput");
-  if (sizeInput) sizeInput.value = String(getStoredNumber(COUPON_SIZE_KEY, Number(sizeInput.value || 3)));
+  if (sizeInput) {
+    const storedSize = getStoredNumber(COUPON_SIZE_KEY, Number(sizeInput.value || 3));
+    sizeInput.value = String(clamp(Math.round(storedSize) || 3, 1, 12));
+  }
   const minStartSelect = document.getElementById("minStartMinutesSelect");
   if (minStartSelect) minStartSelect.value = String(getStoredNumber(COUPON_MIN_START_MINUTES_KEY, Number(minStartSelect.value || 5)));
   const safeWindowSwitch = document.getElementById("safeWindowSwitch");
@@ -4182,7 +4185,10 @@ function applyStoredCouponFormValues() {
   const autoSwapLevelSelect = document.getElementById("autoSwapLevelSelect");
   if (autoSwapLevelSelect) autoSwapLevelSelect.value = getAutoSwapLevel();
   const stakeInput = document.getElementById("stakeInput");
-  if (stakeInput) stakeInput.value = String(getStoredNumber(COUPON_STAKE_KEY, Number(stakeInput.value || 1000)));
+  if (stakeInput) {
+    const storedStake = getStoredNumber(COUPON_STAKE_KEY, Number(stakeInput.value || 1000));
+    stakeInput.value = String(clamp(Math.round(storedStake) || 1000, 100, 2000000));
+  }
   const bankrollInput = document.getElementById("bankrollInput");
   if (bankrollInput) bankrollInput.value = String(getStoredNumber(COUPON_BANKROLL_KEY, Number(bankrollInput.value || 25000)));
   const startAlertInput = document.getElementById("startAlertInput");
