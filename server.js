@@ -3737,8 +3737,7 @@ app.get("/api/predictions", async (_req, res) => {
         const resolvedMatch = details?.match || match;
         const teams = getMatchTeams(resolvedMatch);
         if (details.prediction && details.prediction.maitre) {
-          const trainedFusion = details?.prediction?.trainedFusion || {};
-          const isTrainedDominant = Boolean(trainedFusion?.enabled);
+          const decision = details.prediction.maitre.decision_finale || {};
           predictions.push({
             matchId: getMatchId(resolvedMatch),
             homeTeam: teams.home,
@@ -3753,20 +3752,10 @@ app.get("/api/predictions", async (_req, res) => {
                 details.prediction.maitre.decision_finale?.confiance_numerique ||
                 0,
               odds: details.prediction.maitre.decision_finale?.cote || 0,
-              source: isTrainedDominant ? "TRAINED-FUSION-1.0" : "MAITRE-LEGACY",
-              trainedOutcome: trainedFusion?.outcome || null,
+              source: decision.moteur || "MAITRE-LEGACY",
+              consensusApi: decision.consensusApi || null,
             },
-            trainingSignature: details?.trainedModelPrediction?.available
-              ? {
-                  source: details.trainedModelPrediction.source,
-                  modelVersion: details.trainedModelPrediction.modelVersion,
-                  modelFile: details.trainedModelPrediction.modelFile,
-                  trainedAt: details.trainedModelPrediction.trainedAt,
-                  recommendation: details.trainedModelPrediction.recommendation,
-                  confidence: details.trainedModelPrediction.confidence,
-                  exactScore: details.trainedModelPrediction.exactScore,
-                }
-              : null,
+            providerCouncil: details.providerCouncil || null,
             extraPowerFilter: details.extraPowerFilter,
           });
         }
@@ -3808,15 +3797,14 @@ app.get("/api/predictions/top", async (_req, res) => {
         const resolvedMatch = details?.match || match;
         const teams = getMatchTeams(resolvedMatch);
         if (details.prediction && details.prediction.maitre) {
-          const trainedFusion = details?.prediction?.trainedFusion || {};
-          const isTrainedDominant = Boolean(trainedFusion?.enabled);
+          const decision = details.prediction.maitre.decision_finale || {};
           const confidence =
-            details.prediction.maitre.decision_finale?.confidence ||
-            details.prediction.maitre.decision_finale?.confiance_numerique ||
+            decision.confidence ||
+            decision.confiance_numerique ||
             0;
           const extraScore = details.extraPowerFilter?.score || 0;
-          const trainedBoost = isTrainedDominant ? 8 : 0;
-          const combinedScore = confidence * 0.6 + extraScore * 0.4 + trainedBoost;
+          const agreementBoost = Number(decision.consensusApi?.agreementPct || 0) * 0.08;
+          const combinedScore = confidence * 0.6 + extraScore * 0.4 + agreementBoost;
 
           predictions.push({
             matchId: getMatchId(resolvedMatch),
@@ -3826,23 +3814,13 @@ app.get("/api/predictions/top", async (_req, res) => {
             status: getMatchStatusLabel(resolvedMatch),
             score: getMatchScore(resolvedMatch),
             prediction: {
-              recommendation: details.prediction.maitre.decision_finale?.pari_choisi || "N/A",
+              recommendation: decision.pari_choisi || "N/A",
               confidence,
-              odds: details.prediction.maitre.decision_finale?.cote || 0,
-              source: isTrainedDominant ? "TRAINED-FUSION-1.0" : "MAITRE-LEGACY",
-              trainedOutcome: trainedFusion?.outcome || null,
+              odds: decision.cote || 0,
+              source: decision.moteur || "MAITRE-LEGACY",
+              consensusApi: decision.consensusApi || null,
             },
-            trainingSignature: details?.trainedModelPrediction?.available
-              ? {
-                  source: details.trainedModelPrediction.source,
-                  modelVersion: details.trainedModelPrediction.modelVersion,
-                  modelFile: details.trainedModelPrediction.modelFile,
-                  trainedAt: details.trainedModelPrediction.trainedAt,
-                  recommendation: details.trainedModelPrediction.recommendation,
-                  confidence: details.trainedModelPrediction.confidence,
-                  exactScore: details.trainedModelPrediction.exactScore,
-                }
-              : null,
+            providerCouncil: details.providerCouncil || null,
             extraPowerFilter: details.extraPowerFilter,
             combinedScore,
           });

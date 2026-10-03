@@ -20,7 +20,6 @@ const { analyserMatchMultiBots } = require("./bots");
 const { getHistoricalRecommendation } = require("./historical");
 const { getPenaltyTournaments } = require("./tournaments");
 const { getTrackedMatches, getFinishedMatchesDataset } = require("./db");
-const { predictFromTrainedModel } = require("./trainedModelPredictor");
 const { predictWithProviderCouncil } = require("./predictionProviderCouncil");
 const { MIN_RECOMMENDED_ODDS } = require("./predictionPolicy");
 const LIVEFEED_CACHE_FILE = path.resolve(
@@ -1281,6 +1280,7 @@ async function getMatchPredictionDetails(matchId) {
   if (found) {
     const details = buildMatchPredictionDetails(found);
     const providerCouncil = await predictWithProviderCouncil(details.match, found, details.bettingMarkets);
+    applyProviderCouncilConsensus(details, providerCouncil);
     const pickedPari = details?.prediction?.maitre?.decision_finale?.pari_choisi || "";
     const evalInput = buildExtraFilterInput(details, pickedPari);
     const extraFilter = evaluateMatch(evalInput, { totalMatches: events.length }, { minMatches: 50 });
@@ -1300,6 +1300,7 @@ async function getMatchPredictionDetails(matchId) {
     const storedEvent = synthesizeLiveFeedEvent(storedMatch, storedMatch?.status || null);
     const details = buildMatchPredictionDetails(storedEvent);
     const providerCouncil = await predictWithProviderCouncil(details.match, storedEvent, details.bettingMarkets);
+    applyProviderCouncilConsensus(details, providerCouncil);
     const pickedPari = details?.prediction?.maitre?.decision_finale?.pari_choisi || "";
     const evalInput = buildExtraFilterInput(details, pickedPari);
     const extraFilter = evaluateMatch(evalInput, { totalMatches: 1 }, { minMatches: 10 });
@@ -1321,6 +1322,7 @@ async function getMatchPredictionDetailsFromMatch(match = {}) {
   const storedEvent = synthesizeLiveFeedEvent(match, match?.status || null);
   const details = buildMatchPredictionDetails(storedEvent);
   const providerCouncil = await predictWithProviderCouncil(details.match, storedEvent, details.bettingMarkets);
+  applyProviderCouncilConsensus(details, providerCouncil);
   const pickedPari = details?.prediction?.maitre?.decision_finale?.pari_choisi || "";
   const evalInput = buildExtraFilterInput(details, pickedPari);
   const extraFilter = evaluateMatch(evalInput, { totalMatches: 1 }, { minMatches: 10 });
@@ -1348,93 +1350,65 @@ function buildMatchPredictionDetails(event) {
     bias: buildExactScoreBias(prediction || {}),
     hasConvergence: Boolean(exactScoreProjection?.method && exactScoreProjection.method !== "poisson-odds-market-v1"),
   });
-  const trainedModelPrediction = predictFromTrainedModel({
-    teamHome: match.teamHome,
-    teamAway: match.teamAway,
-    league: match.league,
-  });
-  if (trainedModelPrediction?.available) {
-    applyTrainedModelFusion(prediction, bets, trainedModelPrediction);
-  }
-
   return {
     match,
     bettingMarkets: bets,
     prediction,
-    trainedModelPrediction,
     exactScore,
     exactScoreAvailable: Boolean(exactScore),
     leagueProfile: getLeagueProfileSummary(leagueProfile),
   };
 }
 
-function applyTrainedModelFusion(prediction = {}, bets = [], trained = {}) {
-  const master = prediction?.maitre?.decision_finale || {};
-  const outcome = String(trained?.recommendation || "").toLowerCase();
-  const market = pickOutcomeMarketFromBets(bets, outcome);
+function applyProviderCouncilConsensus(details = {}, providerCouncil = {}) {
+  const picks = Array.isArray(providerCouncil?.playablePicks) ? providerCouncil.playablePicks : [];
+  if (!picks.length || !details?.prediction?.maitre) return;
 
-  const baseConfidence = Number(master?.confiance_numerique || master?.confidence || 0);
-  const trainedConfidence = Number(trained?.confidence || 0);
-  const fusedConfidence = clamp(Math.max(baseConfidence * 0.7 + trainedConfidence * 0.6, trainedConfidence), 0, 99);
+  const bestPick = [...picks].sort((a, b) =>
+    Number(b.edge || 0) - Number(a.edge || 0) ||
+    Number(b.agreementPct || 0) - Number(a.agreementPct || 0) ||
+    Number(b.probability || 0) - Number(a.probability || 0)
+  )[0];
+  const market = (details.bettingMarkets || []).find((item) => item?.nom === bestPick.market);
+  if (!market) return;
 
-  const fusedDecision = {
-    ...master,
-    pari_choisi: market?.nom || master?.pari_choisi || "N/A",
-    cote: Number(market?.cote || master?.cote || 0),
-    confidence: Number(fusedConfidence.toFixed(1)),
-    confiance_numerique: Number(fusedConfidence.toFixed(1)),
-    action: fusedConfidence >= 62 ? "MISE RECOMMANDEE" : (master?.action || "SURVEILLER"),
-    recommandation: `FUSION MODELE ENTRAINE + MAITRE (${outcome.toUpperCase() || "N/A"})${market ? "" : " | marchÃ© conservÃ© faute de mapping direct"}`,
-    moteur: "TRAINED-FUSION-1.0",
+  const confidence = Number((Number(bestPick.probability || 0) * 100).toFixed(1));
+  const providerCount = Number(bestPick.providersCount || 0);
+  const agreement = Number(bestPick.agreementPct || 0);
+  const previous = details.prediction.maitre.decision_finale || {};
+  const decision = {
+    ...previous,
+    pari_choisi: market.nom,
+    cote: Number(market.cote || bestPick.offeredOdds || 0),
+    confidence,
+    confiance_numerique: confidence,
+    action: agreement >= 75 ? "MISE RECOMMANDEE" : "SURVEILLER",
+    recommandation: `Consensus de ${providerCount} API : ${agreement}% d'accord, valeur estimée +${(Number(bestPick.edge) * 100).toFixed(1)}% (cote juste ${bestPick.fairOdds}).`,
+    moteur: "FOUR-API-CONSENSUS",
+    consensusApi: {
+      providersCount: providerCount,
+      agreementPct: agreement,
+      probability: Number(bestPick.probability || 0),
+      fairOdds: Number(bestPick.fairOdds || 0),
+      offeredOdds: Number(market.cote || bestPick.offeredOdds || 0),
+      valueEdge: Number(bestPick.edge || 0),
+    },
   };
+  details.prediction.maitre.originalDecision = details.prediction.maitre.originalDecision || previous;
+  details.prediction.maitre.decision_finale = decision;
 
-  prediction.maitre = prediction.maitre || {};
-  prediction.maitre.originalDecision = prediction.maitre.originalDecision || master;
-  prediction.maitre.decision_finale = fusedDecision;
-  prediction.trainedFusion = {
-    enabled: true,
-    modelSource: trained?.source || "trained-finished-matches-model",
-    modelFile: trained?.modelFile || null,
-    outcome,
-    exactScore: trained?.exactScore || null,
-    marketUsed: market?.nom || null,
-    marketMapped: Boolean(market),
-    confidence: fusedDecision.confiance_numerique,
-  };
-}
-
-function pickOutcomeMarketFromBets(bets = [], outcome = "") {
-  const rows = Array.isArray(bets) ? bets : [];
-  const outcomeKey = String(outcome || "").toLowerCase();
-  const byOutcomeLabel =
-    outcomeKey === "home"
-      ? ["1 - victoire", "1 - ", "victoire domicile", "domicile"]
-      : outcomeKey === "away"
-        ? ["2 - victoire", "2 - ", "victoire exterieur", "victoire extÃ©rieur", "exterieur", "extÃ©rieur"]
-        : ["x - match nul", "x - ", "match nul", "nul"];
-
-  const foundDirect = rows.find((m) => {
-    const low = normalizeText(m?.nom || "");
-    return byOutcomeLabel.some((p) => low.startsWith(normalizeText(p)));
-  });
-  if (foundDirect) return foundDirect;
-
-  const found1x2 = rows.find((m) => {
-    const low = normalizeText(m?.nom || "");
-    if (outcomeKey === "home") return low === "1" || low.includes(" 1 ") || low.startsWith("1 -");
-    if (outcomeKey === "away") return low === "2" || low.includes(" 2 ") || low.startsWith("2 -");
-    return low === "x" || low.includes(" x ") || low.startsWith("x -");
-  });
-  if (found1x2) return found1x2;
-
-  // fallback: double chance markets aligned with trained side
-  if (outcomeKey === "home") {
-    return rows.find((m) => normalizeText(m?.nom || "").includes("1x")) || null;
+  const primary = details.prediction.decision_consensus?.primary;
+  if (primary && typeof primary === "object") {
+    details.prediction.decision_consensus.primary = {
+      ...primary,
+      pari: market.nom,
+      confidence,
+      source: "FOUR-API-CONSENSUS",
+      valueEdge: Number(bestPick.edge || 0),
+      agreementPct: agreement,
+      providersCount: providerCount,
+    };
   }
-  if (outcomeKey === "away") {
-    return rows.find((m) => normalizeText(m?.nom || "").includes("x2")) || null;
-  }
-  return rows.find((m) => normalizeText(m?.nom || "").includes("match nul")) || null;
 }
 
 function riskConfig(profile = "balanced") {

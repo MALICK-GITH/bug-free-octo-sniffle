@@ -302,23 +302,16 @@ function renderDriftAlert(drifts) {
   `;
 }
 
-function renderMaster(master, analyse, trainedModelPrediction = null) {
+function renderMaster(master, analyse, providerCouncil = {}) {
   const el = document.getElementById("master");
-  const signatureHtml = trainedModelPrediction?.available
-    ? `
-      <div class="box training-signature-box">
-        <strong>Signature entrainement IA</strong>
-        <div>Modele: ${escapeHtml(trainedModelPrediction.modelFile || "n/a")} (v${escapeHtml(trainedModelPrediction.modelVersion || "1.0.0")})</div>
-        <div>Entraine le: ${escapeHtml(trainedModelPrediction.trainedAt || "n/a")}</div>
-        <div>Signal IA: ${escapeHtml(trainedModelPrediction.recommendation || "n/a")} | confiance ${toNumber(trainedModelPrediction.confidence, 0)}% | score ${escapeHtml(trainedModelPrediction.exactScore || "n/a")}</div>
-      </div>
-    `
-    : `
-      <div class="box training-signature-box training-signature-off">
-        <strong>Signature entrainement IA</strong>
-        <div>Modele non charge pour ce match.</div>
-      </div>
-    `;
+  const value = master.consensusApi || null;
+  const providers = Array.isArray(providerCouncil.providers) ? providerCouncil.providers : [];
+  const providerNames = providers.map((provider) =>
+    `${escapeHtml(provider.name || "API")}: ${provider.status === "ok" ? "disponible" : "indisponible"}`
+  ).join(" · ");
+  const consensusHtml = value
+    ? `<div class="box provider-consensus-box"><strong>Consensus des quatre API</strong><div>Probabilité estimée : ${toNumber(value.probability * 100, 0).toFixed(1)}% · Accord : ${toNumber(value.agreementPct, 0)}%</div><div>Cote proposée : ${toNumber(value.offeredOdds, 0).toFixed(2)} · Cote juste : ${toNumber(value.fairOdds, 0).toFixed(2)} · Valeur : ${value.valueEdge >= 0 ? "+" : ""}${(toNumber(value.valueEdge, 0) * 100).toFixed(1)}%</div><small>${providerNames || "État des API indisponible"}</small></div>`
+    : `<div class="box provider-consensus-box provider-consensus-off"><strong>Consensus des quatre API</strong><div>Aucun choix de valeur confirmé pour ce match.</div><small>${providerNames || "Aucun fournisseur disponible"}</small></div>`;
   el.innerHTML = `
     <h2>Decision Finale (Maitre)</h2>
     <div class="grid2">
@@ -326,7 +319,7 @@ function renderMaster(master, analyse, trainedModelPrediction = null) {
       <div class="box"><strong>Action</strong><div>${master.action || "AUCUNE"}</div></div>
       <div class="box"><strong>Confiance</strong><div>${master.confiance_numerique ?? 0}%</div></div>
       <div class="box"><strong>Consensus bots</strong><div>${analyse.consensus || "N/A"}</div></div>
-      ${signatureHtml}
+      ${consensusHtml}
     </div>
   `;
 }
@@ -1677,7 +1670,7 @@ async function loadData(trigger = "manual") {
     renderMaster(
       data.prediction?.maitre?.decision_finale || {},
       data.prediction?.maitre?.analyse_bots || {},
-      data.trainedModelPrediction || null
+      data.providerCouncil || {}
     );
     renderCoachPanel(data);
     renderNeuralCharts(data);
